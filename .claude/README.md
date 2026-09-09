@@ -112,11 +112,17 @@ Verificado de extremo a extremo: `claude mcp list` reporta `Connected`, y una
 llamada real a `resolve-library-id` devuelve documentacion. **Sin clave de API y
 sin login OAuth.**
 
-La primera vez, Claude Code pide aprobar el servidor del `.mcp.json` (`claude mcp
-get context7` lo muestra como *Pending approval*). Para saltarse ese prompt se
-puede anadir `"enabledMcpjsonServers": ["context7"]` a `settings.json`; se deja
-fuera a proposito, para que la aprobacion sea una decision explicita de quien
-clone el repo.
+Por defecto Claude Code pide aprobar el servidor de un `.mcp.json` la primera vez.
+Aqui esa aprobacion viene dada: `settings.json` incluye
+
+```json
+"enabledMcpjsonServers": ["context7"]
+```
+
+asi que el servidor conecta solo, sin prompt, para cualquiera que clone el repo.
+Es una decision consciente: se pre-aprueba **un** servidor concreto y conocido,
+no la lista entera del `.mcp.json`. Si se anaden mas servidores al `.mcp.json`,
+cada uno necesitara su propia entrada aqui o su propia aprobacion.
 
 Si en algun momento se quiere el plugin oficial en vez de esto, hace falta una
 clave real (`ctx7sk...`) en `CONTEXT7_API_KEY`; un valor cualquiera pasa el 401

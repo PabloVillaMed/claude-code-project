@@ -29,5 +29,8 @@
     "example-skills@anthropic-agent-skills": true,
     "mcp-server-dev@claude-plugins-official": true,
     "superpowers@superpowers-dev": true
-  }
+  },
+  "enabledMcpjsonServers": [
+    "context7"
+  ]
 }
