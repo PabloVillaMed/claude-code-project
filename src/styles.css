@@ -33,6 +33,20 @@
   box-sizing: border-box;
 }
 
+/*
+ * En Android 15+ la app se dibuja de borde a borde, asi que el contenido
+ * quedaria debajo de la barra de estado y de la barra de navegacion.
+ * Capacitor inyecta --safe-area-inset-* para WebViews viejos que no reportan
+ * bien env(); en el navegador ambos valen 0 y esto no hace nada.
+ */
+html {
+  padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  background: var(--fondo);
+}
+
 body {
   margin: 0;
   background: var(--fondo);
@@ -339,7 +353,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: calc(16px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 16px
+    calc(16px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   background: rgba(0, 0, 0, 0.55);
   z-index: 10;
 }

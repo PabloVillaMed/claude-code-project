@@ -1,7 +1,7 @@
 {
   "name": "parches-medellin",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Buscador de parches, lugares de encuentro y zonas de esparcimiento en Medellin y municipios cercanos",
   "scripts": {
@@ -10,13 +10,19 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "android:sync": "npm run build && cap sync android",
+    "android:debug": "npm run android:sync && android/gradlew --project-dir android assembleDebug",
+    "android:release": "npm run android:sync && android/gradlew --project-dir android assembleRelease"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

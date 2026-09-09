@@ -36,6 +36,54 @@ npm run build      # build de producción en dist/
 npm run preview    # sirve el build
 ```
 
+## App para Android
+
+El proyecto se empaqueta como app nativa con [Capacitor](https://capacitorjs.com):
+la misma interfaz web corre dentro de un WebView y el catálogo viaja dentro del APK,
+así que **la app abre sin conexión**. Solo se necesita internet para abrir Google Maps
+o el sitio oficial de un lugar.
+
+- **Package**: `com.parchesmedellin.app`
+- **Versión**: 1.0.0 (versionCode 1)
+- **Mínimo**: Android 7.0 (API 24). Compila y apunta a API 36.
+
+### Compilar el APK
+
+Necesitas JDK 21 y el SDK de Android (plataforma 36 y build-tools 36) con
+`ANDROID_HOME` apuntando a él.
+
+```bash
+npm run android:debug     # APK de depuración, sin configurar firma
+npm run android:release   # APK firmado, requiere android/keystore.properties
+```
+
+El resultado queda en `android/app/build/outputs/apk/`.
+
+### Firma
+
+`android/app/build.gradle` lee la firma de `android/keystore.properties`, que **no está
+en el repositorio** (ver `keystore.properties.example`). Si ese archivo no existe, el
+proyecto sigue compilando y el APK de release simplemente queda sin firmar.
+
+Para generar tu propio keystore:
+
+```bash
+keytool -genkeypair -v -keystore android/parches-release.keystore -alias parches \
+  -keyalg RSA -keysize 2048 -validity 10950
+```
+
+Guarda bien ese archivo y su contraseña: Android identifica la app por su firma, y sin
+el mismo keystore no se pueden publicar actualizaciones sobre una instalación existente.
+
+### Iconos
+
+Los originales están en `assets/` (`icon.png` de 1024×1024 y los splash de 2732×2732).
+Después de cambiarlos, regenera todas las densidades con:
+
+```bash
+npx @capacitor/assets generate --android
+```
+
 ## Estructura
 
 ```
@@ -49,6 +97,9 @@ src/
 │   └── etiquetas.ts         # textos y emojis de la interfaz
 ├── components/              # PanelFiltros, TarjetaParche, DetalleParche, Chip
 └── App.tsx
+
+android/                     # proyecto nativo generado por Capacitor
+assets/                      # icono y splash originales de la app
 ```
 
 La lógica de negocio (`src/lib/filtros.ts` y `src/lib/horarios.ts`) está separada de la
