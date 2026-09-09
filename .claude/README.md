@@ -22,15 +22,17 @@ explorar con `claude plugin install <nombre>@claude-community`.
   `skill-creator`, `frontend-design`, `webapp-testing`, `canvas-design`,
   `web-artifacts-builder`, `brand-guidelines`, `algorithmic-art`,
   `doc-coauthoring`, `internal-comms`, `slack-gif-creator`, `theme-factory`.
-- **`context7@claude-plugins-official`** — MCP remoto para consultar
-  documentación versionada de librerías. Sin Node local. **Requiere definir
-  `CONTEXT7_API_KEY` para funcionar desde Claude Code on the web**; ver
-  "Estado conocido" más abajo.
 - **`mcp-server-dev@claude-plugins-official`** — construir servidores MCP.
 - **`superpowers@superpowers-dev`** — 14 skills: TDD, depuración sistemática,
   `brainstorming`, `writing-plans`, `executing-plans`, worktrees, revisión de
   código. Instala un hook `SessionStart` que inyecta el contenido de
   `using-superpowers` en el contexto de cada sesión.
+
+## Servidores MCP
+
+`.mcp.json` declara **context7**, para documentación versionada de librerías sin
+Node local. No se usa el plugin oficial; el porqué está más abajo. Requiere
+aprobar el servidor la primera vez.
 
 ## Coste en contexto
 
@@ -42,7 +44,8 @@ por sesión** (el resto solo se carga al invocar la skill).
 | `example-skills` | ~1.221 tok |
 | `superpowers` | ~688 tok |
 | `mcp-server-dev` | ~502 tok |
-| `context7` | ~0 tok (los esquemas MCP se resuelven en runtime) |
+
+context7 no suma nada al arranque: sus esquemas MCP se resuelven en runtime.
 
 ## Decisiones
 
@@ -53,72 +56,49 @@ por sesión** (el resto solo se carga al invocar la skill).
   byte a byte idéntico al que ya trae `example-skills`.
 - **`skill-creator@claude-plugins-official` no se instala.** Ya viene
   sincronizado desde la cuenta, y `example-skills` incluye otra copia.
+- **`context7@claude-plugins-official` no se instala.** Su URL lleva un query
+  param que context7 pone detrás de autenticación; se declara el servidor a mano
+  en `.mcp.json`. Detalle más abajo.
 - **Solapamiento aceptado:** `mcp-builder` (de `example-skills`) y
   `build-mcp-server` (de `mcp-server-dev`) cubren terreno parecido, pero son
   skills distintas con enfoques distintos; se dejan las dos.
 
-## Estado conocido: context7 no conecta (401)
+## context7: por que no se usa el plugin
 
-El servidor MCP de context7 no llega a conectar desde Claude Code on the web.
-Claude Code reporta `AUTH_HEADER_REJECTED` (HTTP 401). Los otros tres plugins no
-dependen de esto y funcionan con normalidad.
+El plugin `context7@claude-plugins-official` **no se instala**. En su lugar el
+servidor se declara a mano en el `.mcp.json` del repo. El plugin falla con
+`AUTH_HEADER_REJECTED` (HTTP 401) y no puede recuperarse solo.
 
 ### Causa raiz
 
-Son dos problemas encadenados.
+context7 **exige autenticacion solo para el identificador de cliente que usa el
+plugin**. El plugin apunta a
+`https://mcp.context7.com/mcp?client=claude-code-plugin`, y ese query param es
+la variable que decide. Matriz medida con curl:
 
-**1. El endpoint rechaza el acceso anonimo desde este contenedor.** Contra
-`https://mcp.context7.com/mcp`, medido directamente con curl:
-
-| Cabecera `Authorization` | HTTP | Resultado |
+| URL | `Authorization` | HTTP |
 |---|---|---|
-| ausente | 401 | `Authentication required` |
-| vacia | 401 | `Authentication required` |
-| token inventado | 200 | la *tool* responde `Invalid API key... deben empezar por 'ctx7sk'` |
-| clave `ctx7sk...` real | — | sin verificar (no hay clave disponible) |
+| `/mcp` | ninguna | 200 |
+| `/mcp` | vacia | 200 |
+| `/mcp?client=claude-code-plugin` | ninguna | **401** |
+| `/mcp?client=claude-code-plugin` | vacia | **401** |
+| `/mcp?client=claude-code-plugin` | token inventado | 200 |
+| `/mcp?client=otracosa` | ninguna | 200 |
+| `/mcp?client=vscode` | ninguna | 200 |
+| `/mcp?foo=bar` | ninguna | 200 |
 
-El 401 llega con `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource"`,
-es decir, el challenge estandar de OAuth para MCP. El endpoint expone OAuth
-completo vias Clerk (`https://clerk.context7.com`), con registro dinamico de
-clientes.
+Cualquier otro valor de `client`, o ninguno, funciona de forma anonima. Solo
+`client=claude-code-plugin` esta detras de autenticacion, por politica del
+servidor.
 
-La documentacion de context7 dice que sin clave se cae a un "tier anonimo con
-limites mas bajos". Ese tier se aplica por IP, y la IP de salida de este
-contenedor (`160.79.106.134`) es un egress compartido de la nube de Anthropic,
-usado por muchas sesiones a la vez. En la practica la cuota anonima esta
-agotada de forma permanente. En un portatil con IP propia el plugin
-probablemente si funciona sin clave — de ahi que la doc oficial no mencione
-este 401.
+Encima, el plugin declara `"Authorization": "${CONTEXT7_API_KEY:-}"`, que sin la
+variable definida viaja vacia. Y Claude Code desactiva el fallback de OAuth en
+cuanto hay una cabecera `Authorization` configurada, asi que tampoco puede
+autenticarse por su cuenta. El resultado es un callejon sin salida.
 
-**2. La configuracion del plugin bloquea el rescate por OAuth.** El plugin
-declara:
+### La solucion aplicada
 
-```json
-"headers": { "Authorization": "${CONTEXT7_API_KEY:-}" }
-```
-
-Sin la variable definida esa cabecera viaja vacia, lo que produce el 401. Y
-Claude Code desactiva el fallback de OAuth en cuanto hay una cabecera
-`Authorization` configurada, asi que no puede recuperarse por si solo. Callejon
-sin salida: la cabecera causa el 401 y a la vez impide la unica via de
-recuperacion automatica.
-
-### Soluciones
-
-**Opcion A — clave de API (recomendada).** Cuenta gratuita en
-https://context7.com, crear una clave (`ctx7sk...`) y exportarla antes de
-arrancar Claude Code:
-
-```bash
-export CONTEXT7_API_KEY="ctx7sk-..."
-```
-
-En Claude Code on the web se define como variable de entorno del *environment*.
-Es la unica via que no depende de la cuota anonima compartida.
-
-**Opcion B — OAuth.** Requiere que la cabecera `Authorization` no este fijada,
-para que Claude Code siga el challenge del servidor. Implica no usar el plugin
-tal cual y declarar el servidor a mano en un `.mcp.json` del proyecto:
+El `.mcp.json` del repo apunta a la URL desnuda, sin query param y sin cabecera:
 
 ```json
 {
@@ -128,18 +108,28 @@ tal cual y declarar el servidor a mano en un `.mcp.json` del proyecto:
 }
 ```
 
-Despues, `/mcp` en Claude Code para completar el login. No se ha dejado activo
-aqui porque duplicaria el servidor del plugin y el login es interactivo, asi
-que no se ha podido verificar de extremo a extremo.
+Verificado de extremo a extremo: `claude mcp list` reporta `Connected`, y una
+llamada real a `resolve-library-id` devuelve documentacion. **Sin clave de API y
+sin login OAuth.**
 
-**No sirve** poner un valor cualquiera en la cabecera: pasa el 401 del
-transporte pero la *tool* devuelve `Invalid API key`.
+La primera vez, Claude Code pide aprobar el servidor del `.mcp.json` (`claude mcp
+get context7` lo muestra como *Pending approval*). Para saltarse ese prompt se
+puede anadir `"enabledMcpjsonServers": ["context7"]` a `settings.json`; se deja
+fuera a proposito, para que la aprobacion sea una decision explicita de quien
+clone el repo.
+
+Si en algun momento se quiere el plugin oficial en vez de esto, hace falta una
+clave real (`ctx7sk...`) en `CONTEXT7_API_KEY`; un valor cualquiera pasa el 401
+del transporte pero la *tool* responde `Invalid API key`.
 
 ### Nota metodologica
 
-Las primeras pruebas anonimas devolvieron 200 y luego pasaron a 401 de forma
-consistente: la propia bateria de pruebas agoto lo que quedaba de cuota anonima
-para esa IP. Cuidado al medir esto, el primer resultado puede enganar.
+Una version anterior de este documento atribuia el 401 a que la cuota del tier
+anonimo estaba agotada para la IP de salida compartida del contenedor. **Era
+incorrecto.** El sintoma que llevo a esa conclusion — pruebas anonimas que
+devolvian 200 y despues 401 de forma consistente — se explica porque las
+primeras usaban la URL desnuda y las siguientes la URL del plugin, con el query
+param. La variable nunca fue el tiempo ni la IP.
 
 ## Comandos
 
