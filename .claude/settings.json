@@ -1,0 +1,36 @@
+{
+  "extraKnownMarketplaces": {
+    "anthropic-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/skills"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "claude-community": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-community"
+      }
+    },
+    "superpowers-dev": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "example-skills@anthropic-agent-skills": true,
+    "mcp-server-dev@claude-plugins-official": true,
+    "superpowers@superpowers-dev": true
+  },
+  "enabledMcpjsonServers": [
+    "context7"
+  ]
+}
