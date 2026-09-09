@@ -56,6 +56,22 @@ por sesión** (el resto solo se carga al invocar la skill).
   `build-mcp-server` (de `mcp-server-dev`) cubren terreno parecido, pero son
   skills distintas con enfoques distintos; se dejan las dos.
 
+## Estado conocido: context7
+
+En la sesion donde se instalo, el servidor MCP de context7 no llego a conectar:
+Claude Code reporto `AUTH_HEADER_REJECTED` (HTTP 401). El plugin manda
+`Authorization: ${CONTEXT7_API_KEY:-}`, que sin la variable definida viaja vacia,
+y Claude Code desactiva el fallback de OAuth en cuanto hay una cabecera
+`Authorization` configurada.
+
+No se pudo reproducir por HTTP directo: `initialize`, `tools/list` y `tools/call`
+contra `https://mcp.context7.com/mcp` devuelven 200 de forma anonima, con la
+cabecera vacia y sin ella. Asi que la causa exacta queda sin confirmar — puede ser
+transitoria o especifica del cliente MCP.
+
+Si vuelve a fallar, define `CONTEXT7_API_KEY` (cuenta gratuita en
+https://context7.com); es la via fiable. Los demas plugins no dependen de esto.
+
 ## Comandos
 
 ```bash
