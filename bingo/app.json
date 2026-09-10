@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Bingo 90",
+    "slug": "bingo90",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "bingo90",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#123C2E",
+    "plugins": ["expo-router", "expo-font"],
+    "android": { "package": "com.bingo90.app" },
+    "web": { "bundler": "metro", "output": "single" }
+  }
+}
