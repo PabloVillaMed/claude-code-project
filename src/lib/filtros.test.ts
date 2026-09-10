@@ -100,6 +100,15 @@ describe('coincide', () => {
     expect(coincide(p, con({ soloFavoritos: true }), { favoritos: new Set(['demo']) })).toBe(true)
   })
 
+  it('filtra por tu puntuación mínima', () => {
+    const p = base()
+    const puntuaciones = { demo: 3 }
+    expect(coincide(p, con({ minEstrellas: 3 }), { puntuaciones })).toBe(true)
+    expect(coincide(p, con({ minEstrellas: 4 }), { puntuaciones })).toBe(false)
+    expect(coincide(p, con({ minEstrellas: 3 }), { puntuaciones: {} })).toBe(false)
+    expect(coincide(p, con({ minEstrellas: 0 }), { puntuaciones: {} })).toBe(true)
+  })
+
   it('combina varios criterios a la vez', () => {
     const p = base({ municipio: 'Envigado', presupuesto: '$', categorias: ['comida'] })
     const filtros = con({ municipios: ['Envigado'], presupuestos: ['$'], categorias: ['comida'] })
@@ -132,8 +141,14 @@ describe('contarFiltrosActivos', () => {
   })
 
   it('suma cada criterio activo', () => {
-    const filtros = con({ busqueda: 'cafe', municipios: ['Medellin'], accesos: ['aptoNinos'], soloAbiertos: true })
-    expect(contarFiltrosActivos(filtros)).toBe(4)
+    const filtros = con({
+      busqueda: 'cafe',
+      municipios: ['Medellin'],
+      accesos: ['aptoNinos'],
+      soloAbiertos: true,
+      minEstrellas: 4,
+    })
+    expect(contarFiltrosActivos(filtros)).toBe(5)
   })
 
   it('ignora una busqueda de solo espacios', () => {

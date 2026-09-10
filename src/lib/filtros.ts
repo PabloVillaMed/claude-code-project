@@ -1,5 +1,6 @@
 import type { Accesibilidad, Ambiente, Categoria, Momento, Municipio, Parche, Presupuesto } from '../types'
 import { estaAbierto } from './horarios'
+import type { Puntuaciones } from './puntuaciones'
 
 export type ClaveAcceso = keyof Accesibilidad
 
@@ -17,6 +18,8 @@ export interface Filtros {
   soloAbiertos: boolean
   /** Deja solo los parches marcados como favoritos. */
   soloFavoritos: boolean
+  /** Minimo de estrellas que le pusiste al parche. 0 no filtra nada. */
+  minEstrellas: number
 }
 
 export const FILTROS_VACIOS: Filtros = {
@@ -29,6 +32,7 @@ export const FILTROS_VACIOS: Filtros = {
   accesos: [],
   soloAbiertos: false,
   soloFavoritos: false,
+  minEstrellas: 0,
 }
 
 /** Normaliza texto para comparar sin tildes ni mayusculas. */
@@ -59,9 +63,9 @@ function textoBuscable(parche: Parche): string {
 export function coincide(
   parche: Parche,
   filtros: Filtros,
-  opciones: { favoritos?: Set<string>; ahora?: Date } = {},
+  opciones: { favoritos?: Set<string>; ahora?: Date; puntuaciones?: Puntuaciones } = {},
 ): boolean {
-  const { favoritos = new Set<string>(), ahora = new Date() } = opciones
+  const { favoritos = new Set<string>(), ahora = new Date(), puntuaciones = {} } = opciones
 
   const consulta = normalizar(filtros.busqueda)
   if (consulta && !textoBuscable(parche).includes(consulta)) return false
@@ -85,6 +89,8 @@ export function coincide(
 
   if (filtros.soloFavoritos && !favoritos.has(parche.id)) return false
 
+  if (filtros.minEstrellas > 0 && (puntuaciones[parche.id] ?? 0) < filtros.minEstrellas) return false
+
   if (filtros.soloAbiertos && !estaAbierto(parche, ahora)) return false
 
   return true
@@ -94,7 +100,7 @@ export function coincide(
 export function filtrarParches(
   parches: Parche[],
   filtros: Filtros,
-  opciones: { favoritos?: Set<string>; ahora?: Date } = {},
+  opciones: { favoritos?: Set<string>; ahora?: Date; puntuaciones?: Puntuaciones } = {},
 ): Parche[] {
   return parches.filter((parche) => coincide(parche, filtros, opciones))
 }
@@ -110,7 +116,8 @@ export function contarFiltrosActivos(filtros: Filtros): number {
     filtros.ambientes.length +
     filtros.accesos.length +
     (filtros.soloAbiertos ? 1 : 0) +
-    (filtros.soloFavoritos ? 1 : 0)
+    (filtros.soloFavoritos ? 1 : 0) +
+    (filtros.minEstrellas > 0 ? 1 : 0)
   )
 }
 

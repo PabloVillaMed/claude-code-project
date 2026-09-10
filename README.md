@@ -19,6 +19,10 @@ que le sirva. Por eso los filtros no son solo de categoría: también de **presu
 - **Filtra por municipio, momento del día y ambiente.**
 - **Abierto ahora**: calcula si el sitio está abierto según sus horarios, incluidas las
   franjas que cruzan la medianoche (esa discoteca que cierra a las 3 a. m.).
+- **Puntúa con estrellas** cada parche, de 1 a 5. La puntuación es **tuya y de este
+  dispositivo**: se guarda en el navegador, no se comparte ni se sube a ningún servidor.
+  Puedes ordenar por ella y filtrar por «4 estrellas o más».
+- **Ordena** por sugeridos, tu puntuación, nombre o precio.
 - **Favoritos** guardados en el navegador.
 - **Sorpréndeme**: escoge un parche al azar entre los resultados filtrados.
 - **Abrir en Google Maps** desde el detalle de cada parche.
@@ -90,12 +94,16 @@ npx @capacitor/assets generate --android
 src/
 ├── types.ts                 # modelo de dominio (Parche, Accesibilidad, Horario...)
 ├── data/parches.ts          # catálogo semilla de lugares
+├── data/fotos.ts            # créditos de las fotos de Wikimedia Commons
 ├── lib/
 │   ├── filtros.ts           # lógica de filtrado y búsqueda
+│   ├── orden.ts             # criterios de ordenación
 │   ├── horarios.ts          # "abierto ahora" y resumen de horarios
 │   ├── favoritos.ts         # persistencia en localStorage
-│   └── etiquetas.ts         # textos y emojis de la interfaz
-├── components/              # PanelFiltros, TarjetaParche, DetalleParche, Chip
+│   ├── puntuaciones.ts      # tus estrellas, en localStorage
+│   ├── ladera.ts            # generador de las fachadas de colores
+│   └── etiquetas.ts         # textos y color por tipo de plan
+├── components/              # PanelFiltros, TarjetaParche, DetalleParche, Estrellas, Ladera
 └── App.tsx
 
 android/                     # proyecto nativo generado por Capacitor
@@ -105,6 +113,35 @@ assets/                      # icono y splash originales de la app
 La lógica de negocio (`src/lib/filtros.ts` y `src/lib/horarios.ts`) está separada de la
 interfaz y tiene pruebas propias, así que se puede reutilizar tal cual si más adelante
 esto se convierte en app móvil o en API.
+
+## Diseño
+
+La dirección visual está documentada en [`docs/diseno.md`](docs/diseno.md): de dónde
+sale la forma, la paleta, la tipografía y los tics que se evitaron a propósito.
+
+Se apoyó en la skill `frontend-design` del marketplace `anthropics/skills`, que está
+copiada en [`.claude/skills/`](.claude/skills/) junto con `webapp-testing` y
+`brand-guidelines` para que cualquier sesión de Claude Code en este repo las tenga a mano.
+
+Las tipografías (Archivo y Bitter, ambas SIL Open Font License) están en
+`public/fuentes/` y se sirven desde la propia app, no desde Google Fonts: así la
+tipografía funciona sin conexión, igual que el catálogo.
+
+## Fotos y créditos
+
+Las fotos vienen de **Wikimedia Commons**, todas con licencia libre (CC BY, CC BY-SA o
+dominio público). Están recortadas a 16:9, convertidas a WebP y empaquetadas en
+`public/fotos/`, así que se ven sin conexión.
+
+`src/data/fotos.ts` guarda para cada una el autor, la licencia y el enlace a su página
+en Commons, y la app muestra ese crédito en el detalle del parche, como exigen las
+licencias CC BY y CC BY-SA.
+
+**Un parche sin foto no lleva la foto de otro sitio.** De los 54 lugares, 33 tienen
+fotografía verificada; los otros 21 se dibujan con una fachada generada a partir de su
+id. Se descartaron a mano las candidatas que no correspondían al lugar (una iglesia
+homónima en Brasil, el aeropuerto en vez del parque de al lado, una montaña con el mismo
+nombre en otro país).
 
 ## Sobre los datos
 

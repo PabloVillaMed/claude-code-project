@@ -1,7 +1,7 @@
 {
   "name": "parches-medellin",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Buscador de parches, lugares de encuentro y zonas de esparcimiento en Medellin y municipios cercanos",
   "scripts": {
