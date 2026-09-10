@@ -17,7 +17,7 @@ await p.getByText('Prefiero practicar sin rivales').click();
 const claim = p.locator('text=/Cantar línea|Cantar dos líneas|¡Bingo!/').first();
 await claim.waitFor({ state: 'visible', timeout: 290000 });
 const label = (await claim.textContent()).trim();
-const bola = await p.locator('text=/Bola \d+ de 90/').first().textContent();
+const bola = await p.locator('text=/Bola \\d+ de 90/').first().textContent();
 console.log('apareció:', label, '|', bola);
 await p.screenshot({ path: '/tmp/shots/5-puede-cantar.png' });
 await claim.click();
