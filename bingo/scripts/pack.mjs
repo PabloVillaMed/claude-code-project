@@ -37,7 +37,13 @@ for (const [family] of FACES) {
 
 let html = readFileSync('dist/index.html', 'utf8');
 const put = (str) => () => str;  // evita que $& y $1 del contenido se interpreten
-html = html.replace('</head>', put(`<style id="fuentes-incrustadas">\n${fontCss}\n</style>\n</head>`));
+
+// El artifact compone sobre el fondo del host: sin esto, en tema claro
+// asomaría blanco por los bordes. La app se compromete a un solo mundo
+// visual (mesa de bingo de noche), así que se pinta explícito.
+const ground = `<style id="fondo">html,body{background:#123C2E;` +
+  `color-scheme:dark;overscroll-behavior:none}</style>`;
+html = html.replace('</head>', put(`${ground}\n<style id="fuentes-incrustadas">\n${fontCss}\n</style>\n</head>`));
 html = html.replace(/<script src="[^"]+" defer><\/script>/, '');
 html = html.replace('</body>', put(`<script>\n${bundle}\n</script>\n</body>`));
 
