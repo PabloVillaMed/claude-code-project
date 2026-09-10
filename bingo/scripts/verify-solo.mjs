@@ -1,8 +1,14 @@
+/**
+ * Recorre una partida en modo práctica hasta poder cantar y canta.
+ * Sirve dist-single/ y apunta aquí:  BASE=http://127.0.0.1:8091 node scripts/verify-solo.mjs
+ */
 import { chromium } from 'playwright';
+
+const BASE = process.env.BASE ?? 'http://127.0.0.1:8091';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const errs = []; p.on('pageerror', e => errs.push(e.message));
-await p.goto('http://127.0.0.1:8090/', { waitUntil: 'networkidle' });
+await p.goto(BASE, { waitUntil: 'networkidle' });
 await p.waitForTimeout(1200);
 await p.screenshot({ path: '/tmp/shots/1-lobby.png' });
 await p.getByPlaceholder('Tu nombre').fill('Pablo');
