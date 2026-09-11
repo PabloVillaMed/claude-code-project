@@ -13,7 +13,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "types": ["vitest/globals"]
+    // `node` lo necesitan solo las pruebas (leen el disco para comprobar
+    // que las fotos referenciadas existen de verdad). No viaja en el bundle.
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src"]
 }

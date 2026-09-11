@@ -1,7 +1,7 @@
 {
   "name": "parches-medellin",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Buscador de parches, lugares de encuentro y zonas de esparcimiento en Medellin y municipios cercanos",
   "scripts": {
@@ -23,6 +23,7 @@
   "devDependencies": {
     "@capacitor/android": "^8.5.1",
     "@capacitor/cli": "^8.5.1",
+    "@types/node": "^22.20.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

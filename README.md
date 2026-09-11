@@ -19,6 +19,11 @@ que le sirva. Por eso los filtros no son solo de categoría: también de **presu
 - **Filtra por municipio, momento del día y ambiente.**
 - **Abierto ahora**: calcula si el sitio está abierto según sus horarios, incluidas las
   franjas que cruzan la medianoche (esa discoteca que cierra a las 3 a. m.).
+- **Cambia de idioma** desde el desplegable de la esquina superior derecha:
+  español e inglés. La primera vez se escoge por el idioma del dispositivo y
+  después se recuerda.
+- **Carrusel de fotos** en cada parche que tenga más de una, arrastrable en el
+  teléfono y con flechas en el escritorio.
 - **Puntúa con estrellas** cada parche, de 1 a 5. La puntuación es **tuya y de este
   dispositivo**: se guarda en el navegador, no se comparte ni se sube a ningún servidor.
   Puedes ordenar por ella y filtrar por «4 estrellas o más».
@@ -94,16 +99,19 @@ npx @capacitor/assets generate --android
 src/
 ├── types.ts                 # modelo de dominio (Parche, Accesibilidad, Horario...)
 ├── data/parches.ts          # catálogo semilla de lugares
-├── data/fotos.ts            # créditos de las fotos de Wikimedia Commons
+├── data/fotos.ts            # créditos de las fotos de Wikimedia Commons (generado)
+├── data/parches-en.ts       # traducción del catálogo al inglés
+├── i18n/                    # textos de la interfaz por idioma y contexto de React
 ├── lib/
 │   ├── filtros.ts           # lógica de filtrado y búsqueda
 │   ├── orden.ts             # criterios de ordenación
 │   ├── horarios.ts          # "abierto ahora" y resumen de horarios
 │   ├── favoritos.ts         # persistencia en localStorage
 │   ├── puntuaciones.ts      # tus estrellas, en localStorage
+│   ├── traducir.ts          # catálogo en el idioma elegido
 │   ├── ladera.ts            # generador de las fachadas de colores
 │   └── etiquetas.ts         # textos y color por tipo de plan
-├── components/              # PanelFiltros, TarjetaParche, DetalleParche, Estrellas, Ladera
+├── components/              # PanelFiltros, TarjetaParche, DetalleParche, Carrusel, Estrellas, Ladera, SelectorIdioma
 └── App.tsx
 
 android/                     # proyecto nativo generado por Capacitor
@@ -127,21 +135,55 @@ Las tipografías (Archivo y Bitter, ambas SIL Open Font License) están en
 `public/fuentes/` y se sirven desde la propia app, no desde Google Fonts: así la
 tipografía funciona sin conexión, igual que el catálogo.
 
+## Idiomas
+
+La app está en **español** e **inglés**. El desplegable de la esquina superior
+derecha cambia entre los dos; la elección se guarda en el dispositivo y el
+atributo `lang` del documento la sigue, que es lo que leen los lectores de
+pantalla.
+
+- `src/i18n/tipos.ts` declara la forma de los textos. Al ser una interfaz de
+  TypeScript, **no se puede añadir un idioma a medias**: falla la compilación
+  si falta una cadena.
+- `src/i18n/es.ts` y `src/i18n/en.ts` son los textos de la interfaz.
+- `src/data/parches-en.ts` traduce el catálogo.
+
+Los **nombres propios se quedan en español** a propósito: `Parque Lleras` sigue
+siendo `Parque Lleras` en inglés, porque es lo que dice el letrero, lo que
+entiende un taxista y lo que hay que buscar en un mapa. Lo que se traduce es
+todo lo demás. Cuando el nombre es puramente descriptivo se añade la parte
+genérica en inglés (`Girardota main square and Señor Caído basilica`).
+
+Para añadir un idioma: crea `src/i18n/<código>.ts` implementando `Textos`,
+añádelo a `IDIOMAS` y a `NOMBRE_IDIOMA` en `tipos.ts`, registra los textos en
+`contexto.tsx` y traduce el catálogo en un `parches-<código>.ts`. Las pruebas
+comprueban que los idiomas tengan exactamente las mismas claves.
+
 ## Fotos y créditos
 
 Las fotos vienen de **Wikimedia Commons**, todas con licencia libre (CC BY, CC BY-SA o
 dominio público). Están recortadas a 16:9, convertidas a WebP y empaquetadas en
 `public/fotos/`, así que se ven sin conexión.
 
-`src/data/fotos.ts` guarda para cada una el autor, la licencia y el enlace a su página
-en Commons, y la app muestra ese crédito en el detalle del parche, como exigen las
-licencias CC BY y CC BY-SA.
+**41 de los 54 lugares tienen fotografía verificada**, 92 fotos en total, y 32 de ellos
+tienen más de una: esos se muestran en carrusel. `src/data/fotos.ts` guarda para cada
+foto el autor, la licencia y el enlace a su página en Commons, y la app muestra todos
+esos créditos en el detalle del parche, como exigen las licencias CC BY y CC BY-SA.
 
-**Un parche sin foto no lleva la foto de otro sitio.** De los 54 lugares, 33 tienen
-fotografía verificada; los otros 21 se dibujan con una fachada generada a partir de su
-id. Se descartaron a mano las candidatas que no correspondían al lugar (una iglesia
-homónima en Brasil, el aeropuerto en vez del parque de al lado, una montaña con el mismo
-nombre en otro país).
+**Un parche sin foto no lleva la foto de otro sitio.** Los 13 restantes se dibujan con
+una fachada generada a partir de su id.
+
+Las candidatas se buscan por **categoría** de Commons, no por texto libre, que es mucho
+más fiable, y después se revisan **una por una**. La búsqueda automática trae falsos
+positivos con nombre idéntico que hay que descartar a mano: el Cerro de las Tres Cruces
+de **Cali**, el Parque del Poblado de **Puertollano (España)**, el Museo Casa de la
+Memoria Indómita de **Ciudad de México**, la Biblioteca Piloto del **Caribe**
+(Barranquilla), los parques de Salamina y La Dorada (**departamento** de Caldas, no el
+municipio antioqueño) y un retrato del prócer Atanasio Girardot en vez del estadio.
+
+Una prueba comprueba que cada archivo referenciado en `fotos.ts` exista de verdad en
+`public/fotos/`, que la numeración no tenga huecos y que ninguna foto se quede sin
+autor, licencia ni página de origen.
 
 ## Sobre los datos
 

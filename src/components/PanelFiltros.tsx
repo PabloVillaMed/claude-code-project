@@ -1,15 +1,7 @@
 import { alternar, contarFiltrosActivos, FILTROS_VACIOS } from '../lib/filtros'
 import type { Filtros } from '../lib/filtros'
-import {
-  ACCESOS,
-  AMBIENTES,
-  CATEGORIAS,
-  MOMENTOS,
-  MUNICIPIOS,
-  PRESUPUESTOS,
-  TEXTO_AMBIENTE,
-  TEXTO_MUNICIPIO,
-} from '../lib/etiquetas'
+import { ACCESOS, AMBIENTES, CATEGORIAS, MOMENTOS, MUNICIPIOS, PRESUPUESTOS } from '../lib/etiquetas'
+import { useIdioma } from '../i18n/contexto'
 
 interface PanelFiltrosProps {
   filtros: Filtros
@@ -40,15 +32,16 @@ function Opcion({ activo, onClick, children, titulo }: OpcionProps) {
 }
 
 export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados }: PanelFiltrosProps) {
+  const { t } = useIdioma()
   const activos = contarFiltrosActivos(filtros)
 
   return (
-    <aside className="panel" aria-label="Filtros de búsqueda">
+    <aside className="panel" aria-label={t.panel.titulo}>
       <div className="panel__cabecera">
-        <h2 className="panel__titulo">Filtros</h2>
+        <h2 className="panel__titulo">{t.panel.titulo}</h2>
         {activos > 0 && (
           <button type="button" className="enlace" onClick={() => onCambio(FILTROS_VACIOS)}>
-            Limpiar {activos}
+            {t.panel.limpiar(activos)}
           </button>
         )}
       </div>
@@ -58,64 +51,64 @@ export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados
           activo={filtros.soloAbiertos}
           onClick={() => onCambio({ ...filtros, soloAbiertos: !filtros.soloAbiertos })}
         >
-          Abierto ahora
+          {t.panel.abiertoAhora}
         </Opcion>
         <Opcion
           activo={filtros.soloFavoritos}
           onClick={() => onCambio({ ...filtros, soloFavoritos: !filtros.soloFavoritos })}
         >
-          Favoritos {totalFavoritos > 0 && <b>{totalFavoritos}</b>}
+          {t.panel.favoritos} {totalFavoritos > 0 && <b>{totalFavoritos}</b>}
         </Opcion>
       </div>
 
       <fieldset className="panel__grupo">
-        <legend>Qué plan buscas</legend>
+        <legend>{t.panel.quePlan}</legend>
         <div className="opciones">
           {CATEGORIAS.map((c) => (
             <Opcion
-              key={c.valor}
-              activo={filtros.categorias.includes(c.valor)}
-              onClick={() => onCambio({ ...filtros, categorias: alternar(filtros.categorias, c.valor) })}
+              key={c}
+              activo={filtros.categorias.includes(c)}
+              onClick={() => onCambio({ ...filtros, categorias: alternar(filtros.categorias, c) })}
             >
-              {c.texto}
+              {t.categorias[c]}
             </Opcion>
           ))}
         </div>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Cuánto quieres gastar</legend>
+        <legend>{t.panel.cuantoGastar}</legend>
         <div className="opciones">
           {PRESUPUESTOS.map((p) => (
             <Opcion
-              key={p.valor}
-              activo={filtros.presupuestos.includes(p.valor)}
-              onClick={() => onCambio({ ...filtros, presupuestos: alternar(filtros.presupuestos, p.valor) })}
+              key={p}
+              activo={filtros.presupuestos.includes(p)}
+              onClick={() => onCambio({ ...filtros, presupuestos: alternar(filtros.presupuestos, p) })}
             >
-              {p.texto}
+              {t.presupuestos[p]}
             </Opcion>
           ))}
         </div>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Que el plan alcance para todos</legend>
+        <legend>{t.panel.acceso}</legend>
         <div className="opciones">
-          {ACCESOS.map((a) => (
+          {ACCESOS.map((clave) => (
             <Opcion
-              key={a.valor}
-              activo={filtros.accesos.includes(a.valor)}
-              onClick={() => onCambio({ ...filtros, accesos: alternar(filtros.accesos, a.valor) })}
-              titulo="Se exigen todos los criterios de acceso que marques"
+              key={clave}
+              activo={filtros.accesos.includes(clave)}
+              onClick={() => onCambio({ ...filtros, accesos: alternar(filtros.accesos, clave) })}
+              titulo={t.panel.accesoAyuda}
             >
-              {a.texto}
+              {t.accesos[clave].largo}
             </Opcion>
           ))}
         </div>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Tu puntuación</legend>
+        <legend>{t.panel.tuPuntuacion}</legend>
         <div className="opciones">
           {[3, 4, 5].map((n) => (
             <Opcion
@@ -123,19 +116,17 @@ export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados
               activo={filtros.minEstrellas === n}
               onClick={() => onCambio({ ...filtros, minEstrellas: filtros.minEstrellas === n ? 0 : n })}
             >
-              {n === 5 ? 'Solo 5 estrellas' : `${n} estrellas o más`}
+              {n === 5 ? t.panel.soloCinco : t.panel.minEstrellas(n)}
             </Opcion>
           ))}
         </div>
         <p className="panel__nota">
-          {totalPuntuados > 0
-            ? `Llevas ${totalPuntuados} ${totalPuntuados === 1 ? 'parche puntuado' : 'parches puntuados'}.`
-            : 'Todavía no has puntuado ningún parche.'}
+          {totalPuntuados > 0 ? t.panel.puntuados(totalPuntuados) : t.panel.sinPuntuar}
         </p>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Municipio</legend>
+        <legend>{t.panel.municipio}</legend>
         <div className="opciones">
           {MUNICIPIOS.map((m) => (
             <Opcion
@@ -143,29 +134,29 @@ export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados
               activo={filtros.municipios.includes(m)}
               onClick={() => onCambio({ ...filtros, municipios: alternar(filtros.municipios, m) })}
             >
-              {TEXTO_MUNICIPIO[m]}
+              {t.municipios[m]}
             </Opcion>
           ))}
         </div>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Momento del día</legend>
+        <legend>{t.panel.momento}</legend>
         <div className="opciones">
           {MOMENTOS.map((m) => (
             <Opcion
-              key={m.valor}
-              activo={filtros.momentos.includes(m.valor)}
-              onClick={() => onCambio({ ...filtros, momentos: alternar(filtros.momentos, m.valor) })}
+              key={m}
+              activo={filtros.momentos.includes(m)}
+              onClick={() => onCambio({ ...filtros, momentos: alternar(filtros.momentos, m) })}
             >
-              {m.texto}
+              {t.momentos[m]}
             </Opcion>
           ))}
         </div>
       </fieldset>
 
       <fieldset className="panel__grupo">
-        <legend>Ambiente</legend>
+        <legend>{t.panel.ambiente}</legend>
         <div className="opciones">
           {AMBIENTES.map((a) => (
             <Opcion
@@ -173,7 +164,7 @@ export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados
               activo={filtros.ambientes.includes(a)}
               onClick={() => onCambio({ ...filtros, ambientes: alternar(filtros.ambientes, a) })}
             >
-              {TEXTO_AMBIENTE[a]}
+              {t.ambientes[a]}
             </Opcion>
           ))}
         </div>

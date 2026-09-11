@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { aMinutos, estaAbierto, resumirHorarios } from './horarios'
+import { ES } from '../i18n/es'
+import { EN } from '../i18n/en'
 import type { Horario, Parche } from '../types'
 
 function parcheCon(horarios: Horario[]): Parche {
@@ -75,7 +77,8 @@ describe('resumirHorarios', () => {
       abre: '00:00',
       cierra: '23:59',
     }))
-    expect(resumirHorarios(todos)).toBe('Espacio publico, abierto siempre')
+    expect(resumirHorarios(todos, ES.horario)).toBe('Espacio público, abierto siempre')
+    expect(resumirHorarios(todos, EN.horario)).toBe('Public space, always open')
   })
 
   it('agrupa dias continuos con la misma franja', () => {
@@ -85,10 +88,12 @@ describe('resumirHorarios', () => {
       { dia: 3, abre: '08:00', cierra: '18:00' },
       { dia: 6, abre: '09:00', cierra: '16:00' },
     ]
-    expect(resumirHorarios(horarios)).toBe('Lun a Mie 08:00-18:00 | Sab 09:00-16:00')
+    expect(resumirHorarios(horarios, ES.horario)).toBe('Lun a Mié 08:00-18:00 | Sáb 09:00-16:00')
+    expect(resumirHorarios(horarios, EN.horario)).toBe('Mon to Wed 08:00-18:00 | Sat 09:00-16:00')
   })
 
   it('avisa cuando no hay horario', () => {
-    expect(resumirHorarios([])).toBe('Sin horario registrado')
+    expect(resumirHorarios([], ES.horario)).toBe('Sin horario registrado')
+    expect(resumirHorarios([], EN.horario)).toBe('No hours on record')
   })
 })

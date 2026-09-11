@@ -137,8 +137,59 @@ a {
   padding: 28px 20px 40px;
 }
 
+.cabecera__barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.idioma {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.idioma__etiqueta {
+  font-family: var(--display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9fb3a4;
+}
+
+/*
+ * El navegador pinta el select nativo con su propio fondo y se come el de la
+ * hoja de estilos, asi que se desactiva su apariencia y se dibuja la flecha a
+ * mano. El elemento sigue siendo un <select> de verdad: en el telefono abre el
+ * selector nativo y funciona con teclado.
+ */
+.idioma__campo {
+  appearance: none;
+  padding: 7px 30px 7px 11px;
+  font-family: var(--display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f4f6f1;
+  background-color: rgba(255, 255, 255, 0.1);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f4f6f1' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+
+/* El desplegable nativo pinta las opciones con el tema del sistema. */
+.idioma__campo option {
+  color: #14231a;
+  background: #ffffff;
+}
+
 .cabecera__sobre {
-  margin: 0 0 14px;
+  margin: 0;
   font-family: var(--display);
   font-size: 0.82rem;
   font-weight: 600;
@@ -443,12 +494,112 @@ a {
   background: var(--papel);
 }
 
+.marco-foto {
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * La pista es un scroller horizontal con anclaje: así el carrusel se puede
+ * arrastrar con el dedo en el teléfono sin depender de las flechas, y el
+ * scroll es la única fuente de verdad de qué foto se está viendo.
+ */
+.carrusel__pista {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.carrusel__pista::-webkit-scrollbar {
+  display: none;
+}
+
 .imagen-parche {
   display: block;
+  flex: 0 0 100%;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-width: 100%;
   object-fit: cover;
+  scroll-snap-align: center;
+}
+
+.carrusel__flecha {
+  position: absolute;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  transform: translateY(-50%);
+  color: #f4f6f1;
+  background: rgba(20, 35, 26, 0.6);
+  border: none;
+  border-radius: var(--radio);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.carrusel__flecha svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.carrusel__flecha--atras {
+  left: 8px;
+}
+
+.carrusel__flecha--adelante {
+  right: 8px;
+}
+
+/* En el teléfono se arrastra, así que las flechas solo aparecen cuando hay
+   puntero o foco de teclado. */
+.marco-foto:hover .carrusel__flecha,
+.carrusel__flecha:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .carrusel__flecha {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carrusel__flecha {
+    transition: none;
+  }
+}
+
+.carrusel__puntos {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 5px;
+  padding: 5px 7px;
+  background: rgba(20, 35, 26, 0.55);
+  border-radius: var(--radio);
+}
+
+.carrusel__punto {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  background: rgba(244, 246, 241, 0.45);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.carrusel__punto--activo {
+  background: #f0b310;
 }
 
 .imagen-parche--fachada {
@@ -471,6 +622,7 @@ a {
   position: absolute;
   left: 10px;
   bottom: 10px;
+  z-index: 1;
   padding: 3px 9px;
   font-family: var(--display);
   font-size: 0.72rem;
@@ -859,10 +1011,16 @@ a {
 
 .credito {
   margin: 18px 0 0;
-  padding-top: 12px;
+  padding: 12px 0 0;
   border-top: 1px solid var(--linea);
   font-size: 0.76rem;
+  line-height: 1.5;
   color: var(--tinta-suave);
+  list-style: none;
+}
+
+.credito li + li {
+  margin-top: 3px;
 }
 
 /* ---------- Pie ---------- */

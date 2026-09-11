@@ -32,18 +32,26 @@ export function estaAbierto(parche: Parche, momento: Date = new Date()): boolean
   return parche.horarios.some((franja) => cubre(franja, diaSemana, minutos))
 }
 
-const NOMBRES_DIA = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
+/** Los textos que necesita el resumen, en el idioma que toque. */
+export interface TextosHorario {
+  dias: string[]
+  siempreAbierto: string
+  todosLosDias: (abre: string, cierra: string) => string
+  sinHorario: string
+  a: string
+}
 
 /**
  * Resume los horarios en texto legible, agrupando los dias que comparten franja.
  * Ej: 'Lun a Vie 08:00-18:00 | Sab 09:00-16:00'.
  */
-export function resumirHorarios(horarios: Horario[]): string {
-  if (horarios.length === 0) return 'Sin horario registrado'
+export function resumirHorarios(horarios: Horario[], textos: TextosHorario): string {
+  const NOMBRES_DIA = textos.dias
+  if (horarios.length === 0) return textos.sinHorario
   if (horarios.length === 7 && horarios.every((h) => h.abre === horarios[0].abre && h.cierra === horarios[0].cierra)) {
     const { abre, cierra } = horarios[0]
-    if (abre === '00:00' && cierra === '23:59') return 'Espacio publico, abierto siempre'
-    return `Todos los dias ${abre}-${cierra}`
+    if (abre === '00:00' && cierra === '23:59') return textos.siempreAbierto
+    return textos.todosLosDias(abre, cierra)
   }
 
   const porFranja = new Map<string, number[]>()
@@ -56,7 +64,7 @@ export function resumirHorarios(horarios: Horario[]): string {
   for (const [franja, listaDias] of porFranja) {
     const ordenados = [...listaDias].sort((a, b) => a - b)
     const etiqueta = esRangoContinuo(ordenados)
-      ? `${NOMBRES_DIA[ordenados[0]]} a ${NOMBRES_DIA[ordenados[ordenados.length - 1]]}`
+      ? `${NOMBRES_DIA[ordenados[0]]} ${textos.a} ${NOMBRES_DIA[ordenados[ordenados.length - 1]]}`
       : ordenados.map((d) => NOMBRES_DIA[d]).join(', ')
     partes.push(`${etiqueta} ${franja}`)
   }

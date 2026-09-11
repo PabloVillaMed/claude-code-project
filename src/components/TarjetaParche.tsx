@@ -1,7 +1,8 @@
 import type { Parche } from '../types'
 import { estaAbierto } from '../lib/horarios'
-import { ACCESOS, familiaDe, TEXTO_CATEGORIA, TEXTO_MUNICIPIO, TEXTO_PRESUPUESTO } from '../lib/etiquetas'
-import { ImagenParche } from './ImagenParche'
+import { ACCESOS, familiaDe } from '../lib/etiquetas'
+import { useIdioma } from '../i18n/contexto'
+import { Carrusel } from './Carrusel'
 import { Estrellas } from './Estrellas'
 
 interface TarjetaParcheProps {
@@ -21,23 +22,26 @@ export function TarjetaParche({
   onAbrirDetalle,
   ahora,
 }: TarjetaParcheProps) {
+  const { t } = useIdioma()
   const abierto = estaAbierto(parche, ahora)
-  const accesos = ACCESOS.filter((a) => parche.accesibilidad[a.valor]).slice(0, 3)
+  const accesos = ACCESOS.filter((clave) => parche.accesibilidad[clave]).slice(0, 3)
 
   return (
     <article className={`tarjeta tarjeta--${familiaDe(parche)}`}>
       <div className="tarjeta__cinta" />
 
       <div className="tarjeta__imagen">
-        <ImagenParche parche={parche} />
+        <Carrusel parche={parche} />
         <span className={abierto ? 'estado estado--abierto' : 'estado'}>
-          {abierto ? 'Abierto ahora' : 'Cerrado ahora'}
+          {abierto ? t.parche.abierto : t.parche.cerrado}
         </span>
         <button
           type="button"
           className={esFavorito ? 'favorito favorito--activo' : 'favorito'}
           onClick={() => onFavorito(parche.id)}
-          aria-label={esFavorito ? `Quitar ${parche.nombre} de favoritos` : `Guardar ${parche.nombre} en favoritos`}
+          aria-label={
+            esFavorito ? t.parche.quitarFavorito(parche.nombre) : t.parche.guardarFavorito(parche.nombre)
+          }
           aria-pressed={esFavorito}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -50,20 +54,20 @@ export function TarjetaParche({
         <h3 className="tarjeta__titulo">{parche.nombre}</h3>
         <p className="tarjeta__lugar">
           {parche.sector}
-          <span className="tarjeta__municipio">{TEXTO_MUNICIPIO[parche.municipio]}</span>
+          <span className="tarjeta__municipio">{t.municipios[parche.municipio]}</span>
         </p>
 
         <p className="tarjeta__precio">
-          {TEXTO_PRESUPUESTO[parche.presupuesto]}
-          <span className="tarjeta__tipo">{TEXTO_CATEGORIA[parche.categorias[0]]}</span>
+          {t.presupuestos[parche.presupuesto]}
+          <span className="tarjeta__tipo">{t.categorias[parche.categorias[0]]}</span>
         </p>
 
         <p className="tarjeta__descripcion">{parche.descripcion}</p>
 
         {accesos.length > 0 && (
           <ul className="tarjeta__accesos">
-            {accesos.map((a) => (
-              <li key={a.valor}>{a.corto}</li>
+            {accesos.map((clave) => (
+              <li key={clave}>{t.accesos[clave].corto}</li>
             ))}
           </ul>
         )}
@@ -73,7 +77,7 @@ export function TarjetaParche({
               solo aparecen donde dicen algo. */}
           {puntuacion > 0 && <Estrellas valor={puntuacion} nombreParche={parche.nombre} />}
           <button type="button" className="boton boton--linea" onClick={() => onAbrirDetalle(parche)}>
-            Ver detalles
+            {t.parche.verDetalles}
           </button>
         </div>
       </div>

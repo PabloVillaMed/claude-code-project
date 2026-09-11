@@ -5,31 +5,44 @@ import { filtrarParches, FILTROS_VACIOS, parcheAlAzar } from './lib/filtros'
 import type { Filtros } from './lib/filtros'
 import { ordenarParches, ORDENES } from './lib/orden'
 import type { Orden } from './lib/orden'
+import { traducirParches } from './lib/traducir'
 import { guardarFavoritos, leerFavoritos } from './lib/favoritos'
 import { aplicarPuntuacion, guardarPuntuaciones, leerPuntuaciones } from './lib/puntuaciones'
 import type { Puntuaciones } from './lib/puntuaciones'
+import { useIdioma } from './i18n/contexto'
 import { PanelFiltros } from './components/PanelFiltros'
 import { TarjetaParche } from './components/TarjetaParche'
 import { DetalleParche } from './components/DetalleParche'
+import { SelectorIdioma } from './components/SelectorIdioma'
 import { Ladera } from './components/Ladera'
 
 const PALETA_CABECERA = ['#0B6E3F', '#F0B310', '#0A5FA8', '#C8226A', '#E0561C']
 
 export default function App() {
+  const { idioma, t } = useIdioma()
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [orden, setOrden] = useState<Orden>('sugeridos')
   const [favoritos, setFavoritos] = useState<Set<string>>(() => leerFavoritos())
   const [puntuaciones, setPuntuaciones] = useState<Puntuaciones>(() => leerPuntuaciones())
-  const [detalle, setDetalle] = useState<Parche | null>(null)
+  const [detalleId, setDetalleId] = useState<string | null>(null)
   const [panelAbierto, setPanelAbierto] = useState(false)
 
   // Se fija al montar para que "abierto ahora" no cambie a mitad de un render.
   const [ahora] = useState(() => new Date())
 
+  const catalogo = useMemo(() => traducirParches(PARCHES, idioma), [idioma])
+
   const resultados = useMemo(() => {
-    const filtrados = filtrarParches(PARCHES, filtros, { favoritos, ahora, puntuaciones })
+    const filtrados = filtrarParches(catalogo, filtros, { favoritos, ahora, puntuaciones })
     return ordenarParches(filtrados, orden, puntuaciones)
-  }, [filtros, favoritos, ahora, puntuaciones, orden])
+  }, [catalogo, filtros, favoritos, ahora, puntuaciones, orden])
+
+  // El detalle se guarda por id, no por objeto: así al cambiar de idioma el
+  // parche abierto se vuelve a leer traducido en vez de quedarse congelado.
+  const detalle = useMemo(
+    () => (detalleId ? (catalogo.find((p) => p.id === detalleId) ?? null) : null),
+    [catalogo, detalleId],
+  )
 
   const alternarFavorito = useCallback((id: string) => {
     setFavoritos((previos) => {
@@ -51,7 +64,7 @@ export default function App() {
 
   function sorprendeme() {
     const elegido = parcheAlAzar(resultados)
-    if (elegido) setDetalle(elegido)
+    if (elegido) setDetalleId(elegido.id)
   }
 
   const totalPuntuados = Object.keys(puntuaciones).length
@@ -60,26 +73,32 @@ export default function App() {
     <div className="app">
       <header className="cabecera">
         <div className="cabecera__interior">
-          <p className="cabecera__sobre">Valle de Aburrá y alrededores</p>
+          <div className="cabecera__barra">
+            <p className="cabecera__sobre">{t.cabecera.sobre}</p>
+            <SelectorIdioma />
+          </div>
+
           <h1 className="logotipo">
             Parches<span>Medellín</span>
           </h1>
-          <p className="cabecera__bajada">
-            Dónde encontrarse, comer, caminar y bailar. Filtrado por lo que cuesta, por cómo se llega y por
-            quién puede entrar.
-          </p>
+          <p className="cabecera__bajada">{t.cabecera.bajada}</p>
 
           <div className="buscador">
             <input
               type="search"
               className="buscador__campo"
-              placeholder="Café, mirador, Sabaneta, gratis…"
+              placeholder={t.cabecera.buscarPlaceholder}
               value={filtros.busqueda}
               onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
-              aria-label="Buscar parches"
+              aria-label={t.cabecera.buscarEtiqueta}
             />
-            <button type="button" className="boton boton--claro" onClick={sorprendeme} disabled={resultados.length === 0}>
-              Sorpréndeme
+            <button
+              type="button"
+              className="boton boton--claro"
+              onClick={sorprendeme}
+              disabled={resultados.length === 0}
+            >
+              {t.cabecera.sorprendeme}
             </button>
             <button
               type="button"
@@ -87,7 +106,7 @@ export default function App() {
               onClick={() => setPanelAbierto((v) => !v)}
               aria-expanded={panelAbierto}
             >
-              {panelAbierto ? 'Ocultar filtros' : 'Filtros'}
+              {panelAbierto ? t.cabecera.ocultarFiltros : t.cabecera.verFiltros}
             </button>
           </div>
         </div>
@@ -116,14 +135,14 @@ export default function App() {
         <section className="resultados" aria-live="polite">
           <div className="resultados__barra">
             <p className="resultados__conteo">
-              <b>{resultados.length}</b> de {PARCHES.length} {PARCHES.length === 1 ? 'parche' : 'parches'}
+              <b>{resultados.length}</b> {t.resultados.conteoResto(PARCHES.length)}
             </p>
             <label className="ordenar">
-              Ordenar por
+              {t.resultados.ordenarPor}
               <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)}>
                 {ORDENES.map((o) => (
-                  <option key={o.valor} value={o.valor}>
-                    {o.texto}
+                  <option key={o} value={o}>
+                    {t.resultados.ordenes[o]}
                   </option>
                 ))}
               </select>
@@ -132,10 +151,10 @@ export default function App() {
 
           {resultados.length === 0 ? (
             <div className="vacio">
-              <p className="vacio__titulo">Ningún parche cumple con eso.</p>
-              <p>Suelta algún filtro y vuelve a mirar: el valle es grande.</p>
+              <p className="vacio__titulo">{t.resultados.vacioTitulo}</p>
+              <p>{t.resultados.vacioTexto}</p>
               <button type="button" className="boton" onClick={() => setFiltros(FILTROS_VACIOS)}>
-                Limpiar filtros
+                {t.resultados.limpiarFiltros}
               </button>
             </div>
           ) : (
@@ -147,7 +166,7 @@ export default function App() {
                   esFavorito={favoritos.has(parche.id)}
                   puntuacion={puntuaciones[parche.id] ?? 0}
                   onFavorito={alternarFavorito}
-                  onAbrirDetalle={setDetalle}
+                  onAbrirDetalle={(p: Parche) => setDetalleId(p.id)}
                   ahora={ahora}
                 />
               ))}
@@ -157,14 +176,8 @@ export default function App() {
       </main>
 
       <footer className="pie">
-        <p>
-          Catálogo semilla de espacios públicos y sectores del Valle de Aburrá y el Oriente cercano. Horarios y
-          precios son referenciales: confirma antes de salir.
-        </p>
-        <p>
-          Fotografías de Wikimedia Commons, con licencia libre y crédito en el detalle de cada parche. Los
-          lugares sin fotografía verificable llevan una fachada dibujada, no la foto de otro sitio.
-        </p>
+        <p>{t.pie.catalogo}</p>
+        <p>{t.pie.fotos}</p>
       </footer>
 
       {detalle && (
@@ -174,7 +187,7 @@ export default function App() {
           puntuacion={puntuaciones[detalle.id] ?? 0}
           onFavorito={alternarFavorito}
           onPuntuar={puntuar}
-          onCerrar={() => setDetalle(null)}
+          onCerrar={() => setDetalleId(null)}
           ahora={ahora}
         />
       )}

@@ -3,12 +3,8 @@ import type { Puntuaciones } from './puntuaciones'
 
 export type Orden = 'sugeridos' | 'puntuacion' | 'nombre' | 'presupuesto'
 
-export const ORDENES: { valor: Orden; texto: string }[] = [
-  { valor: 'sugeridos', texto: 'Sugeridos' },
-  { valor: 'puntuacion', texto: 'Tu puntuación' },
-  { valor: 'nombre', texto: 'Nombre' },
-  { valor: 'presupuesto', texto: 'Más barato primero' },
-]
+/** Orden en que se ofrecen los criterios. El texto de cada uno vive en src/i18n. */
+export const ORDENES: Orden[] = ['sugeridos', 'puntuacion', 'nombre', 'presupuesto']
 
 const ESCALA_PRECIO: Record<Presupuesto, number> = { gratis: 0, $: 1, $$: 2, $$$: 3 }
 
