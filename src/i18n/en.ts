@@ -2,7 +2,7 @@ import type { Textos } from './tipos'
 
 export const EN: Textos = {
   meta: {
-    titulo: 'Parches Medellín',
+    titulo: 'Parche · Medellín',
     descripcion:
       'Find places to meet, eat, walk and dance in Medellín and the nearby towns of the Aburrá Valley.',
     htmlLang: 'en',

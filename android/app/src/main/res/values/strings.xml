@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Parches Medellín</string>
-    <string name="title_activity_main">Parches Medellín</string>
+    <string name="app_name">Parche</string>
+    <string name="title_activity_main">Parche</string>
     <string name="package_name">com.parchesmedellin.app</string>
     <string name="custom_url_scheme">com.parchesmedellin.app</string>
 </resources>

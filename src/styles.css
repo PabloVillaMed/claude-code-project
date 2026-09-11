@@ -1,16 +1,15 @@
 /* Tipografías empaquetadas: la app también se ve bien sin conexión. */
 @font-face {
-  font-family: 'Archivo';
-  src: url('/fuentes/archivo-latin.woff2') format('woff2-variations');
-  font-weight: 400 900;
-  font-stretch: 100% 125%;
+  font-family: 'Baloo 2';
+  src: url('/fuentes/baloo2-latin.woff2') format('woff2-variations');
+  font-weight: 400 800;
   font-display: swap;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Bitter';
-  src: url('/fuentes/bitter-latin.woff2') format('woff2-variations');
+  font-family: 'Asap';
+  src: url('/fuentes/asap-latin.woff2') format('woff2-variations');
   font-weight: 400 700;
   font-display: swap;
   font-style: normal;
@@ -19,13 +18,13 @@
 :root {
   color-scheme: light dark;
 
-  /* Verde casi negro del valle a contraluz, no un gris tintado. */
-  --tinta: #14231a;
-  --tinta-suave: #55665a;
+  /* Verde muy oscuro del valle a contraluz, no un gris tintado. */
+  --tinta: #1a2c20;
+  --tinta-suave: #56685b;
   /* Verde grisáceo lavado. Deliberadamente no es crema. */
-  --papel: #e9ece3;
-  --tarjeta: #ffffff;
-  --linea: #c8d0c2;
+  --papel: #edefe4;
+  --tarjeta: #fffefa;
+  --linea: #cdd5c6;
 
   /* Cinco acentos, cada uno con significado: el tipo de plan. */
   --verde: #0b6e3f;
@@ -49,18 +48,27 @@
 
   --familia: var(--verde);
   --familia-solido: var(--verde-solido);
-  --radio: 3px;
-  --display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
-  --texto: 'Bitter', Georgia, 'Times New Roman', serif;
+
+  /*
+   * Tres radios con tres trabajos distintos, no uno para todo: los controles
+   * son pastillas, las superficies grandes tienen esquina amable y las
+   * etiquetas pequeñas apenas se redondean.
+   */
+  --radio: 18px;
+  --radio-control: 999px;
+  --radio-chico: 8px;
+
+  --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+  --texto: 'Asap', 'Segoe UI', system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --tinta: #e7ebe2;
-    --tinta-suave: #93a397;
-    --papel: #0f1611;
-    --tarjeta: #18211a;
-    --linea: #2d3a30;
+    --tinta: #e9ede3;
+    --tinta-suave: #97a79b;
+    --papel: #111a13;
+    --tarjeta: #1b251d;
+    --linea: #31402f;
 
     --verde: #2f9c66;
     --azul: #3f92dd;
@@ -91,8 +99,8 @@ body {
   background: var(--papel);
   color: var(--tinta);
   font-family: var(--texto);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 16.5px;
+  line-height: 1.62;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -100,9 +108,9 @@ h1,
 h2,
 h3 {
   font-family: var(--display);
-  font-weight: 800;
-  letter-spacing: -0.015em;
-  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.15;
   margin: 0;
 }
 
@@ -178,7 +186,7 @@ a {
   background-position: right 8px center;
   background-size: 13px;
   border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
 }
 
@@ -198,16 +206,20 @@ a {
 }
 
 .logotipo {
-  font-size: clamp(3.1rem, 11.5vw, 6.6rem);
-  font-weight: 900;
-  font-stretch: 125%;
-  line-height: 0.84;
-  letter-spacing: -0.035em;
+  font-size: clamp(3.4rem, 13vw, 7rem);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
+/* "Medellín" es el apellido de la marca: va debajo y mucho más pequeño. */
 .logotipo span {
   display: block;
+  margin-top: 2px;
+  font-size: 0.26em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   color: var(--amarillo);
 }
 
@@ -240,7 +252,7 @@ a {
   color: var(--papel);
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
 }
 
 .buscador__campo::placeholder {
@@ -265,7 +277,7 @@ a {
   color: var(--sobre-solido);
   background: var(--verde-solido);
   border: 1px solid transparent;
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
   text-decoration: none;
 }
@@ -370,13 +382,13 @@ a {
 }
 
 .opcion {
-  padding: 6px 11px;
+  padding: 7px 14px;
   font-family: var(--texto);
   font-size: 0.85rem;
   color: var(--tinta);
   background: transparent;
   border: 1px solid var(--linea);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
   text-align: left;
 }
@@ -422,8 +434,8 @@ a {
 }
 
 .resultados__conteo b {
-  font-size: 1.5rem;
-  font-weight: 900;
+  font-size: 1.6rem;
+  font-weight: 800;
 }
 
 .ordenar {
@@ -442,7 +454,7 @@ a {
   color: var(--tinta);
   background: var(--tarjeta);
   border: 1px solid var(--linea);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
 }
 
 /* ---------- Tarjetas ---------- */
@@ -535,7 +547,7 @@ a {
   color: #f4f6f1;
   background: rgba(20, 35, 26, 0.6);
   border: none;
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -585,7 +597,7 @@ a {
   gap: 5px;
   padding: 5px 7px;
   background: rgba(20, 35, 26, 0.55);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
 }
 
 .carrusel__punto {
@@ -629,7 +641,7 @@ a {
   font-weight: 700;
   color: #f4f6f1;
   background: #14231a;
-  border-radius: var(--radio);
+  border-radius: var(--radio-chico);
 }
 
 .estado--abierto {
@@ -652,7 +664,7 @@ a {
   color: #fff;
   background: rgba(20, 35, 26, 0.55);
   border: none;
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
 }
 
@@ -677,12 +689,12 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 16px 14px;
+  padding: 18px 18px 16px;
 }
 
 .tarjeta__titulo {
-  font-size: 1.18rem;
-  font-stretch: 110%;
+  font-size: 1.22rem;
+  font-weight: 700;
 }
 
 .tarjeta__lugar {
@@ -700,7 +712,7 @@ a {
   font-weight: 700;
   color: var(--sobre-solido);
   background: var(--familia-solido);
-  border-radius: var(--radio);
+  border-radius: var(--radio-chico);
   vertical-align: 1px;
 }
 
@@ -744,7 +756,7 @@ a {
   font-weight: 600;
   color: var(--tinta-suave);
   border: 1px solid var(--linea);
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
 }
 
 .tarjeta__pie {
@@ -904,7 +916,9 @@ a {
 
 .modal__imagen {
   position: relative;
+  overflow: hidden;
   border-bottom: 6px solid var(--familia-solido);
+  border-radius: var(--radio) var(--radio) 0 0;
 }
 
 .modal__cerrar {
@@ -917,7 +931,7 @@ a {
   color: #fff;
   background: rgba(20, 35, 26, 0.6);
   border: none;
-  border-radius: var(--radio);
+  border-radius: var(--radio-control);
   cursor: pointer;
 }
 
@@ -934,8 +948,8 @@ a {
 }
 
 .modal__titulo {
-  font-size: clamp(1.5rem, 5vw, 2rem);
-  font-stretch: 110%;
+  font-size: clamp(1.6rem, 5vw, 2.15rem);
+  font-weight: 700;
 }
 
 .modal__resumen {

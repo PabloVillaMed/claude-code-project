@@ -36,13 +36,41 @@ Sobre `--tinta` `#14231A` (un verde casi negro, no un gris tintado) y `--papel`
 
 ## Tipografía
 
-- **Archivo** (variable, 700–900, ancho 100–125) para el logotipo, los títulos y
-  las cifras. Es una grotesca de cartel: hace el trabajo de la letra pintada.
-- **Bitter** (400–600), una slab serif, para descripciones y texto largo. Da
-  calidez de impreso y separa claramente el contenido del rótulo.
+La primera pasada usaba **Archivo** (grotesca de cartel ultra negra) con
+**Bitter**. Funcionaba, pero la grotesca pesadísima es justo el tic de la
+tipografía generada: dura, apretada y sin calidez. Se cambió por dos letras
+redondas:
 
-Ambas se empaquetan en la app (`public/fuentes/`), así que la tipografía
+- **Baloo 2** (variable, 400–800) para el logotipo y los títulos. Terminaciones
+  redondeadas y trazo grueso: se lee como algo hecho a mano, no como un cartel
+  corporativo.
+- **Asap** (variable, 400–700) para el texto. Es de Omnibus-Type, un taller
+  argentino, y está dibujada pensando en el español; sus esquinas ligeramente
+  redondeadas hacen juego con el logotipo sin competir con él.
+
+Se eligieron mirándolas: se montó un espécimen con seis parejas candidatas
+puestas sobre contenido real de la app, y se decidió sobre la imagen, no de
+memoria. Ambas se empaquetan en `public/fuentes/`, así que la tipografía
 funciona sin conexión igual que el catálogo.
+
+## Redondeo
+
+Hay **tres radios, cada uno con un trabajo**, no uno solo para todo (que es
+precisamente el tic del kit de tarjetas genérico):
+
+| Token | Valor | Para qué |
+|---|---|---|
+| `--radio-control` | pastilla | botones, filtros, desplegables, el buscador |
+| `--radio` | 18 px | tarjetas, modal, bloques grandes |
+| `--radio-chico` | 8 px | etiquetas pequeñas dentro de la tarjeta |
+
+Las casas de la ladera se redondean **solo por el tejado**: se dibujan más
+altas de la cuenta y lo que sobra cae fuera del lienzo, así apoyan en el suelo
+en ángulo recto.
+
+La profundidad sigue viniendo del color plano y de una línea de 1 px. No hay
+sombras difusas ni degradados: eso es lo que convierte un diseño redondeado en
+el kit de cualquier producto.
 
 ## Estructura
 
@@ -58,6 +86,23 @@ funciona sin conexión igual que el catálogo.
   ladera.
 - **Los filtros** no van en una caja: son texto y controles sobre el papel,
   separados por una línea fina.
+
+## El nombre y el icono
+
+La app se llama **Parche**. Es la palabra local, cabe en un lanzador y funciona
+igual en las dos versiones de idioma. `Medellín` va debajo, pequeño, como
+apellido de la marca.
+
+El icono es la P blanca sobre la ladera de colores, en naranja. Se dibujaron
+cinco propuestas y se compararon **a 44 px**, que es el tamaño en el que de
+verdad se ve un icono: las que eran solo barras de color se leían como un
+gráfico de barras, y la oscura desaparecía sobre fondos oscuros. La P resuelve
+las dos cosas: identifica y contrasta.
+
+Va en tres piezas (`assets/icon.png`, `icon-background.png`,
+`icon-foreground.png`) porque el icono adaptativo de Android recorta los bordes
+con la forma que use cada lanzador: el fondo lleva el naranja y la ladera, y la
+capa delantera solo la P, dentro de la zona segura.
 
 ## Lo que se evitó a propósito
 

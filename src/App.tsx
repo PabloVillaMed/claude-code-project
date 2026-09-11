@@ -79,7 +79,7 @@ export default function App() {
           </div>
 
           <h1 className="logotipo">
-            Parches<span>Medellín</span>
+            Parche<span>Medellín</span>
           </h1>
           <p className="cabecera__bajada">{t.cabecera.bajada}</p>
 
@@ -112,7 +112,7 @@ export default function App() {
         </div>
 
         <Ladera
-          clave="cabecera-parches-medellin"
+          clave="cabecera-parche-medellin"
           ancho={1200}
           alto={78}
           paso={30}

@@ -2,7 +2,7 @@ import type { Textos } from './tipos'
 
 export const ES: Textos = {
   meta: {
-    titulo: 'Parches Medellín',
+    titulo: 'Parche · Medellín',
     descripcion:
       'Buscador de parches, lugares de encuentro y zonas de esparcimiento en Medellín y municipios cercanos.',
     htmlLang: 'es-CO',

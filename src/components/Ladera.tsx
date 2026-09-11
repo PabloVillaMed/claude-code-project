@@ -12,6 +12,8 @@ interface LaderaProps {
   /** Colores de las casas, en orden. */
   paleta: string[]
   colorVentana?: string
+  /** Redondeo de las casas. Con 0 quedan en esquina viva. */
+  radio?: number
   className?: string
 }
 
@@ -28,6 +30,7 @@ export function Ladera({
   conVentanas = true,
   paleta,
   colorVentana = 'rgba(20, 35, 26, 0.45)',
+  radio = 3,
   className,
 }: LaderaProps) {
   const bloques = useMemo(
@@ -45,11 +48,18 @@ export function Ladera({
     >
       {bloques.map((bloque, i) => (
         <g key={i}>
+          {/*
+            Solo se redondea el tejado. Como <rect> no admite un radio por
+            esquina, la casa se dibuja mas alta y lo que sobra por abajo cae
+            fuera del viewBox: asi las esquinas de abajo quedan en angulo recto
+            y las casas se apoyan en el suelo.
+          */}
           <rect
             x={bloque.x}
             y={alto - bloque.alto}
             width={bloque.ancho}
-            height={bloque.alto}
+            height={bloque.alto + radio}
+            rx={radio}
             fill={paleta[bloque.color]}
           />
           {bloque.ventanas.map((ventana, j) => (

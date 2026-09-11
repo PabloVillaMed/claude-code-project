@@ -1,7 +1,11 @@
-# Parches Medellín
+# Parche
 
 Buscador de **parches**: lugares de encuentro, establecimientos y zonas de esparcimiento
 en Medellín y los municipios cercanos del Valle de Aburrá y el Oriente antioqueño.
+
+La app se llama **Parche** (así aparece en el lanzador); `com.parchesmedellin.app` sigue
+siendo el identificador del paquete y no cambia, porque cambiarlo haría que Android
+instalara una app nueva al lado en vez de actualizar la que ya está.
 
 La idea es simple: que cualquiera —con o sin plata, con carro o en Metro, con niños, con
 mascota, en silla de ruedas, de rumba o buscando dónde estudiar— pueda encontrar un plan
@@ -131,7 +135,7 @@ Se apoyó en la skill `frontend-design` del marketplace `anthropics/skills`, que
 copiada en [`.claude/skills/`](.claude/skills/) junto con `webapp-testing` y
 `brand-guidelines` para que cualquier sesión de Claude Code en este repo las tenga a mano.
 
-Las tipografías (Archivo y Bitter, ambas SIL Open Font License) están en
+Las tipografías (**Baloo 2** y **Asap**, ambas SIL Open Font License) están en
 `public/fuentes/` y se sirven desde la propia app, no desde Google Fonts: así la
 tipografía funciona sin conexión, igual que el catálogo.
 
