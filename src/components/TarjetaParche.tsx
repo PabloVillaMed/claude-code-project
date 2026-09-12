@@ -64,8 +64,9 @@ export function TarjetaParche({
 
         <p className="tarjeta__descripcion">{parche.descripcion}</p>
 
-        {accesos.length > 0 && (
+        {(accesos.length > 0 || parche.toleranciaConsumo) && (
           <ul className="tarjeta__accesos">
+            {parche.toleranciaConsumo && <li className="marca-tolerancia">{t.parche.tolerancia}</li>}
             {accesos.map((clave) => (
               <li key={clave}>{t.accesos[clave].corto}</li>
             ))}

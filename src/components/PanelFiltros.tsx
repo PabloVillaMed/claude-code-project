@@ -108,6 +108,29 @@ export function PanelFiltros({ filtros, onCambio, totalFavoritos, totalPuntuados
       </fieldset>
 
       <fieldset className="panel__grupo">
+        <legend>{t.panel.tolerancia}</legend>
+        <div className="opciones">
+          <Opcion
+            activo={filtros.tolerancia === 'solo'}
+            onClick={() =>
+              onCambio({ ...filtros, tolerancia: filtros.tolerancia === 'solo' ? 'todos' : 'solo' })
+            }
+          >
+            {t.panel.soloTolerancia}
+          </Opcion>
+          <Opcion
+            activo={filtros.tolerancia === 'sin'}
+            onClick={() =>
+              onCambio({ ...filtros, tolerancia: filtros.tolerancia === 'sin' ? 'todos' : 'sin' })
+            }
+          >
+            {t.panel.sinTolerancia}
+          </Opcion>
+        </div>
+        <p className="panel__nota">{t.panel.toleranciaAyuda}</p>
+      </fieldset>
+
+      <fieldset className="panel__grupo">
         <legend>{t.panel.tuPuntuacion}</legend>
         <div className="opciones">
           {[3, 4, 5].map((n) => (

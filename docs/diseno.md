@@ -93,11 +93,17 @@ La app se llama **Parche**. Es la palabra local, cabe en un lanzador y funciona
 igual en las dos versiones de idioma. `Medellín` va debajo, pequeño, como
 apellido de la marca.
 
-El icono es la P blanca sobre la ladera de colores, en naranja. Se dibujaron
-cinco propuestas y se compararon **a 44 px**, que es el tamaño en el que de
-verdad se ve un icono: las que eran solo barras de color se leían como un
-gráfico de barras, y la oscura desaparecía sobre fondos oscuros. La P resuelve
-las dos cosas: identifica y contrasta.
+El icono es un **bocadillo de conversación con la ladera dentro**, sobre
+amarillo: un parche es gente junta, y la ciudad cabe en la misma figura. Se
+dibujaron cinco propuestas —la P anterior, un metrocable, el bocadillo, un sol
+sobre el valle y dos siluetas en el andén— y se compararon **a 44 px**, que es
+el tamaño en el que de verdad se ve un icono. El metrocable perdía el cable, las
+siluetas se empastaban y el sol sobre el valle servía igual para cualquier app
+de viajes. El bocadillo aguanta el tamaño y no se parece a nada más.
+
+La primera versión del bocadillo se leía como un gráfico de barras. Se corrigió
+redondeando mucho más las esquinas —para que la silueta sea inconfundible— y
+desigualando el ancho de las casas, que en un gráfico serían todas iguales.
 
 Va en tres piezas (`assets/icon.png`, `icon-background.png`,
 `icon-foreground.png`) porque el icono adaptativo de Android recorta los bordes

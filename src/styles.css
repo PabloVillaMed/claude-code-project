@@ -987,6 +987,19 @@ a {
   font-weight: 700;
 }
 
+/* La zona de tolerancia se marca en rosa, que es el color de los parches de
+   calle, para que no se confunda con el aviso de seguridad en amarillo. */
+.advertencia--tolerancia {
+  background: rgba(200, 34, 106, 0.12);
+  border-left-color: var(--rosa-solido);
+}
+
+.marca-tolerancia {
+  color: var(--sobre-solido) !important;
+  background: var(--rosa-solido);
+  border-color: var(--rosa-solido) !important;
+}
+
 .detalle {
   display: grid;
   grid-template-columns: minmax(110px, auto) 1fr;

@@ -27,6 +27,11 @@ export const ES: Textos = {
     cuantoGastar: 'Cuánto quieres gastar',
     acceso: 'Que el plan alcance para todos',
     accesoAyuda: 'Se exigen todos los criterios de acceso que marques',
+    tolerancia: 'Zona de tolerancia',
+    toleranciaAyuda:
+      'Sitios donde se consume cannabis y otras sustancias a la vista. En Medellín el consumo en espacio público está prohibido por decreto y la multa puede pasar de un salario mínimo.',
+    soloTolerancia: 'Solo estas',
+    sinTolerancia: 'Sin consumo a la vista',
     tuPuntuacion: 'Tu puntuación',
     minEstrellas: (n) => `${n} estrellas o más`,
     soloCinco: 'Solo 5 estrellas',
@@ -57,6 +62,9 @@ export const ES: Textos = {
     quitarFavorito: (nombre) => `Quitar ${nombre} de favoritos`,
     cerrarDetalle: 'Cerrar detalle',
     advertencia: 'Antes de ir',
+    tolerancia: 'Zona de tolerancia',
+    toleranciaTexto:
+      'Aquí se consume cannabis y otras sustancias a la vista. Que se tolere no quiere decir que sea legal: el consumo en espacio público está prohibido en Medellín y la multa puede pasar de un salario mínimo.',
     horarios: 'Horarios',
     comoLlegar: 'Cómo llegar',
     ambiente: 'Ambiente',

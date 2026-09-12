@@ -99,6 +99,12 @@ export function DetalleParche({
             </p>
           </div>
 
+          {parche.toleranciaConsumo && (
+            <p className="advertencia advertencia--tolerancia">
+              <b>{t.parche.tolerancia}</b> {t.parche.toleranciaTexto}
+            </p>
+          )}
+
           {parche.advertencia && (
             <p className="advertencia">
               <b>{t.parche.advertencia}</b> {parche.advertencia}

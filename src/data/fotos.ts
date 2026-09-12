@@ -116,6 +116,15 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       pagina: "https://commons.wikimedia.org/wiki/File:Parque_de_Caldas.JPG",
     },
   ],
+  'carlos-e-parque': [
+    {
+      archivo: "fotos/carlos-e-parque-1.webp",
+      autor: "Miguel Olaya from Bogotá, Colombia",
+      licencia: "CC BY-SA 2.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/2.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Carlos_E._Restrepo_(3182497944).jpg",
+    },
+  ],
   'cerro-el-picacho': [
     {
       archivo: "fotos/cerro-el-picacho-1.webp",

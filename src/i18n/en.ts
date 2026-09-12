@@ -27,6 +27,11 @@ export const EN: Textos = {
     cuantoGastar: 'How much to spend',
     acceso: 'So everyone can come along',
     accesoAyuda: 'Every access box you tick must be met',
+    tolerancia: 'Tolerance zone',
+    toleranciaAyuda:
+      'Places where cannabis and other substances are used in the open. In Medellín, using them in public space is banned by decree and the fine can exceed a monthly minimum wage.',
+    soloTolerancia: 'Only these',
+    sinTolerancia: 'No open drug use',
     tuPuntuacion: 'Your rating',
     minEstrellas: (n) => `${n} stars or more`,
     soloCinco: '5 stars only',
@@ -57,6 +62,9 @@ export const EN: Textos = {
     quitarFavorito: (nombre) => `Remove ${nombre} from saved`,
     cerrarDetalle: 'Close details',
     advertencia: 'Before you go',
+    tolerancia: 'Tolerance zone',
+    toleranciaTexto:
+      'Cannabis and other substances are used in the open here. Tolerated does not mean legal: using them in public space is banned in Medellín and the fine can exceed a monthly minimum wage.',
     horarios: 'Hours',
     comoLlegar: 'Getting there',
     ambiente: 'Mood',

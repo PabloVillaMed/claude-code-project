@@ -20,6 +20,11 @@ export interface Filtros {
   soloFavoritos: boolean
   /** Minimo de estrellas que le pusiste al parche. 0 no filtra nada. */
   minEstrellas: number
+  /**
+   * Zonas donde se consume a la vista: `solo` deja unicamente esas, `sin` las
+   * quita y `todos` no filtra. Sirve igual a quien las busca y a quien no.
+   */
+  tolerancia: 'todos' | 'solo' | 'sin'
 }
 
 export const FILTROS_VACIOS: Filtros = {
@@ -33,6 +38,7 @@ export const FILTROS_VACIOS: Filtros = {
   soloAbiertos: false,
   soloFavoritos: false,
   minEstrellas: 0,
+  tolerancia: 'todos',
 }
 
 /** Normaliza texto para comparar sin tildes ni mayusculas. */
@@ -91,6 +97,9 @@ export function coincide(
 
   if (filtros.minEstrellas > 0 && (puntuaciones[parche.id] ?? 0) < filtros.minEstrellas) return false
 
+  if (filtros.tolerancia === 'solo' && !parche.toleranciaConsumo) return false
+  if (filtros.tolerancia === 'sin' && parche.toleranciaConsumo) return false
+
   if (filtros.soloAbiertos && !estaAbierto(parche, ahora)) return false
 
   return true
@@ -117,7 +126,8 @@ export function contarFiltrosActivos(filtros: Filtros): number {
     filtros.accesos.length +
     (filtros.soloAbiertos ? 1 : 0) +
     (filtros.soloFavoritos ? 1 : 0) +
-    (filtros.minEstrellas > 0 ? 1 : 0)
+    (filtros.minEstrellas > 0 ? 1 : 0) +
+    (filtros.tolerancia === 'todos' ? 0 : 1)
   )
 }
 

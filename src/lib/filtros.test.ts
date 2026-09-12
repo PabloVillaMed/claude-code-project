@@ -109,6 +109,18 @@ describe('coincide', () => {
     expect(coincide(p, con({ minEstrellas: 0 }), { puntuaciones: {} })).toBe(true)
   })
 
+  it('filtra las zonas donde se consume a la vista, en los dos sentidos', () => {
+    const tolerante = base({ toleranciaConsumo: true })
+    const normal = base()
+    expect(coincide(tolerante, con({ tolerancia: 'solo' }))).toBe(true)
+    expect(coincide(normal, con({ tolerancia: 'solo' }))).toBe(false)
+    // El filtro sirve igual a quien las busca y a quien prefiere evitarlas.
+    expect(coincide(tolerante, con({ tolerancia: 'sin' }))).toBe(false)
+    expect(coincide(normal, con({ tolerancia: 'sin' }))).toBe(true)
+    expect(coincide(tolerante, con({ tolerancia: 'todos' }))).toBe(true)
+    expect(coincide(normal, con({ tolerancia: 'todos' }))).toBe(true)
+  })
+
   it('combina varios criterios a la vez', () => {
     const p = base({ municipio: 'Envigado', presupuesto: '$', categorias: ['comida'] })
     const filtros = con({ municipios: ['Envigado'], presupuestos: ['$'], categorias: ['comida'] })
@@ -147,8 +159,9 @@ describe('contarFiltrosActivos', () => {
       accesos: ['aptoNinos'],
       soloAbiertos: true,
       minEstrellas: 4,
+      tolerancia: 'sin',
     })
-    expect(contarFiltrosActivos(filtros)).toBe(5)
+    expect(contarFiltrosActivos(filtros)).toBe(6)
   })
 
   it('ignora una busqueda de solo espacios', () => {

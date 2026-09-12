@@ -1,7 +1,7 @@
 {
   "name": "parche",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "description": "Parche: donde encontrarse, comer, caminar y bailar en Medellin y los municipios cercanos",
   "scripts": {

@@ -56,6 +56,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'The largest of the city’s hills: dirt trails, bamboo groves and a flat summit where people watch the sunset. A classic for running, or for flying kites in August.',
     comoLlegar: 'Caribe or Universidad Metro station (line A).',
     notaHorario: 'Best to come down before dark. ' + REF,
+    advertencia:
+      'Climb in daylight and with company: the trails empty out and there are occasional robberies.',
   },
   'parque-arvi': {
     nombre: 'Parque Arví',
@@ -72,6 +74,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'Graffiti, hip hop and neighbourhood memory along a set of outdoor escalators up the hillside. Packed at weekends; guides from the barrio tell the story themselves.',
     comoLlegar: 'San Javier Metro station (line B), then a feeder bus or a walk.',
     notaHorario: 'The escalators run until around 21:00.',
+    advertencia:
+      'It gets very crowded at weekends. Go with guides from the barrio itself, stay on the route and ask before photographing people.',
   },
   'plaza-botero': {
     nombre: 'Plaza Botero and Museo de Antioquia',
@@ -176,6 +180,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'A path along the eastern hillside linking working-class barrios with allotments, lookouts and eco-parks. The full view of the valley, without paying a peso.',
     comoLlegar: 'Ayacucho tram and Metrocable line M to Trece de Noviembre.',
     notaHorario: REF,
+    advertencia:
+      'Walk the path by day and in a group; it runs through working-class hillside barrios and is better with someone who knows it.',
   },
   'parque-lleras': {
     nombre: 'Parque Lleras',
@@ -184,6 +190,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'The tourist heart of Medellín nightlife: bars, restaurants and people from everywhere around a small square. Expensive and loud, but an obligatory classic.',
     comoLlegar: 'Poblado Metro station (line A), then a bus or a long walk.',
     notaHorario: 'Every venue keeps its own hours. ' + REF,
+    advertencia:
+      'This is where scopolamine robberies against foreigners are reported most: over five hundred cases by 2026, mostly men approached through dating apps. Do not accept drinks you did not see poured, and do not leave with someone you just met.',
   },
   provenza: {
     nombre: 'Provenza',
@@ -199,6 +207,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
     descripcion:
       'Enormous ceiba trees, benches and the usual crowd sitting on the rim of the fountain. El Poblado’s default meeting point, and it costs nothing.',
     comoLlegar: 'Poblado Metro station (line A), a 15-minute walk.',
+    advertencia:
+      'Quiet by day; at night it is the warm-up for the Lleras nightlife, with phone snatching and dealing in the open. Watch your things and never leave your drink unattended.',
   },
   'ciudad-del-rio': {
     nombre: 'Ciudad del Río',
@@ -223,6 +233,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'Paisa nightlife for real: salsa, tango, vallenato and sancocho at midnight. Cheaper and more local than El Poblado, two blocks from the stadium.',
     comoLlegar: 'Estadio or Floresta Metro station (line B).',
     notaHorario: REF,
+    advertencia:
+      'It gets rough in the small hours: heavy drinking, the odd fight and phone snatching. Head back by taxi or app.',
   },
   'la-33': {
     nombre: 'La 33',
@@ -247,6 +259,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'The largest market hall in the city: fruit, herbs, juices and three-thousand-peso lunches. Come hungry and without a schedule.',
     comoLlegar: 'Cisneros Metro station (line B).',
     notaHorario: REF,
+    advertencia:
+      'It is a huge, crowded market: bring little cash, no jewellery, and keep your phone in your pocket.',
   },
   'placita-de-florez': {
     nombre: 'Placita de Flórez',
@@ -255,6 +269,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'A traditional market with flowers, plants and local food. It looks its best in December and during the silletero season.',
     comoLlegar: 'San Antonio Metro station and a walk, or the tram (line T-A).',
     notaHorario: REF,
+    advertencia:
+      'You are downtown: go by day, with little cash and your phone put away.',
   },
   'parque-de-las-luces': {
     nombre: 'Parque de las Luces (Plaza Cisneros)',
@@ -263,6 +279,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'Three hundred light masts over a hard plaza beside the EPM library and the Carré building. At night it is one of the postcards of downtown.',
     comoLlegar: 'Alpujarra or Cisneros Metro station.',
     notaHorario: 'Best visited early in the evening, and with company.',
+    advertencia:
+      'The plaza is hard-surfaced and very exposed, and the area empties at night. Go early and with company.',
   },
   'la-presidenta': {
     nombre: 'Parque Lineal La Presidenta',
@@ -302,6 +320,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'The Metrocable ride over the north-eastern barrios and the terrace beside the Parque Biblioteca España, with one of the best views of the valley. The library building has been under works, but the lookout and the district are still the plan.',
     comoLlegar: 'Metrocable line K from Acevedo Metro station.',
     notaHorario: 'Follows Metrocable hours. ' + REF,
+    advertencia:
+      'Go during the day and stay around the station and the library.',
   },
   'envigado-parque-principal': {
     nombre: 'Envigado main square',
@@ -455,6 +475,8 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'The Carlos E. boulevard is the bohemian corner of Laureles: university lecturers and students, bookshops, cafés and people sitting on the ground with a beer. One of the few places where you can stay for hours without buying anything and nobody minds.',
     comoLlegar: 'Suramericana Metro station (line B).',
     notaHorario: 'Friday afternoons are the busiest; the cafés close around midnight.',
+    advertencia:
+      'People drink on the pavement as a matter of course, but using drugs in public space is banned by decree in Medellín. At night, mind your phone as you would anywhere.',
   },
   'la-curva-bantu': {
     nombre: 'La Curva (Bantú)',

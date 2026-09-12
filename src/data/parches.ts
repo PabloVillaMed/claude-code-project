@@ -123,6 +123,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Caribe o Universidad del Metro (línea A).',
     horarios: todosLosDias('05:00', '18:00'),
     notaHorario: 'Se recomienda bajar antes de que oscurezca. ' + HORARIO_REFERENCIAL,
+    advertencia:
+      'Sube de día y acompañado: los senderos quedan solos y de vez en cuando hay robos.',
     consultaMapa: 'Cerro El Volador Medellin',
   },
   {
@@ -158,6 +160,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación San Javier del Metro (línea B) y luego bus alimentador o caminata.',
     horarios: todosLosDias('08:00', '20:00'),
     notaHorario: 'Las escaleras eléctricas operan hasta las 21:00 aproximadamente.',
+    advertencia:
+      'Los fines de semana se llena muchísimo. Ve con guías del mismo barrio, no te salgas del recorrido y pregunta antes de fotografiar a la gente.',
     consultaMapa: 'Escaleras electricas Comuna 13 Medellin',
   },
   {
@@ -382,6 +386,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Tranvía de Ayacucho y Metrocable línea M hasta Trece de Noviembre.',
     horarios: todosLosDias('06:00', '18:00'),
     notaHorario: HORARIO_REFERENCIAL,
+    advertencia:
+      'Recorre el camino de día y en grupo; es una ladera de barrios populares y se disfruta mejor con alguien que conozca.',
     consultaMapa: 'Jardin Circunvalar Medellin Camino de la Vida',
   },
   {
@@ -399,6 +405,9 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Poblado del Metro (línea A) y bus o caminata larga.',
     horarios: todosLosDias('17:00', '03:00'),
     notaHorario: 'Cada establecimiento tiene su horario. ' + HORARIO_REFERENCIAL,
+    advertencia:
+      'Es el sitio donde más reportan robos con escopolamina a extranjeros: para 2026 iban más de quinientos casos, la mayoría hombres contactados por apps de citas. No aceptes tragos que no viste servir ni te vayas con alguien que acabas de conocer.',
+    toleranciaConsumo: true,
     consultaMapa: 'Parque Lleras El Poblado Medellin',
   },
   {
@@ -432,6 +441,9 @@ export const PARCHES: Parche[] = [
       'Ceibas enormes, bancas y el parche de siempre sentado en el borde de la fuente. Es el punto de encuentro por defecto de El Poblado y no cuesta nada.',
     comoLlegar: 'Estación Poblado del Metro (línea A), caminata de 15 minutos.',
     horarios: siempreAbierto(),
+    advertencia:
+      'De día es tranquilo; de noche es la antesala de la rumba del Lleras, con robos de celular y venta a la vista. Cuida tus cosas y no dejes el trago solo.',
+    toleranciaConsumo: true,
     consultaMapa: 'Parque del Poblado Medellin',
   },
   {
@@ -483,6 +495,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Estadio o Floresta del Metro (línea B).',
     horarios: todosLosDias('16:00', '03:00'),
     notaHorario: HORARIO_REFERENCIAL,
+    advertencia:
+      'De madrugada se pone pesada: mucho trago, peleas ocasionales y robos de celular. Vuelve en taxi o aplicación.',
     consultaMapa: 'Carrera 70 Medellin',
   },
   {
@@ -534,6 +548,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Cisneros del Metro (línea B).',
     horarios: todosLosDias('05:00', '18:00'),
     notaHorario: HORARIO_REFERENCIAL,
+    advertencia:
+      'Es un mercado enorme y muy concurrido: ve con poco efectivo, sin joyas y con el celular guardado.',
     consultaMapa: 'Plaza Minorista Medellin',
   },
   {
@@ -551,6 +567,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación San Antonio del Metro y caminata, o Tranvía línea T-A.',
     horarios: todosLosDias('06:00', '18:00'),
     notaHorario: HORARIO_REFERENCIAL,
+    advertencia:
+      'Estás en el centro: ve de día, con poco efectivo y el celular guardado.',
     consultaMapa: 'Placita de Florez Medellin',
   },
   {
@@ -568,6 +586,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Alpujarra o Cisneros del Metro.',
     horarios: siempreAbierto(),
     notaHorario: 'Recomendable visitarlo temprano en la noche y acompañado.',
+    advertencia:
+      'La plaza es dura y muy abierta, y el sector queda solo de noche. Ve temprano y acompañado.',
     consultaMapa: 'Parque de las Luces Medellin',
   },
   {
@@ -652,6 +672,8 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Metrocable línea K desde la estación Acevedo del Metro.',
     horarios: todosLosDias('09:00', '20:00'),
     notaHorario: 'Sigue el horario del Metrocable. ' + HORARIO_REFERENCIAL,
+    advertencia:
+      'Ve de día y quédate en el entorno de la estación y la biblioteca.',
     consultaMapa: 'Parque Biblioteca Espana Santo Domingo Medellin',
   },
   {
@@ -968,6 +990,7 @@ export const PARCHES: Parche[] = [
     notaHorario: 'El parche se arma de jueves a sábado desde el atardecer; los bares cierran de madrugada.',
     advertencia:
       'Es una zona de tolerancia de verdad: se consume en la calle y hay venta a la vista. De vez en cuando se arman peleas. Ve acompañado, no saques el celular sin necesidad y no te quedes hasta la madrugada si no conoces el sector.',
+    toleranciaConsumo: true,
     consultaMapa: 'Parque del Periodista Medellin',
   },
   {
@@ -985,6 +1008,9 @@ export const PARCHES: Parche[] = [
     comoLlegar: 'Estación Suramericana del Metro (línea B).',
     horarios: siempreAbierto(),
     notaHorario: 'Los viernes en la tarde es cuando más se llena; los cafés cierran hacia la medianoche.',
+    advertencia:
+      'Se bebe en el andén con total normalidad, pero el consumo en espacio público está prohibido por decreto en Medellín. De noche, cuida el celular como en cualquier parte.',
+    toleranciaConsumo: true,
     consultaMapa: 'Parque Carlos E Restrepo Medellin',
   },
   {
@@ -1004,6 +1030,7 @@ export const PARCHES: Parche[] = [
     notaHorario: 'El parche se arma de jueves a domingo desde la tarde.',
     advertencia:
       'Andén, poca luz y mucho trago: es un parche de estudiantes, no un bar. Cuida tus cosas, no tomes fotos de la gente sin permiso y no te quedes solo hasta la madrugada.',
+    toleranciaConsumo: true,
     consultaMapa: 'La Curva UdeA calle Barranquilla Medellin',
   },
   {
@@ -1022,6 +1049,7 @@ export const PARCHES: Parche[] = [
     horarios: todosLosDias('08:00', '23:00'),
     notaHorario: 'De día es de patinadores; el parche nocturno es viernes y sábado desde las 19:00.',
     advertencia: 'De noche se pone bravo: mucho trago y a veces líos. Si vas con niños, ve de día.',
+    toleranciaConsumo: true,
     consultaMapa: 'Skatepark 4 Sur puente Gilberto Echeverri Medellin',
   },
   {

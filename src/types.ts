@@ -113,6 +113,16 @@ export interface Parche {
    * Existe para poder recomendar sitios reales sin maquillarlos.
    */
   advertencia?: string
+  /**
+   * Sitio donde se consume cannabis y otras sustancias a la vista, con una
+   * permisividad que no hay en otros barrios.
+   *
+   * Es un dato descriptivo, no una recomendacion: en Medellin el consumo en
+   * espacio publico esta prohibido por el Decreto 0044 de 2024 y la multa
+   * puede pasar de un salario minimo. Se marca para que cada quien decida,
+   * tanto quien busca ese ambiente como quien prefiere evitarlo.
+   */
+  toleranciaConsumo?: boolean
   /** Texto que se usa para armar el enlace de Google Maps. */
   consultaMapa: string
   /** Sitio web oficial, cuando existe. */

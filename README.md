@@ -18,8 +18,10 @@ que le sirva. Por eso los filtros no son solo de categoría: también de **presu
 - **Filtra por tipo de plan**: parques, naturaleza, cultura, miradores, comida, cafés, rumba,
   deporte, mercados, bibliotecas, sitios para trabajar y **parches bohemios** (las plazas y
   esquinas donde la ciudad se junta en la calle).
-- **Avisos de *Antes de ir*** en las fichas que lo necesitan: seguridad, transporte y a qué
-  hora conviene ir. Sirve para recomendar sitios reales sin maquillarlos.
+- **Avisos de *Antes de ir*** en 19 fichas: seguridad, transporte y a qué hora conviene ir.
+  Sirve para recomendar sitios reales sin maquillarlos.
+- **Filtro de zona de tolerancia**, en los dos sentidos: *Solo estas* para quien busca ese
+  ambiente y *Sin consumo a la vista* para quien prefiere evitarlo.
 - **Filtra por presupuesto**: gratis, económico, medio, alto.
 - **Filtra por acceso** (todos los criterios que marques deben cumplirse): cerca al Metro,
   movilidad reducida, apto para niños, pet friendly, LGBTIQ+ friendly y plan sin alcohol.
@@ -198,6 +200,22 @@ Los parches de calle y los miradores que se añadieron en la 1.4.0 están
 documentados en [`docs/investigacion-parches-de-calle.md`](docs/investigacion-parches-de-calle.md):
 qué se confirmó de cada sitio, con qué fuente, y qué no se pudo consultar
 (Reddit bloquea al rastreador y los grupos de Facebook están tras un login).
+
+## Zonas de tolerancia
+
+Seis fichas están marcadas como **zona de tolerancia**: sitios donde se consume cannabis y
+otras sustancias a la vista, con una permisividad que no hay en otros barrios.
+
+Es un dato **descriptivo, no una recomendación**, y la app lo dice con todas las letras en
+la ficha: *que se tolere no quiere decir que sea legal*. En Medellín el
+[Decreto 0044 de 2024](https://www.elcolombiano.com/medellin/hasta-un-salario-minimo-de-multa-por-consumir-drogas-en-el-espacio-en-medellin-alcalde-federico-gutierrez-decreto-EB23557322)
+prohíbe el consumo de sustancias psicoactivas —dosis mínima incluida— en parques, plazas y
+alrededor de colegios, con multas de 8 a 32 salarios mínimos diarios.
+
+El filtro funciona en los dos sentidos a propósito. A una familia con niños le sirve tanto
+como a quien busca ese parche, y marcar el sitio sin explicar qué pasa ahí sería dejar el
+aviso a medias: una prueba comprueba que **toda zona marcada lleve su nota de *Antes de ir***,
+en español y en inglés.
 
 ## Sobre los datos
 

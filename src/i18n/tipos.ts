@@ -41,6 +41,10 @@ export interface Textos {
     cuantoGastar: string
     acceso: string
     accesoAyuda: string
+    tolerancia: string
+    toleranciaAyuda: string
+    soloTolerancia: string
+    sinTolerancia: string
     tuPuntuacion: string
     minEstrellas: (n: number) => string
     soloCinco: string
@@ -67,6 +71,8 @@ export interface Textos {
     quitarFavorito: (nombre: string) => string
     cerrarDetalle: string
     advertencia: string
+    tolerancia: string
+    toleranciaTexto: string
     horarios: string
     comoLlegar: string
     ambiente: string
