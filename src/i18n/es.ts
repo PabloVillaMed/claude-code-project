@@ -56,6 +56,7 @@ export const ES: Textos = {
     guardarFavorito: (nombre) => `Guardar ${nombre} en favoritos`,
     quitarFavorito: (nombre) => `Quitar ${nombre} de favoritos`,
     cerrarDetalle: 'Cerrar detalle',
+    advertencia: 'Antes de ir',
     horarios: 'Horarios',
     comoLlegar: 'Cómo llegar',
     ambiente: 'Ambiente',
@@ -102,6 +103,7 @@ export const ES: Textos = {
     cafe: 'Cafés',
     mercado: 'Mercados',
     rumba: 'Rumba',
+    bohemio: 'Bohemio',
     deporte: 'Deporte',
   },
   presupuestos: {
@@ -127,6 +129,7 @@ export const ES: Textos = {
     turistico: 'turístico',
     local: 'de local',
     'al aire libre': 'al aire libre',
+    alternativo: 'alternativo',
   },
   municipios: {
     Medellin: 'Medellín',

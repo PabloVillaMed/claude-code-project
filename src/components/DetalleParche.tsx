@@ -99,6 +99,12 @@ export function DetalleParche({
             </p>
           </div>
 
+          {parche.advertencia && (
+            <p className="advertencia">
+              <b>{t.parche.advertencia}</b> {parche.advertencia}
+            </p>
+          )}
+
           <dl className="detalle">
             <dt>{t.parche.horarios}</dt>
             <dd>

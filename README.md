@@ -16,7 +16,10 @@ que le sirva. Por eso los filtros no son solo de categoría: también de **presu
 
 - **Busca por texto** en nombre, sector, descripción y etiquetas, sin importar tildes ni mayúsculas.
 - **Filtra por tipo de plan**: parques, naturaleza, cultura, miradores, comida, cafés, rumba,
-  deporte, mercados, bibliotecas y sitios para trabajar.
+  deporte, mercados, bibliotecas, sitios para trabajar y **parches bohemios** (las plazas y
+  esquinas donde la ciudad se junta en la calle).
+- **Avisos de *Antes de ir*** en las fichas que lo necesitan: seguridad, transporte y a qué
+  hora conviene ir. Sirve para recomendar sitios reales sin maquillarlos.
 - **Filtra por presupuesto**: gratis, económico, medio, alto.
 - **Filtra por acceso** (todos los criterios que marques deben cumplirse): cerca al Metro,
   movilidad reducida, apto para niños, pet friendly, LGBTIQ+ friendly y plan sin alcohol.
@@ -188,6 +191,13 @@ municipio antioqueño) y un retrato del prócer Atanasio Girardot en vez del est
 Una prueba comprueba que cada archivo referenciado en `fotos.ts` exista de verdad en
 `public/fotos/`, que la numeración no tenga huecos y que ninguna foto se quede sin
 autor, licencia ni página de origen.
+
+## Investigación del catálogo
+
+Los parches de calle y los miradores que se añadieron en la 1.4.0 están
+documentados en [`docs/investigacion-parches-de-calle.md`](docs/investigacion-parches-de-calle.md):
+qué se confirmó de cada sitio, con qué fuente, y qué no se pudo consultar
+(Reddit bloquea al rastreador y los grupos de Facebook están tras un login).
 
 ## Sobre los datos
 

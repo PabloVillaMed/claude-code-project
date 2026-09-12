@@ -29,6 +29,11 @@ export type Categoria =
   | 'mercado'
   | 'biblioteca'
   | 'coworking'
+  /**
+   * Parche de calle: plazas y esquinas donde la ciudad se junta por fuera de
+   * los bares, con ambiente alternativo y mucha tolerancia.
+   */
+  | 'bohemio'
 
 /**
  * Cuanto cuesta entrar o pasar un rato.
@@ -55,6 +60,7 @@ export type Ambiente =
   | 'turistico'
   | 'local'
   | 'al aire libre'
+  | 'alternativo'
 
 /**
  * Criterios de acceso. Existen para que el buscador sirva a personas
@@ -102,6 +108,11 @@ export interface Parche {
   horarios: Horario[]
   /** Nota libre sobre horarios: temporadas, festivos, cierres por mantenimiento. */
   notaHorario?: string
+  /**
+   * Lo que hay que saber antes de ir: seguridad, transporte, con quien ir.
+   * Existe para poder recomendar sitios reales sin maquillarlos.
+   */
+  advertencia?: string
   /** Texto que se usa para armar el enlace de Google Maps. */
   consultaMapa: string
   /** Sitio web oficial, cuando existe. */

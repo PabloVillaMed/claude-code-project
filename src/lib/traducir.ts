@@ -23,6 +23,7 @@ export function traducirParches(parches: Parche[], idioma: Idioma): Parche[] {
       descripcion: traduccion.descripcion,
       comoLlegar: traduccion.comoLlegar,
       notaHorario: traduccion.notaHorario,
+      advertencia: traduccion.advertencia,
     }
   })
 }

@@ -11,6 +11,7 @@ export interface TraduccionParche {
   descripcion: string
   comoLlegar?: string
   notaHorario?: string
+  advertencia?: string
 }
 
 const REF = 'Indicative hours: double-check before you head out, they shift on holidays and in season.'
@@ -436,5 +437,96 @@ export const PARCHES_EN: Record<string, TraduccionParche> = {
       'Silletero families open their farms to show how the flower arrangements of the Feria de las Flores are built, with gardens and country cooking.',
     comoLlegar: 'Metrocable line L to Arví, or buses from downtown along the Santa Elena road.',
     notaHorario: 'Many farms ask you to book ahead. ' + REF,
+  },
+  'parque-del-periodista': {
+    nombre: 'Parque del Periodista',
+    sector: 'La Candelaria / Downtown',
+    descripcion:
+      'A small downtown square that has been the meeting point of alternative Medellín since the eighties: punks, rockers, rappers, students and poets buying beer at the corner shop and drinking it on the pavement. Long-standing bars like El Eslabón and El Guanábano sit around it.',
+    comoLlegar: 'Prado Metro station (line A), a few blocks away.',
+    notaHorario: 'The scene builds from Thursday to Saturday at dusk; the bars close in the small hours.',
+    advertencia:
+      'This is a genuinely permissive zone: people drink in the street and dealing happens in the open, and fights break out now and then. Go with company, keep your phone in your pocket and do not stay until dawn if you do not know the area.',
+  },
+  'carlos-e-parque': {
+    nombre: 'Parque de Carlos E. Restrepo',
+    sector: 'Carlos E. Restrepo',
+    descripcion:
+      'The Carlos E. boulevard is the bohemian corner of Laureles: university lecturers and students, bookshops, cafés and people sitting on the ground with a beer. One of the few places where you can stay for hours without buying anything and nobody minds.',
+    comoLlegar: 'Suramericana Metro station (line B).',
+    notaHorario: 'Friday afternoons are the busiest; the cafés close around midnight.',
+  },
+  'la-curva-bantu': {
+    nombre: 'La Curva (Bantú)',
+    sector: 'Barranquilla / Universidad de Antioquia',
+    descripcion:
+      'The S-bend on Calle Barranquilla opposite the university, where students drink on the pavement because it costs less than inside the bar. People call it Bantú after the bar that gave the corner its name. It fills up Thursday to Sunday and does not stop even during a campus strike.',
+    comoLlegar: 'Universidad or Hospital Metro station (line A).',
+    notaHorario: 'The scene runs Thursday to Sunday from late afternoon.',
+    advertencia:
+      'A pavement, poor lighting and a lot of drinking: this is a student hangout, not a bar. Watch your things, do not photograph people without asking, and do not stay on your own into the small hours.',
+  },
+  'la-4-sur': {
+    nombre: 'La 4 Sur skatepark',
+    sector: 'Gilberto Echeverri bridge / Guayabal',
+    descripcion:
+      'The largest skatepark in the city, underneath the 4 Sur bridge. The bridge acts as a roof, so people skate whether it rains or not. Daytime belongs to skaters, BMX and rollers; on Friday and Saturday nights it turns into a party with sound systems and motorbikes.',
+    comoLlegar: 'Poblado or Industriales Metro station (line A), about a 15-minute walk.',
+    notaHorario: 'Daytime is for skating; the night scene is Friday and Saturday from 19:00.',
+    advertencia: 'It gets rowdy at night: a lot of drinking and the odd bit of trouble. With kids, go during the day.',
+  },
+  'zona-fucsia': {
+    nombre: 'Zona Fucsia',
+    sector: 'Avenida Maracaibo / Downtown',
+    descripcion:
+      'The new centre of gravity for LGBTIQ+ nightlife in the city: bars and clubs opened since 2022 along Avenida Maracaibo, between El Palo and carrera 43. Less touristy and a good deal cheaper than El Poblado.',
+    comoLlegar: 'Prado Metro station (line A).',
+    notaHorario: 'Each venue keeps its own hours; the strip moves Thursday to Saturday.',
+    advertencia: 'This is downtown: at night arrive and leave by taxi or app, and do not walk the surrounding streets alone.',
+  },
+  'calle-barbacoas': {
+    nombre: 'Calle Barbacoas',
+    sector: 'La Candelaria / Downtown',
+    descripcion:
+      'One block from Parque Bolívar, behind the cathedral, runs the street that has held up gay life in Medellín since the eighties. It used to be called the Street of Sin and still has the oldest bars in the city, El Machete among them.',
+    comoLlegar: 'Parque Berrío or Prado Metro station (line A).',
+    notaHorario: 'The street comes alive at night, above all Thursday to Saturday.',
+    advertencia:
+      'The area is difficult at night and borders the red-light district downtown. Go straight to the bar by taxi or app and do not wander the neighbouring streets.',
+  },
+  'cerro-la-asomadera': {
+    nombre: 'Cerro La Asomadera eco park',
+    sector: 'Buenos Aires / Comuna 9',
+    descripcion:
+      'One of the seven tutelary hills and the most central of them all: nature trails, an outdoor gym, a court and a pool, with the whole valley below. Surprisingly quiet for somewhere this close to downtown.',
+    comoLlegar: 'Ayacucho tram to Miraflores, then a walk uphill.',
+    notaHorario: 'Indicative hours: double-check before you head out, they shift on holidays and in season.',
+  },
+  'mirador-las-palmas': {
+    nombre: 'Las Palmas lookout',
+    sector: 'Vía Las Palmas / El Poblado',
+    descripcion:
+      'The Medellín postcard at night: from the airport road you see the whole valley lit up. There are two lookouts along the road; the higher one has the better view and several restaurants with terraces.',
+    comoLlegar: 'Only reachable by car, taxi or app along the Las Palmas road.',
+    notaHorario: 'Each restaurant keeps its own hours; the roadside lookout is public.',
+    advertencia: 'There is no public transport up there and the road is all tight bends with heavy motorbike traffic. At night, go by car.',
+  },
+  'cerro-el-picacho': {
+    nombre: 'Cerro El Picacho lookout park',
+    sector: 'Doce de Octubre / Comuna 6',
+    descripcion:
+      'Over 2,000 metres up in the north-west, with one of the most complete panoramas of the Aburrá Valley. The climb is hard and the neighbourhood around it is working class: this is the city seen from where almost nobody looks at it.',
+    comoLlegar: 'Metrocable line P from Acevedo to El Progreso, then uphill on foot.',
+    notaHorario: 'Best climbed early. Indicative hours: double-check before you head out.',
+    advertencia: 'It is a hill in a working-class neighbourhood: go early, go in a group, and ask about conditions on the day before setting off.',
+  },
+  'cerro-pan-de-azucar': {
+    nombre: 'Cerro Pan de Azúcar eco park',
+    sector: 'Villa Hermosa / Comuna 8',
+    descripcion:
+      'The highest of the tutelary hills, with a stone stairway climbing out of Comuna 8. At the top there is birdwatching and the full view of the valley, the city on one side and the Oriente on the other.',
+    comoLlegar: 'Ayacucho tram and Metrocable line M to Trece de Noviembre; the trails start there.',
+    notaHorario: 'Go early and come down before dark.',
+    advertencia: 'Climb in a group and stick to the marked trails.',
   },
 }

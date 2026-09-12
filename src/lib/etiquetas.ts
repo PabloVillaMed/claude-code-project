@@ -20,6 +20,7 @@ const FAMILIA_POR_CATEGORIA: Record<Categoria, Familia> = {
   cafe: 'amarillo',
   mercado: 'amarillo',
   rumba: 'rosa',
+  bohemio: 'rosa',
   deporte: 'naranja',
 }
 
@@ -39,6 +40,7 @@ export const CATEGORIAS: Categoria[] = [
   'cafe',
   'mercado',
   'rumba',
+  'bohemio',
   'deporte',
 ]
 
@@ -73,6 +75,7 @@ export const AMBIENTES: Ambiente[] = [
   'turistico',
   'local',
   'al aire libre',
+  'alternativo',
 ]
 
 export const ACCESOS: ClaveAcceso[] = [

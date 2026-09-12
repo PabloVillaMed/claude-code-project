@@ -968,6 +968,25 @@ a {
   font-size: 1rem;
 }
 
+/*
+ * Lo que hay que saber antes de ir. Va en amarillo y con barra lateral, no en
+ * rojo: es un aviso para que la gente vaya con criterio, no una alarma.
+ */
+.advertencia {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  background: rgba(240, 179, 16, 0.16);
+  border-left: 5px solid var(--amarillo-solido);
+  border-radius: var(--radio-chico);
+}
+
+.advertencia b {
+  font-family: var(--display);
+  font-weight: 700;
+}
+
 .detalle {
   display: grid;
   grid-template-columns: minmax(110px, auto) 1fr;

@@ -43,11 +43,14 @@ describe('catálogo en inglés', () => {
     }
   })
 
-  it('traduce el "cómo llegar" y la nota de horario donde el original los tiene', () => {
+  it('traduce cómo llegar, la nota de horario y la advertencia donde el original las tiene', () => {
     for (const parche of PARCHES) {
       const t = PARCHES_EN[parche.id]
       expect(Boolean(t.comoLlegar), `comoLlegar de ${parche.id}`).toBe(Boolean(parche.comoLlegar))
       expect(Boolean(t.notaHorario), `notaHorario de ${parche.id}`).toBe(Boolean(parche.notaHorario))
+      // Una advertencia sin traducir dejaría a quien lee en inglés sin el aviso
+      // de seguridad, que es justo lo que no se puede perder.
+      expect(Boolean(t.advertencia), `advertencia de ${parche.id}`).toBe(Boolean(parche.advertencia))
     }
   })
 })

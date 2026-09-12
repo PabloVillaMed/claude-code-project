@@ -66,6 +66,7 @@ export interface Textos {
     guardarFavorito: (nombre: string) => string
     quitarFavorito: (nombre: string) => string
     cerrarDetalle: string
+    advertencia: string
     horarios: string
     comoLlegar: string
     ambiente: string

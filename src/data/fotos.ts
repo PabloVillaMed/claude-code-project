@@ -116,6 +116,22 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       pagina: "https://commons.wikimedia.org/wiki/File:Parque_de_Caldas.JPG",
     },
   ],
+  'cerro-el-picacho': [
+    {
+      archivo: "fotos/cerro-el-picacho-1.webp",
+      autor: "Luis90f",
+      licencia: "CC BY-SA 4.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Panor%C3%A1mica_de_Medell%C3%ADn_desde_el_Cerro_El_Picacho.jpg",
+    },
+    {
+      archivo: "fotos/cerro-el-picacho-2.webp",
+      autor: "Camilogc04",
+      licencia: "CC BY-SA 4.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Vista_Picacho.jpg",
+    },
+  ],
   'cerro-el-volador': [
     {
       archivo: "fotos/cerro-el-volador-1.webp",
@@ -130,6 +146,15 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       licencia: "CC BY-SA 4.0",
       licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
       pagina: "https://commons.wikimedia.org/wiki/File:Panor%C3%A1mica_desde_el_Cerro_El_Volador_hacia_la_Fiscal%C3%ADa.jpg",
+    },
+  ],
+  'cerro-la-asomadera': [
+    {
+      archivo: "fotos/cerro-la-asomadera-1.webp",
+      autor: "XalD",
+      licencia: "CC BY-SA 4.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Cerro_de_La_Asomadera_desde_el_cerro_Nutibara.jpg",
     },
   ],
   'cerro-nutibara': [
@@ -340,6 +365,22 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       pagina: "https://commons.wikimedia.org/wiki/File:MEDELLIN_ENTRE_REJAS_JARDIN_CIRCUNVALAR_2015.jpg",
     },
   ],
+  'la-4-sur': [
+    {
+      archivo: "fotos/la-4-sur-1.webp",
+      autor: "Yimicorrea",
+      licencia: "CC BY-SA 3.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/3.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Puente_atirantado_Gilberto_Echeverri_-_de_la_4_sur_-_Medell%C3%ADn.JPG",
+    },
+    {
+      archivo: "fotos/la-4-sur-2.webp",
+      autor: "Secretaría de Movilidad de Medellín",
+      licencia: "CC BY 2.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by/2.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Puente_de_la_4_sur,_2019.jpg",
+    },
+  ],
   'la-estrella-parque': [
     {
       archivo: "fotos/la-estrella-parque-1.webp",
@@ -409,6 +450,15 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       licencia: "CC BY-SA 4.0",
       licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
       pagina: "https://commons.wikimedia.org/wiki/File:Vista_del_Museo_de_Arte_Moderno_de_Medellin.jpg",
+    },
+  ],
+  'mirador-las-palmas': [
+    {
+      archivo: "fotos/mirador-las-palmas-1.webp",
+      autor: "Yeyereales",
+      licencia: "CC BY-SA 4.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:Mirador_de_Las_Palmas,_Medell%C3%ADn,_Antiquia.jpg",
     },
   ],
   'museo-el-castillo': [
@@ -487,6 +537,15 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       licencia: "CC BY-SA 3.0",
       licenciaUrl: "https://creativecommons.org/licenses/by-sa/3.0",
       pagina: "https://commons.wikimedia.org/wiki/File:Constellation_Globe,_Parque_de_los_Deseos_-_panoramio.jpg",
+    },
+  ],
+  'parque-del-periodista': [
+    {
+      archivo: "fotos/parque-del-periodista-1.webp",
+      autor: "SajoR",
+      licencia: "Public domain",
+      licenciaUrl: "https://commons.wikimedia.org",
+      pagina: "https://commons.wikimedia.org/wiki/File:Parque_del_Periodista.JPG",
     },
   ],
   'parque-explora': [
@@ -746,6 +805,15 @@ export const FOTOS: Record<string, CreditoFoto[]> = {
       licencia: "CC BY-SA 4.0",
       licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
       pagina: "https://commons.wikimedia.org/wiki/File:2018_jardines_del_Teatro_Pablo_Tob%C3%B3n_Uribe.jpg",
+    },
+  ],
+  'zona-fucsia': [
+    {
+      archivo: "fotos/zona-fucsia-1.webp",
+      autor: "Felipe Restrepo Acosta",
+      licencia: "CC BY-SA 4.0",
+      licenciaUrl: "https://creativecommons.org/licenses/by-sa/4.0",
+      pagina: "https://commons.wikimedia.org/wiki/File:2018_carrera_42_con_avenida_Maracaibo_Medell%C3%ADn.jpg",
     },
   ],
 }
