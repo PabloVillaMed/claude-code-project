@@ -3,3 +3,9 @@ dist/
 dist-single/
 .expo/
 *.log
+
+# Claves de firma: nunca al repositorio
+android/app/*.keystore
+android/app/*.jks
+android/
+ios/

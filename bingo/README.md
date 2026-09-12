@@ -14,6 +14,20 @@ npm test           # 20 pruebas del motor
 npm run pack       # un único HTML autocontenido en dist-single/
 ```
 
+## Compilar el APK
+
+Necesita Android SDK (plataforma 36, build-tools 36, NDK 27) y `ANDROID_HOME`.
+
+```bash
+./scripts/build-apk.sh
+```
+
+Regenera el proyecto nativo, reaplica la firma y compila en modo release.
+Las credenciales de firma se pasan por `-P` en el momento de compilar y
+**nunca** se escriben en el repositorio; `android/` y los `.keystore` están
+en `.gitignore`. Sin esas credenciales la build cae a la clave de
+depuración, que sirve para probar en local pero no para distribuir.
+
 ## Cómo está montado
 
 ```
