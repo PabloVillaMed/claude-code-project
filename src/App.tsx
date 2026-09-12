@@ -9,6 +9,8 @@ import { traducirParches } from './lib/traducir'
 import { guardarFavoritos, leerFavoritos } from './lib/favoritos'
 import { aplicarPuntuacion, guardarPuntuaciones, leerPuntuaciones } from './lib/puntuaciones'
 import type { Puntuaciones } from './lib/puntuaciones'
+import { useCapa } from './lib/capas'
+import { useBotonAtras } from './lib/atras'
 import { useIdioma } from './i18n/contexto'
 import { PanelFiltros } from './components/PanelFiltros'
 import { TarjetaParche } from './components/TarjetaParche'
@@ -29,6 +31,12 @@ export default function App() {
 
   // Se fija al montar para que "abierto ahora" no cambie a mitad de un render.
   const [ahora] = useState(() => new Date())
+
+  // El gesto de atrás cierra primero lo que esté abierto encima y solo sale de
+  // la app cuando ya no queda nada.
+  useBotonAtras()
+  useCapa(detalleId !== null, () => setDetalleId(null))
+  useCapa(panelAbierto, () => setPanelAbierto(false))
 
   const catalogo = useMemo(() => traducirParches(PARCHES, idioma), [idioma])
 

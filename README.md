@@ -77,6 +77,24 @@ npm run android:release   # APK firmado, requiere android/keystore.properties
 
 El resultado queda en `android/app/build/outputs/apk/`.
 
+### El gesto de atrás
+
+Capacitor 8 **no trae ningún manejo del botón atrás**: sin plugin, Android cierra
+la actividad, así que el gesto sacaba de la app aunque hubiera un detalle abierto.
+Y con `@capacitor/app` instalado pero sin un oyente en JS ocurre lo contrario: el
+plugin se come el evento y atrás se queda sin efecto.
+
+La solución está en `src/lib/capas.ts` y `src/lib/atras.ts`. Cada cosa que se abre
+encima del listado —el detalle de un parche, el panel de filtros en el teléfono—
+se registra como una **capa** y añade una entrada al historial. Atrás cierra la
+capa de arriba; cuando ya no queda ninguna, sale de la app.
+
+Como el mecanismo se apoya en el historial del navegador, el botón de atrás del
+navegador hace exactamente lo mismo en la versión web, sin código aparte. Las
+pruebas de `capas.test.ts` cubren lo que es fácil romper: que se cierre de arriba
+abajo, que cerrar con la X no arrastre la capa de abajo y que no queden entradas
+sueltas en el historial.
+
 ### Firma
 
 `android/app/build.gradle` lee la firma de `android/keystore.properties`, que **no está
