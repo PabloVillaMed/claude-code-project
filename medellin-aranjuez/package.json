@@ -1,0 +1,31 @@
+{
+  "name": "medellin-aranjuez",
+  "productName": "Medellín: Aranjuez",
+  "version": "0.1.0",
+  "description": "Juego de mundo abierto en tercera persona inspirado en Aranjuez, Medellín (MVP).",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "author": "Pablo Villa",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:win:portable": "npm run build && electron-builder --win portable --x64"
+  },
+  "dependencies": {
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
