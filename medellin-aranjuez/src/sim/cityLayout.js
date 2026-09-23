@@ -354,7 +354,9 @@ const BLOCK_GENERATORS = {
     }
     for (let k = 0; k < 10; k++) {
       const ang = (k / 10) * Math.PI * 2 + 0.3;
-      addProp(ctx, { type: 'bench', x: block.cx + Math.cos(ang) * 8, z: block.cz + Math.sin(ang) * 8, rot: -ang + Math.PI / 2 });
+      const bx = block.cx + Math.cos(ang) * 8;
+      const bz = block.cz + Math.sin(ang) * 8;
+      addProp(ctx, { type: 'bench', x: bx, z: bz, rot: -ang + Math.PI / 2, collider: { hx: 0.75, hz: 0.75, maxY: terrainHeight(bx, bz) + GRID.curb + 0.9 } });
     }
     addProp(ctx, { type: 'kiosk', x: block.cx - 18, z: block.cz - 18, collider: { hx: 1.6, hz: 1.6 } });
     addPoi(ctx, {
@@ -486,7 +488,11 @@ const BLOCK_GENERATORS = {
   mirador(block, ctx) {
     genResidential(block, ctx, { sides: ['N', 'S'], low: true });
     addProp(ctx, { type: 'plaza', x: block.cx, z: block.cz, w: 40, d: 26 });
-    for (let k = 0; k < 6; k++) addProp(ctx, { type: 'bench', x: block.cx - 15 + k * 6, z: block.cz + 8, rot: Math.PI });
+    for (let k = 0; k < 6; k++) {
+      const bx = block.cx - 15 + k * 6;
+      const bz = block.cz + 8;
+      addProp(ctx, { type: 'bench', x: bx, z: bz, rot: Math.PI, collider: { hx: 0.95, hz: 0.3, maxY: terrainHeight(bx, bz) + GRID.curb + 0.9 } });
+    }
     addProp(ctx, { type: 'railing', x: block.cx, z: block.cz, w: 40 });
     addPoi(ctx, { id: 'mirador', name: 'Mirador de Aranjuez', desc: 'La mejor vista del valle de Aburrá. De noche parece un pesebre.', type: 'landmark', x: block.cx, z: block.cz + 4 });
   },

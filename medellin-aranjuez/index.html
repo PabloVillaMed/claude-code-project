@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' blob:" />
+    <title>Medellín: Aranjuez</title>
+    <link rel="stylesheet" href="/src/ui/styles.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="top-right">
+        <div id="clock">16:30</div>
+        <div id="money">$0</div>
+        <div id="weapon-box">
+          <div id="weapon-icon"></div>
+          <div id="weapon-name">Puños</div>
+          <div id="weapon-ammo"></div>
+        </div>
+        <div id="wanted"></div>
+      </div>
+      <div id="bottom-left">
+        <canvas id="minimap" width="260" height="170"></canvas>
+        <div id="bars">
+          <div class="bar"><div id="health-bar"></div></div>
+          <div class="bar"><div id="armor-bar"></div></div>
+          <div class="bar small"><div id="stamina-bar"></div></div>
+        </div>
+        <div id="street-name"></div>
+      </div>
+      <div id="crosshair"><span></span></div>
+      <div id="hitmarker"></div>
+      <div id="speedometer" class="hidden"><span id="speed-value">0</span><small>km/h</small><div id="vehicle-name"></div><div class="bar"><div id="vehicle-health"></div></div></div>
+      <div id="objective"></div>
+      <div id="mission-timer" class="hidden"></div>
+      <div id="help-box" class="hidden"></div>
+      <div id="toasts"></div>
+      <div id="poi-banner" class="hidden"><div class="poi-title"></div><div class="poi-desc"></div></div>
+      <div id="big-message" class="hidden"><div class="title"></div><div class="sub"></div></div>
+      <div id="damage-indicator"></div>
+      <div id="fps" class="hidden"></div>
+    </div>
+
+    <!-- Rueda de armas -->
+    <div id="weapon-wheel" class="hidden"></div>
+
+    <!-- Mapa completo -->
+    <div id="map-screen" class="overlay hidden">
+      <div class="map-header"><h2>Aranjuez · Comuna 4</h2><span>Clic: marcar destino (GPS) · M/Esc: cerrar</span></div>
+      <canvas id="fullmap" width="900" height="900"></canvas>
+      <div id="map-legend"></div>
+    </div>
+
+    <!-- Menús -->
+    <div id="menu" class="overlay">
+      <div class="menu-bg"></div>
+      <div class="menu-panel">
+        <div class="logo">
+          <div class="logo-top">MEDELLÍN</div>
+          <div class="logo-bottom">ARANJUEZ</div>
+          <div class="logo-sub">Comuna 4 · Mundo abierto</div>
+        </div>
+        <div id="menu-main" class="menu-buttons">
+          <button data-action="continue" class="hidden">Continuar partida</button>
+          <button data-action="play">Nueva partida</button>
+          <button data-action="controls">Controles</button>
+          <button data-action="settings">Configuración</button>
+          <button data-action="quit">Salir</button>
+        </div>
+        <div id="loading" class="hidden"><div class="load-text">Construyendo el barrio…</div><div class="bar"><div id="load-bar"></div></div></div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="menu-panel">
+        <h1>PAUSA</h1>
+        <div class="menu-buttons">
+          <button data-action="resume">Continuar</button>
+          <button data-action="map">Mapa</button>
+          <button data-action="controls">Controles</button>
+          <button data-action="settings">Configuración</button>
+          <button data-action="save">Guardar partida</button>
+          <button data-action="mainmenu">Salir al menú</button>
+        </div>
+        <div id="stats"></div>
+      </div>
+    </div>
+
+    <div id="controls" class="overlay hidden">
+      <div class="menu-panel wide">
+        <h1>Controles</h1>
+        <div class="controls-grid">
+          <div>
+            <h3>A pie</h3>
+            <p><kbd>W A S D</kbd> Moverse</p>
+            <p><kbd>Shift</kbd> Correr · <kbd>Alt</kbd> Caminar</p>
+            <p><kbd>Espacio</kbd> Saltar · <kbd>C</kbd>/<kbd>Ctrl</kbd> Agacharse</p>
+            <p><kbd>Clic der.</kbd> Apuntar · <kbd>Clic izq.</kbd> Disparar/Golpear</p>
+            <p><kbd>R</kbd> Recargar</p>
+            <p><kbd>1</kbd>–<kbd>6</kbd> / <kbd>Rueda</kbd> Cambiar arma</p>
+            <p><kbd>Tab</kbd> (mantener) Rueda de armas</p>
+            <p><kbd>F</kbd> Subir / bajar / robar vehículo</p>
+            <p><kbd>E</kbd> Interactuar (tiendas, misiones)</p>
+          </div>
+          <div>
+            <h3>En vehículo</h3>
+            <p><kbd>W</kbd> Acelerar · <kbd>S</kbd> Frenar/Reversa</p>
+            <p><kbd>A D</kbd> Girar · <kbd>Espacio</kbd> Freno de mano</p>
+            <p><kbd>H</kbd> Pito · <kbd>C</kbd> Mirar atrás</p>
+            <p><kbd>Clic izq.</kbd> Disparar desde el vehículo</p>
+            <h3>General</h3>
+            <p><kbd>M</kbd> Mapa · <kbd>V</kbd> Distancia de cámara</p>
+            <p><kbd>Esc</kbd>/<kbd>P</kbd> Pausa · <kbd>F11</kbd> Pantalla completa</p>
+          </div>
+          <div>
+            <h3>Mando Xbox</h3>
+            <p><kbd>LS</kbd> Moverse · <kbd>RS</kbd> Cámara</p>
+            <p><kbd>A</kbd> Saltar · <kbd>B</kbd> Agacharse/Freno mano</p>
+            <p><kbd>X</kbd> Recargar · <kbd>Y</kbd> Vehículo</p>
+            <p><kbd>LT</kbd> Apuntar/Frenar · <kbd>RT</kbd> Disparar/Acelerar</p>
+            <p><kbd>LB</kbd>/<kbd>RB</kbd> Cambiar arma</p>
+            <p><kbd>L3</kbd> Correr · <kbd>R3</kbd> Cámara</p>
+            <p><kbd>↑</kbd> Interactuar · <kbd>View</kbd> Mapa · <kbd>Menu</kbd> Pausa</p>
+          </div>
+        </div>
+        <div class="menu-buttons"><button data-action="back">Volver</button></div>
+      </div>
+    </div>
+
+    <div id="settings" class="overlay hidden">
+      <div class="menu-panel">
+        <h1>Configuración</h1>
+        <label>Calidad gráfica
+          <select id="set-quality">
+            <option value="baja">Baja</option>
+            <option value="media">Media</option>
+            <option value="alta">Alta</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </label>
+        <label>Sensibilidad del ratón <input id="set-sens" type="range" min="0.2" max="3" step="0.1" /></label>
+        <label>Volumen <input id="set-vol" type="range" min="0" max="1" step="0.05" /></label>
+        <label>Campo de visión <input id="set-fov" type="range" min="55" max="90" step="1" /></label>
+        <label class="check"><input id="set-invert" type="checkbox" /> Invertir eje Y</label>
+        <label class="check"><input id="set-fps" type="checkbox" /> Mostrar FPS</label>
+        <p class="note">La calidad se aplica al reiniciar la partida.</p>
+        <div class="menu-buttons"><button data-action="back">Volver</button></div>
+      </div>
+    </div>
+
+    <div id="shop" class="overlay hidden">
+      <div class="menu-panel wide">
+        <h1 id="shop-title">Armería El Parcero</h1>
+        <div id="shop-money"></div>
+        <div id="shop-items"></div>
+        <div class="menu-buttons"><button data-action="close-shop">Salir (Esc)</button></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

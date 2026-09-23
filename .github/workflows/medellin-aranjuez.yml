@@ -1,0 +1,59 @@
+name: Medellín Aranjuez
+
+on:
+  push:
+    paths:
+      - 'medellin-aranjuez/**'
+      - '.github/workflows/medellin-aranjuez.yml'
+  pull_request:
+    paths:
+      - 'medellin-aranjuez/**'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: medellin-aranjuez
+
+jobs:
+  pruebas:
+    name: Pruebas (unitarias + e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: medellin-aranjuez/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  windows:
+    name: Build Windows 11 (instalador, portable y zip)
+    needs: pruebas
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: medellin-aranjuez/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx electron-builder --win nsis portable zip --x64 --publish never
+      - name: Prueba de humo del .exe empaquetado
+        run: node scripts/electron-smoke.mjs release/win-unpacked/MedellinAranjuez.exe electron-smoke.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MedellinAranjuez-Windows
+          path: |
+            medellin-aranjuez/release/*.exe
+            medellin-aranjuez/release/*.zip
+            medellin-aranjuez/electron-smoke.png
+          if-no-files-found: error

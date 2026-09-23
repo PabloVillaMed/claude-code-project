@@ -15,17 +15,77 @@
     "start": "npm run build && electron .",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
-    "dist:win": "npm run build && electron-builder --win --x64",
-    "dist:win:portable": "npm run build && electron-builder --win portable --x64"
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "icon": "node scripts/make-icon.mjs",
+    "shots": "npm run build && node scripts/shots.mjs shots",
+    "dist:win:zip": "npm run build && electron-builder --win zip --x64 --publish never"
   },
-  "dependencies": {
-    "three": "^0.186.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@playwright/test": "1.63",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "three": "^0.186.0"
+  },
+  "build": {
+    "appId": "com.pablovilla.medellinaranjuez",
+    "productName": "Medellin Aranjuez",
+    "copyright": "© 2026 Pablo Villa",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "executableName": "MedellinAranjuez",
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "MedellinAranjuez-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Medellín Aranjuez",
+      "uninstallDisplayName": "Medellín: Aranjuez",
+      "artifactName": "MedellinAranjuez-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "MedellinAranjuez-Portable-${version}.${ext}"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pablovillamed/claude-code-project.git"
   }
 }
