@@ -13,6 +13,7 @@ const [cmd, args] = exe
   : [electronPath, ['.', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']];
 const child = spawn(cmd, [...args, '--smoke-test', `--smoke-out=${shot}`], { stdio: 'inherit' });
 const code = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
-if (fs.existsSync(`${shot}.txt`)) console.log(fs.readFileSync(`${shot}.txt`, 'utf8'));
+// Si la app falló sin poder escribir en consola, mostrar su registro.
+if (code !== 0 && fs.existsSync(`${shot}.txt`)) console.log(fs.readFileSync(`${shot}.txt`, 'utf8'));
 console.log(`Código de salida: ${code}`);
 process.exit(code === 0 && fs.existsSync(shot) ? 0 : 1);
