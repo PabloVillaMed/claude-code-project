@@ -1,7 +1,12 @@
 // Proceso principal de Electron: ventana del juego para Windows 11.
 const { app, BrowserWindow, Menu, ipcMain, protocol, shell } = require('electron');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
+
+// Modo prueba de humo (CI): --smoke-test [--smoke-out=captura.png]
+const SMOKE = process.argv.includes('--smoke-test');
+const SMOKE_OUT = path.resolve((process.argv.find((a) => a.startsWith('--smoke-out=')) ?? '--smoke-out=electron-smoke.png').slice('--smoke-out='.length));
 
 // El juego se sirve desde un protocolo propio (seguro y con origen estable
 // para la CSP y el guardado en localStorage).
@@ -70,10 +75,64 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('app://')) e.preventDefault();
   });
-  win.loadURL('app://juego/index.html');
+  win.loadURL(SMOKE ? 'app://juego/index.html?quality=baja' : 'app://juego/index.html');
+  if (SMOKE) runSmokeTest(win);
   win.on('closed', () => {
     win = null;
   });
+}
+
+/**
+ * Prueba de humo del ejecutable real: carga el juego, entra a jugar desde el
+ * menú, espera a que corra, guarda una captura y sale con 0 (ok) o 1 (fallo).
+ * El resultado queda también en <captura>.txt (las apps GUI de Windows no
+ * tienen consola).
+ */
+async function runSmokeTest(w) {
+  const log = [];
+  const say = (m) => {
+    log.push(m);
+    console.log(m);
+    fsSync.writeFileSync(`${SMOKE_OUT}.txt`, log.join('\n'));
+  };
+  const errors = [];
+  w.webContents.on('console-message', (e, ...rest) => {
+    const level = e?.level ?? rest[0];
+    const message = e?.message ?? rest[1];
+    if ((level === 'error' || level === 3) && !/404|favicon/.test(String(message))) errors.push(String(message));
+  });
+  const js = (code) => w.webContents.executeJavaScript(code, true);
+  const deadline = Date.now() + 20 * 60 * 1000;
+  const waitFor = async (code, label) => {
+    while (Date.now() < deadline) {
+      try {
+        if (await js(code)) return;
+      } catch {
+        // la página aún no está lista
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    throw new Error(`Tiempo agotado esperando: ${label}`);
+  };
+  try {
+    say(`Iniciando prueba de humo: ${app.getName()} ${app.getVersion()} (${process.platform})`);
+    await waitFor('!!(window.__game && window.__game.ready)', 'carga del juego');
+    say('Juego cargado; entrando desde el menú.');
+    await js(`document.querySelector('[data-action="play"]').click()`);
+    await waitFor(`window.__game.state().state === 'playing'`, 'partida');
+    const f0 = await js('window.__game.frames');
+    await waitFor(`window.__game.frames > ${f0 + 20}`, '20 frames de juego');
+    const img = await w.webContents.capturePage();
+    fsSync.writeFileSync(SMOKE_OUT, img.toPNG());
+    const st = JSON.parse(await js('JSON.stringify(window.__game.state())'));
+    say(`Estado: ${JSON.stringify({ state: st.state, peatones: st.peds, vehiculos: st.vehicles, puente: await js('typeof window.desktop?.quit') })}`);
+    if (errors.length) throw new Error(`Errores en consola:\n${errors.join('\n')}`);
+    say(`OK: la app arranca y el juego corre. Captura: ${SMOKE_OUT}`);
+    app.exit(0);
+  } catch (err) {
+    say(`FALLO: ${err.message}`);
+    app.exit(1);
+  }
 }
 
 app.on('second-instance', () => {

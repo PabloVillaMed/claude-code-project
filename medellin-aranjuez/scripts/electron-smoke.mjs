@@ -1,31 +1,18 @@
-// Prueba de humo de la app de escritorio: abre el ejecutable de Electron,
-// espera a que el juego cargue, entra a jugar y guarda una captura.
+// Prueba de humo de la app de escritorio: ejecuta el binario con
+// --smoke-test (ver electron/main.cjs) y falla si la app no arranca y juega.
 // Uso: node scripts/electron-smoke.mjs [ruta-al-exe] [captura.png]
-import { _electron as electron } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
+import electronPath from 'electron';
 
 const exe = process.argv[2];
-const shot = process.argv[3] ?? 'electron-smoke.png';
-const app = await electron.launch(
-  exe
-    ? { executablePath: path.resolve(exe), args: [], timeout: 120000 }
-    : { args: ['.', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'], timeout: 120000 },
-);
-const errors = [];
-const win = await app.firstWindow();
-win.on('pageerror', (e) => errors.push(e.message));
-win.on('console', (m) => m.type() === 'error' && !/404|favicon/.test(m.text()) && errors.push(m.text()));
-console.log('Ventana:', await win.title(), win.url());
-await win.waitForFunction(() => window.__game?.ready, null, { timeout: 600000 });
-const hasBridge = await win.evaluate(() => typeof window.desktop?.quit === 'function');
-await win.click('[data-action="play"]');
-await win.waitForFunction(() => window.__game.state().state === 'playing', null, { timeout: 60000 });
-const start = await win.evaluate(() => window.__game.frames);
-await win.waitForFunction((t) => window.__game.frames > t, start + 20, { timeout: 600000 });
-await win.screenshot({ path: shot });
-const state = await win.evaluate(() => window.__game.state());
-console.log('Estado:', JSON.stringify({ state: state.state, peds: state.peds, vehicles: state.vehicles, fps: state.fps }));
-await app.close();
-if (!hasBridge) throw new Error('El puente preload (window.desktop) no está disponible');
-if (errors.length) throw new Error(`Errores en la app:\n${errors.join('\n')}`);
-console.log('OK: la app de escritorio arranca y el juego corre.');
+const shot = path.resolve(process.argv[3] ?? 'electron-smoke.png');
+const [cmd, args] = exe
+  ? [path.resolve(exe), []]
+  : [electronPath, ['.', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']];
+const child = spawn(cmd, [...args, '--smoke-test', `--smoke-out=${shot}`], { stdio: 'inherit' });
+const code = await new Promise((resolve) => child.on('exit', (c) => resolve(c ?? 1)));
+if (fs.existsSync(`${shot}.txt`)) console.log(fs.readFileSync(`${shot}.txt`, 'utf8'));
+console.log(`Código de salida: ${code}`);
+process.exit(code === 0 && fs.existsSync(shot) ? 0 : 1);
