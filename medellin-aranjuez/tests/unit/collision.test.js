@@ -9,6 +9,7 @@ import {
   rayVsVerticalCapsule,
   rayVsObb3D,
 } from '../../src/sim/collision.js';
+import { obbFromAxis } from '../../src/sim/collision.js';
 
 describe('colisiones', () => {
   it('círculo contra caja: empuja fuera por la cara más cercana', () => {
@@ -75,5 +76,48 @@ describe('colisiones', () => {
     // Girada 90°: su largo (2) queda sobre X.
     expect(circleVsObb(2.2, 0, 0.3, o)).not.toBeNull();
     expect(circleVsObb(0, 1.5, 0.3, o)).toBeNull();
+  });
+});
+
+describe('cajas giradas (casas que siguen el rumbo de su calle)', () => {
+  const ang = 0.6;
+  const world = () => {
+    const w = new CollisionWorld(24);
+    // Casa de 10 x 6 m girada ~34°: eje a lo ancho (cos, -sin) de ese ángulo.
+    w.add({ obb: obbFromAxis(50, 40, Math.cos(ang), -Math.sin(ang), 5, 3), minY: 0, maxY: 9, kind: 'building' });
+    return w;
+  };
+
+  it('el punto dentro de la casa está bloqueado y el de la esquina del AABB no', () => {
+    const w = world();
+    expect(w.pointBlocked(50, 40)).toBe(true);
+    const b = w.boxes[0];
+    // Esquina del rectángulo alineado que contiene a la casa: queda por fuera de la casa girada.
+    expect(w.pointBlocked(b.minX + 0.2, b.minZ + 0.2)).toBe(false);
+  });
+
+  it('un círculo que choca de lado sale en la dirección de la normal de la pared', () => {
+    const w = world();
+    const ux = Math.cos(ang);
+    const uz = -Math.sin(ang);
+    // Frente a la cara "a lo ancho" (a 5 m del centro a lo largo de u), metido 0.3 m.
+    const x = 50 + ux * (5 + 0.4 - 0.3);
+    const z = 40 + uz * (5 + 0.4 - 0.3);
+    const r = w.resolveCircle(x, z, 0.4);
+    expect(r.hit).toBe(true);
+    expect(r.nx * ux + r.nz * uz).toBeGreaterThan(0.99);
+    expect(Math.hypot(r.x - 50, r.z - 40)).toBeCloseTo(5.4, 2);
+  });
+
+  it('las balas pegan en la pared girada y no en el hueco del AABB', () => {
+    const w = world();
+    const hit = w.raycast(0, 1.5, 40, 1, 0, 0, 200);
+    expect(hit).toBeTruthy();
+    // La pared en z = 40 está donde el rayo cruza la caja girada.
+    expect(hit.t).toBeGreaterThan(40);
+    expect(hit.t).toBeLessThan(50);
+    const b = w.boxes[0];
+    // Rayo corto que termina en la esquina vacía del AABB: no toca la casa.
+    expect(w.raycast(b.minX - 1, 1.5, b.minZ + 0.2, 1, 0, 0, 1.5)).toBe(null);
   });
 });

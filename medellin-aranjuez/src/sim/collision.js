@@ -1,5 +1,7 @@
 // Colisiones puras: cajas estáticas (edificios, muros) en una rejilla espacial,
 // círculos (personajes), cajas orientadas (vehículos) y rayos (balas, cámara).
+// Las cajas estáticas pueden ser alineadas a los ejes o giradas (`obb`): las
+// casas siguen el rumbo de su calle, que ya no es una cuadrícula.
 
 export class CollisionWorld {
   constructor(cellSize = 24) {
@@ -16,8 +18,12 @@ export class CollisionWorld {
     return ix * 73856093 + iz * 19349663;
   }
 
-  /** box: {minX,maxX,minZ,maxZ,minY,maxY,kind?} */
+  /**
+   * box: {minX,maxX,minZ,maxZ,minY,maxY,kind?} o, girada,
+   * {obb: {x, z, hx, hz, angle}, minY, maxY, kind?} (se le calcula el AABB).
+   */
   add(box) {
+    if (box.obb) Object.assign(box, obbBounds(box.obb));
     if (box.minY === undefined) box.minY = -1000;
     if (box.maxY === undefined) box.maxY = 1000;
     box.id = this.boxes.length;
@@ -56,7 +62,7 @@ export class CollisionWorld {
   /** ¿Un punto (a una altura y) está dentro de algún volumen? */
   pointBlocked(x, z, y = null) {
     for (const b of this.query(x, z, x, z, this._scratch)) {
-      if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) {
+      if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && (!b.obb || pointInObb(x, z, b.obb))) {
         if (y === null || (y >= b.minY && y <= b.maxY)) return true;
       }
     }
@@ -76,7 +82,7 @@ export class CollisionWorld {
       let moved = false;
       for (const b of this.query(x - r, z - r, x + r, z + r, tmp)) {
         if (feetY !== null && (feetY >= b.maxY - 0.01 || headY <= b.minY)) continue;
-        const res = circleVsAABB(x, z, r, b);
+        const res = b.obb ? circleVsObb(x, z, r, b.obb) : circleVsAABB(x, z, r, b);
         if (res) {
           x += res.nx * res.depth;
           z += res.nz * res.depth;
@@ -115,7 +121,7 @@ export class CollisionWorld {
           for (const b of cell) {
             if (b.stamp === stamp) continue;
             b.stamp = stamp;
-            const hit = rayVsAABB(ox, oy, oz, dx, dy, dz, b, maxDist);
+            const hit = b.obb ? rayVsObbBox(ox, oy, oz, dx, dy, dz, b, maxDist) : rayVsAABB(ox, oy, oz, dx, dy, dz, b, maxDist);
             if (hit && (!best || hit.t < best.t)) best = { ...hit, box: b };
           }
         }
@@ -293,13 +299,47 @@ export function obbVsObb(a, b) {
   return best;
 }
 
-export const aabbToObb = (b) => ({
-  x: (b.minX + b.maxX) / 2,
-  z: (b.minZ + b.maxZ) / 2,
-  hx: (b.maxX - b.minX) / 2,
-  hz: (b.maxZ - b.minZ) / 2,
-  angle: 0,
-});
+/** Caja orientada a partir de su centro, el eje "a lo ancho" (ux,uz) y medias medidas. */
+export function obbFromAxis(x, z, ux, uz, hu, hv) {
+  // Convención yaw de obbAxes: derecha = (cos a, -sin a).
+  return { x, z, hx: hu, hz: hv, angle: Math.atan2(-uz, ux) };
+}
+
+/** AABB que contiene una caja orientada. */
+export function obbBounds(o) {
+  const c = Math.abs(Math.cos(o.angle));
+  const s = Math.abs(Math.sin(o.angle));
+  const ex = o.hx * c + o.hz * s;
+  const ez = o.hx * s + o.hz * c;
+  return { minX: o.x - ex, maxX: o.x + ex, minZ: o.z - ez, maxZ: o.z + ez };
+}
+
+export function pointInObb(x, z, o) {
+  const [ra, fa] = obbAxes(o);
+  const dx = x - o.x;
+  const dz = z - o.z;
+  return Math.abs(dx * ra[0] + dz * ra[1]) < o.hx && Math.abs(dx * fa[0] + dz * fa[1]) < o.hz;
+}
+
+/** Rayo 3D contra una caja estática girada: mismo formato que rayVsAABB (con normal). */
+export function rayVsObbBox(ox, oy, oz, dx, dy, dz, b, maxDist) {
+  const o = b.obb;
+  const [ra, fa] = obbAxes(o);
+  const px = ox - o.x;
+  const pz = oz - o.z;
+  const hit = rayVsAABB(px * ra[0] + pz * ra[1], oy, px * fa[0] + pz * fa[1], dx * ra[0] + dz * ra[1], dy, dx * fa[0] + dz * fa[1], { minX: -o.hx, maxX: o.hx, minY: b.minY, maxY: b.maxY, minZ: -o.hz, maxZ: o.hz }, maxDist);
+  if (!hit || hit.inside) return hit;
+  return { t: hit.t, nx: ra[0] * hit.nx + fa[0] * hit.nz, ny: hit.ny, nz: ra[1] * hit.nx + fa[1] * hit.nz };
+}
+
+export const aabbToObb = (b) =>
+  b.obb ?? {
+    x: (b.minX + b.maxX) / 2,
+    z: (b.minZ + b.maxZ) / 2,
+    hx: (b.maxX - b.minX) / 2,
+    hz: (b.maxZ - b.minZ) / 2,
+    angle: 0,
+  };
 
 /** Círculo contra caja orientada. */
 export function circleVsObb(x, z, r, o) {
