@@ -4,3 +4,4 @@ release/
 test-results/
 playwright-report/
 *.log
+scripts/assets/.cache/

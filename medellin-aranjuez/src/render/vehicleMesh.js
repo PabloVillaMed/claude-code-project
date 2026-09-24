@@ -1,9 +1,15 @@
-// Modelos procedurales de vehículos: taxi amarillo, sedán, camioneta,
-// patrulla de la Policía, buseta de barrio y moto. Pintura con clearcoat.
+// Vehículos: taxi amarillo, sedán, camioneta, patrulla de la Policía, buseta
+// de barrio y moto. Usa modelos glTF externos (CC0, ver ASSETS-CREDITS.md y
+// scripts/assets/vehiculos.mjs) con materiales PBR propios; si un modelo no
+// cargó, construye la versión procedural (perfiles extruidos).
 
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
 import { textTexture } from './textures.js';
+import { registerAssets } from './assetManifest.js';
+import { assets } from './assets.js';
+import { VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
 
 const PAINTS = [0xc0c4c8, 0xf2f2f2, 0x9b1c1c, 0x111316, 0x1e3a6b, 0x4a4f55, 0x6b8f71, 0xb87333];
 
@@ -20,6 +26,247 @@ const tireMat = () => shared('tire', () => new THREE.MeshStandardMaterial({ colo
 const rimMat = () => shared('rim', () => new THREE.MeshStandardMaterial({ color: 0xb8bcc0, metalness: 0.9, roughness: 0.25 }));
 const blackMat = () => shared('trim', () => new THREE.MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.6 }));
 const chromeMat = () => shared('chrome', () => new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.12 }));
+
+// ======================================================= modelos glTF externos
+registerAssets(
+  ['hatchback', 'sedan', 'suv', 'buseta', 'moto'].map((m) => ({ key: `vehiculos/${m}`, type: 'gltf', url: `models/vehiculos/${m}.glb` })),
+);
+
+/**
+ * Modelo de cada tipo. `hBlend` mezcla (en escala logarítmica) la altura que
+ * resulta de conservar las proporciones del modelo (0) con la altura física
+ * de VEHICLE_TYPES (1). `uniform` escala igual en los tres ejes (moto).
+ * `seat`: puesto del conductor relativo al modelo ya escalado (x en fracción
+ * del ancho, z en fracción del largo desde el centro, y = techo - drop).
+ */
+const MODEL_CFG = {
+  taxi: { model: 'hatchback', hBlend: 0.4, seat: { x: -0.2, z: 0.02, drop: 1.12 } },
+  sedan: { model: 'sedan', hBlend: 0.6, seat: { x: -0.21, z: 0.03, drop: 1.12 } },
+  policia: { model: 'sedan', hBlend: 0.6, seat: { x: -0.21, z: 0.03, drop: 1.12 } },
+  camioneta: { model: 'suv', hBlend: 0.5, seat: { x: -0.21, z: 0.0, drop: 1.18 } },
+  buseta: { model: 'buseta', hBlend: 1, seat: { x: -0.24, z: -0.39, drop: 1.75 } },
+  // Moto: el faro y el stop se añaden como mallas (medidas ya escaladas).
+  moto: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.2, z: 0.15 }, headY: 0.77, headZ: 0.4, tailY: 0.46, tailZ: 0.09 },
+};
+
+// Materiales PBR compartidos por clave de material del modelo normalizado.
+const MODEL_MATS = {
+  vidrio: () => shared('m-vidrio', () => new THREE.MeshPhysicalMaterial({ color: 0x0b1115, metalness: 0.2, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.82, envMapIntensity: 1.4 })),
+  negro: () => shared('m-negro', () => new THREE.MeshStandardMaterial({ color: 0x111213, roughness: 0.55, metalness: 0.1 })),
+  plastico: () => shared('m-plastico', () => new THREE.MeshStandardMaterial({ color: 0x232426, roughness: 0.75 })),
+  gris: () => shared('m-gris', () => new THREE.MeshStandardMaterial({ color: 0x3b3e42, roughness: 0.45, metalness: 0.5 })),
+  cromo: () => chromeMat(),
+  placa: () => shared('m-placa', () => new THREE.MeshStandardMaterial({ color: 0xe8d44a, roughness: 0.5 })),
+  direccional: () => shared('m-direccional', () => new THREE.MeshStandardMaterial({ color: 0xd07010, emissive: 0xff8a1a, emissiveIntensity: 0.15, roughness: 0.25 })),
+  caucho: () => shared('m-caucho', () => new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.92 })),
+  rin: () => shared('m-rin', () => new THREE.MeshStandardMaterial({ color: 0xaeb2b6, metalness: 0.95, roughness: 0.22 })),
+};
+
+const headMat = () => new THREE.MeshStandardMaterial({ color: 0xfff6e0, emissive: 0xfff1d0, emissiveIntensity: 0.2, roughness: 0.1, metalness: 0.2 });
+const tailMat = () => new THREE.MeshStandardMaterial({ color: 0x6a0000, emissive: 0xff1a1a, emissiveIntensity: 0.3, roughness: 0.3 });
+
+/** Material de calcomanía (se pinta encima de la carrocería sin z-fighting). */
+function decalMat(opts) {
+  return new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, ...opts });
+}
+
+/** Texto sobre fondo transparente para calcomanías (POLICÍA, etc.). */
+function labelTexture(text, color, { w = 512, h = 128, font = 'bold 92px Arial, sans-serif' } = {}) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = font;
+  ctx.fillText(text, w / 2, h / 2 + 4);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** Franja de cuadros negros y blancos del taxi. */
+function checkerTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 16;
+  const ctx = c.getContext('2d');
+  for (let i = 0; i < 32; i++) {
+    ctx.fillStyle = i % 2 ? '#111' : '#f4f4f4';
+    ctx.fillRect(i * 8, 0, 8, 8);
+    ctx.fillStyle = i % 2 ? '#f4f4f4' : '#111';
+    ctx.fillRect(i * 8, 8, 8, 8);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  return t;
+}
+
+/** Moto: el rojo de la textura original se reemplaza por el color elegido. */
+function motoPaint(base, color) {
+  return shared(`moto-paint${color}`, () => {
+    const m = base.clone();
+    m.name = 'pintura';
+    const uPaint = { value: new THREE.Color(color) };
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uPaint = uPaint;
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uPaint;')
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+          float paintMask = smoothstep(0.25, 0.55, diffuseColor.r - max(diffuseColor.g, diffuseColor.b));
+          diffuseColor.rgb = mix(diffuseColor.rgb, uPaint, paintMask);`,
+        );
+    };
+    m.customProgramCacheKey = () => 'moto-paint';
+    return m;
+  });
+}
+
+const _ray = new THREE.Raycaster();
+const _v = new THREE.Vector3();
+/** Primer impacto de un rayo contra las mallas de `root` (espacio mundo). */
+function hit(root, origin, dir) {
+  _ray.set(origin, dir);
+  _ray.far = 50;
+  const h = _ray.intersectObject(root, true);
+  return h.length ? h[0] : null;
+}
+
+const templates = new Map();
+
+/**
+ * Plantilla por tipo: carrocería escalada con materiales compartidos, ruedas,
+ * calcomanías, techo y puesto. Se crea una vez; cada instancia la clona
+ * (comparte geometrías y materiales, salvo pintura y luces).
+ */
+function modelTemplate(type) {
+  if (templates.has(type)) return templates.get(type);
+  const cfg = MODEL_CFG[type];
+  const gltf = cfg && assets.gltf(`vehiculos/${cfg.model}`);
+  const src = gltf?.scene?.getObjectByName('carroceria');
+  // Sin modelo (no cargó o aún no se cargan los assets): respaldo procedural.
+  if (!src) return null;
+  const spec = VEHICLE_TYPES[type];
+  const root = src.parent;
+  root.updateMatrixWorld(true);
+  const bodyBox = new THREE.Box3().setFromObject(src);
+  const size = bodyBox.getSize(new THREE.Vector3());
+  const wheelSrc = root.children.filter((o) => o.name.startsWith('rueda'));
+  const wheelBox = new THREE.Box3();
+  for (const w of wheelSrc) wheelBox.expandByObject(w);
+  // Ancho sin retrovisores: el de las ruedas con un pequeño margen.
+  const modelW = cfg.uniform || wheelBox.isEmpty() ? size.x : Math.min(size.x, (wheelBox.max.x - wheelBox.min.x) * 1.06);
+  const sL = spec.length / size.z;
+  const sW = cfg.uniform ? sL : spec.width / modelW;
+  const sH = cfg.uniform ? sL : Math.exp((1 - cfg.hBlend) * Math.log((sL + sW) / 2) + cfg.hBlend * Math.log(spec.height / bodyBox.max.y));
+  const ws = cfg.uniform ? sL : (sL + sH) / 2;
+
+  const body = new THREE.Group();
+  body.name = 'carroceria';
+  body.add(src.clone(true));
+  body.scale.set(sW, sH, sL);
+  body.traverse((o) => {
+    if (!o.isMesh) return;
+    const key = o.material.name;
+    if (MODEL_MATS[key]) o.material = MODEL_MATS[key]();
+    else if (key === 'textura') {
+      // Moto: material PBR con texturas del autor.
+      o.material.envMapIntensity = 1;
+    }
+    o.castShadow = true;
+    o.receiveShadow = true;
+  });
+  body.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(body);
+  const L = box.max.z - box.min.z;
+  const W = box.max.x - box.min.x;
+
+  const wheels = wheelSrc.map((w) => {
+    const wb = new THREE.Box3().setFromObject(w);
+    const r = (wb.max.y - wb.min.y) / 2;
+    const content = new THREE.Group();
+    for (const c of w.children) content.add(c.clone(true));
+    content.traverse((o) => {
+      if (o.isMesh) {
+        o.material = MODEL_MATS[o.material.name]?.() ?? o.material;
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    content.scale.set(cfg.uniform ? sL : sW, ws, ws);
+    return { content, pos: new THREE.Vector3(w.position.x * sW, r * ws, w.position.z * sL), front: w.name.startsWith('rueda_del') };
+  });
+
+  // Techo: barrido de rayos hacia abajo por el eje central.
+  let roofY = 0;
+  const roofZ = [];
+  const samples = [];
+  for (let z = box.min.z; z <= box.max.z; z += 0.05) {
+    const h = hit(body, _v.set(0, box.max.y + 1, z), new THREE.Vector3(0, -1, 0));
+    if (h) samples.push([z, h.point.y]);
+  }
+  for (const [, y] of samples) roofY = Math.max(roofY, y);
+  for (const [z, y] of samples) if (y > roofY - 0.05) roofZ.push(z);
+  const roofCenterZ = roofZ.length ? (roofZ[0] + roofZ[roofZ.length - 1]) / 2 : 0;
+
+  // Línea de cintura: parte baja de las ventanas laterales.
+  let beltY = roofY * 0.62;
+  body.traverse((o) => {
+    if (o.isMesh && o.material === MODEL_MATS.vidrio()) {
+      const b = new THREE.Box3().setFromObject(o);
+      beltY = b.min.y;
+    }
+  });
+
+  const tpl = { type, cfg, body, wheels, L, W, box, roofY, roofCenterZ, beltY, decals: [], sL };
+  const paintMeshes = [];
+  body.traverse((o) => o.isMesh && o.material.name === 'pintura' && paintMeshes.push(o));
+  // Calcomanía lateral (ambos costados) proyectada sobre la pintura.
+  const sideDecal = (material, y, z, len, hgt) => {
+    for (const side of [-1, 1]) {
+      const surf = hit(body, _v.set(side * (W + 1), y, z), new THREE.Vector3(-side, 0, 0));
+      const x = surf ? surf.point.x : (side * W) / 2;
+      for (const m of paintMeshes) {
+        const g = new DecalGeometry(m, new THREE.Vector3(x, y, z), new THREE.Euler(0, (side * Math.PI) / 2, 0), new THREE.Vector3(len, hgt, 0.6));
+        if (g.attributes.position.count) tpl.decals.push({ geometry: g, material });
+      }
+    }
+  };
+  tpl.sideDecal = sideDecal;
+  if (type === 'taxi') {
+    sideDecal(decalMat({ map: checkerTexture() }), beltY - 0.07, 0.1, L * 0.62, 0.075);
+  } else if (type === 'policia') {
+    sideDecal(decalMat({ color: 0x0b6b3a, roughness: 0.4 }), beltY - 0.3, 0, L * 0.94, 0.13);
+    sideDecal(decalMat({ color: 0x0b6b3a, roughness: 0.4 }), beltY - 0.12, 0, L * 0.94, 0.035);
+    sideDecal(decalMat({ map: labelTexture('POLICÍA', '#0b5a33') }), beltY - 0.21, 0.05, 1.25, 0.26);
+  } else if (type === 'buseta') {
+    // Las franjas de color varían por bus: se generan en la instancia.
+    tpl.stripeY = [beltY - 0.3, beltY - 0.55];
+  }
+  // Puesto del conductor (lado izquierdo).
+  if (cfg.seat) tpl.seat = { x: cfg.seat.x * W, y: roofY - cfg.seat.drop, z: cfg.seat.z * L };
+  else tpl.seat = { ...(cfg.seatAbs ?? { x: 0, y: 0.34, z: 0.12 }) };
+  templates.set(type, tpl);
+  return tpl;
+}
+
+/** Franjas de color de una buseta (compartidas por color). */
+function busStripes(tpl, color) {
+  return shared(`bus-stripes-${color}`, () => {
+    const out = [];
+    const saved = tpl.decals;
+    tpl.decals = out;
+    tpl.sideDecal(decalMat({ color, roughness: 0.3 }), tpl.stripeY[0], 0.2, tpl.L * 0.96, 0.2);
+    tpl.sideDecal(decalMat({ color: 0xf7c600, roughness: 0.3 }), tpl.stripeY[1], 0.2, tpl.L * 0.96, 0.12);
+    tpl.decals = saved;
+    return out;
+  });
+}
 
 function profileGeo(points, width, bevel = 0.06) {
   const shape = new THREE.Shape();
@@ -68,17 +315,124 @@ export class VehicleView {
     this.frontPivots = [];
     this.lights = { head: null, tail: null, bar: [] };
     this.color = opts.color ?? PAINTS[Math.floor(Math.random() * PAINTS.length)];
-    if (type === 'moto') this._buildMoto(opts);
+    this.lights.sign = null;
+    const tpl = opts.procedural ? null : modelTemplate(type);
+    this.fromModel = !!tpl;
+    if (tpl) this._buildFromModel(tpl, opts);
+    else if (type === 'moto') this._buildMoto(opts);
     else if (type === 'buseta') this._buildBus(opts);
     else this._buildCar(type, opts);
-    this.group.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
+    if (!tpl) {
+      this.group.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+    }
     this.sirenPhase = 0;
     this.burnt = false;
+  }
+
+  /** Letrero TAXI iluminado sobre el techo (y = base del letrero). */
+  _taxiSign(y, z) {
+    const signMat = shared('taxi-sign', () => {
+      const signTex = textTexture('TAXI', { w: 256, h: 96, bg: '#ffffff', fg: '#111111', font: 'bold 70px Arial', border: '#111111' });
+      return new THREE.MeshStandardMaterial({ map: signTex, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: 0.3 });
+    }).clone();
+    const geo = shared('taxi-sign-geo', () => new RoundedBoxGeometry(0.55, 0.2, 0.25, 2, 0.03));
+    const sign = new THREE.Mesh(geo, [blackMat(), blackMat(), blackMat(), blackMat(), signMat, signMat]);
+    sign.position.set(0, y + 0.1, z);
+    sign.castShadow = true;
+    this.chassis.add(sign);
+    this.lights.sign = signMat;
+  }
+
+  /** Barra de luces roja/azul de la patrulla (y = base de la barra). */
+  _sirenBar(y, z, width = 1.2) {
+    const bar = new THREE.Group();
+    const base = new THREE.Mesh(shared(`bar-base${width}`, () => new RoundedBoxGeometry(width, 0.08, 0.3, 2, 0.03)), blackMat());
+    base.position.y = 0.04;
+    bar.add(base);
+    const lensGeo = shared(`bar-lens${width}`, () => new RoundedBoxGeometry(width * 0.4, 0.12, 0.26, 2, 0.04));
+    for (const [x, c] of [[-width * 0.26, 0xff0000], [width * 0.26, 0x0044ff]]) {
+      const m = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.1, transparent: true, opacity: 0.9, roughness: 0.2 });
+      const l = new THREE.Mesh(lensGeo, m);
+      l.position.set(x, 0.13, 0);
+      bar.add(l);
+      this.lights.bar.push(m);
+    }
+    bar.position.set(0, y, z);
+    bar.traverse((o) => o.isMesh && (o.castShadow = true));
+    this.chassis.add(bar);
+  }
+
+  /** Vehículo a partir del modelo glTF normalizado (ver modelTemplate). */
+  _buildFromModel(tpl, opts) {
+    const type = this.type;
+    let color = this.color;
+    if (type === 'taxi') color = 0xf7c600;
+    else if (type === 'policia') color = 0xf4f4f4;
+    else if (type === 'buseta') color = 0xf2f2f2;
+    else if (type === 'moto') color = opts.color ?? [0xd62828, 0x111111, 0x1d3557, 0xf2f2f2, 0x2a9d8f][Math.floor(Math.random() * 5)];
+    this.color = color;
+    const head = headMat();
+    const tail = tailMat();
+    this.lights.head = head;
+    this.lights.tail = tail;
+    const body = tpl.body.clone(true);
+    body.traverse((o) => {
+      if (!o.isMesh) return;
+      const key = o.material.name;
+      if (key === 'pintura') o.material = this.paint ??= paint(color);
+      else if (key === 'faro') o.material = head;
+      else if (key === 'stop') o.material = tail;
+      else if (key === 'textura' && type === 'moto') o.material = this.paint ??= motoPaint(o.material, color);
+    });
+    this.paint ??= paint(color);
+    this.chassis.add(body);
+    const decals = type === 'buseta' ? [...tpl.decals, ...busStripes(tpl, opts.color ?? [0x1d4e89, 0xd62828, 0x2a9d8f, 0xf4a261][Math.floor(Math.random() * 4)])] : tpl.decals;
+    for (const d of decals) {
+      const m = new THREE.Mesh(d.geometry, d.material);
+      m.receiveShadow = true;
+      this.chassis.add(m);
+    }
+    for (const w of tpl.wheels) {
+      const pivot = new THREE.Group();
+      pivot.position.copy(w.pos);
+      const spin = new THREE.Group();
+      spin.add(w.content.clone(true));
+      pivot.add(spin);
+      this.group.add(pivot);
+      this.wheels.push(spin);
+      if (w.front) this.frontPivots.push(pivot);
+    }
+    if (type === 'taxi') this._taxiSign(tpl.roofY - 0.01, tpl.roofCenterZ);
+    if (type === 'policia') this._sirenBar(tpl.roofY - 0.01, tpl.roofCenterZ, Math.min(1.2, tpl.W * 0.62));
+    if (type === 'buseta') {
+      // Letrero de ruta sobre el parabrisas.
+      const y = tpl.roofY - 0.28;
+      const front = hit(body, _v.set(0, y, tpl.box.min.z - 2), new THREE.Vector3(0, 0, 1));
+      const destMat = shared('bus-dest', () => {
+        const t = textTexture('ARANJUEZ - CENTRO', { w: 1024, h: 128, bg: '#111111', fg: '#ffb000', font: 'bold 80px Arial', border: '#111111' });
+        return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.6 });
+      }).clone();
+      const dest = new THREE.Mesh(shared('bus-dest-geo', () => new THREE.PlaneGeometry(1, 0.24)), destMat);
+      dest.scale.x = tpl.W - 0.5;
+      dest.position.set(0, y, (front ? front.point.z : tpl.box.min.z) - 0.02);
+      dest.rotation.y = Math.PI;
+      this.chassis.add(dest);
+      this.lights.sign = destMat;
+    }
+    if (type === 'moto') {
+      // Faro y stop (el modelo no los trae como materiales separados).
+      const hl = new THREE.Mesh(shared('moto-hl', () => new THREE.CylinderGeometry(0.075, 0.075, 0.04, 16).rotateX(Math.PI / 2)), head);
+      hl.position.set(0, tpl.cfg.headY ?? 0.86, tpl.box.min.z + (tpl.cfg.headZ ?? 0.42));
+      const tl = new THREE.Mesh(shared('moto-tl', () => new THREE.BoxGeometry(0.12, 0.05, 0.03)), tail);
+      tl.position.set(0, tpl.cfg.tailY ?? 0.62, tpl.box.max.z - (tpl.cfg.tailZ ?? 0.06));
+      this.chassis.add(hl, tl);
+    }
+    this.seat = { ...tpl.seat };
   }
 
   _lights(width, L, frontY, rearY) {
@@ -148,12 +502,7 @@ export class VehicleView {
     this._lights(W, L, prof.body[0][1] + 0.35, prof.body[0][1] + 0.45);
 
     if (type === 'taxi') {
-      const signTex = textTexture('TAXI', { w: 256, h: 96, bg: '#ffffff', fg: '#111111', font: 'bold 70px Arial', border: '#111111' });
-      const signMat = new THREE.MeshStandardMaterial({ map: signTex, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: 0.3 });
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.2, 0.25), [blackMat(), blackMat(), blackMat(), blackMat(), signMat, signMat]);
-      sign.position.set(0, roofY + 0.14, roof.position.z);
-      this.chassis.add(sign);
-      this.lights.sign = signMat;
+      this._taxiSign(roofY + 0.04, roof.position.z);
       // Franja de cuadros en los costados.
       const checker = document.createElement('canvas');
       checker.width = 128;
@@ -187,19 +536,7 @@ export class VehicleView {
         if (s < 0) label.scale.x = 1;
         this.chassis.add(label);
       }
-      // Barra de luces roja/azul.
-      const bar = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.3), blackMat());
-      bar.add(base);
-      for (const [x, c] of [[-0.35, 0xff0000], [0.35, 0x0044ff]]) {
-        const m = new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.1, transparent: true, opacity: 0.9 });
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.14, 0.28), m);
-        l.position.set(x, 0.1, 0);
-        bar.add(l);
-        this.lights.bar.push(m);
-      }
-      bar.position.set(0, roofY + 0.1, roof.position.z);
-      this.chassis.add(bar);
+      this._sirenBar(roofY + 0.05, roof.position.z, 1.2);
     }
 
     const r = type === 'camioneta' || type === 'policia' ? 0.38 : 0.32;
@@ -305,9 +642,11 @@ export class VehicleView {
   burn() {
     this.burnt = true;
     const burnt = shared('burnt', () => new THREE.MeshStandardMaterial({ color: 0x151210, roughness: 1 }));
+    const keep = new Set([tireMat(), MODEL_MATS.caucho()]);
     this.group.traverse((o) => {
-      if (o.isMesh && o.material !== tireMat()) o.material = burnt;
+      if (o.isMesh && !keep.has(o.material)) o.material = burnt;
     });
+    for (const m of this.lights.bar) m.emissiveIntensity = 0;
   }
 
   dispose() {

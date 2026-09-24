@@ -166,8 +166,217 @@ export function generateCity(seed = 4) {
   const parque = city.pois.find((p) => p.id === 'parque');
   city.spawn = { x: parque.x, z: parque.z + 12, yaw: 0 };
   city.hospital = city.pois.find((p) => p.id === 'hospital');
+  // Utilería de barrio (tiendas, canecas, alcantarillas...). Va al final y con
+  // su propio generador para no alterar la ciudad ya generada.
+  addStreetLife(city, makeRng(seed + 777));
   return city;
 }
+
+// ---------------------------------------------------------------- vida de barrio
+
+/**
+ * Utilería que da vida a las cuadras: sillas plásticas y canastas de cerveza
+ * frente a las tiendas, canecas y bolsas de basura, alcantarillas en la
+ * calzada, materas en andenes y balcones, barreras de obra, hidrantes y
+ * faroles de parque. Nada sólido queda sobre el centro del andén (por donde
+ * caminan los peatones), cerca de las esquinas (cruces), de los puntos de
+ * interés o de los vehículos parqueados.
+ */
+function addStreetLife(city, rng) {
+  const ringClear = 0.08; // holgura extra entre el peatón y la utilería
+  const solids = city.props.filter((p) => p.collider);
+  const added = [];
+  const blocked = (x, z, r) => {
+    for (const p of solids) if (Math.abs(p.x - x) < r + (p.collider.hx ?? 0.3) && Math.abs(p.z - z) < r + (p.collider.hz ?? 0.3)) return true;
+    for (const v of city.parkedVehicles) if (Math.hypot(v.x - x, v.z - z) < r + 2.6) return true;
+    for (const poi of city.pois) if (Math.hypot(poi.x - x, poi.z - z) < r + 3) return true;
+    if (Math.hypot(city.spawn.x - x, city.spawn.z - z) < r + 2) return true;
+    if (city.collision.pointBlocked(x, z)) return true;
+    return false;
+  };
+  // Distancia del punto al centro del andén (anillo peatonal) de su manzana.
+  const ringDist = (b, x, z) => {
+    const r = b.ring;
+    const inside = x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ;
+    const dx = Math.max(r.minX - x, 0, x - r.maxX);
+    const dz = Math.max(r.minZ - z, 0, z - r.maxZ);
+    return inside ? Math.min(x - r.minX, r.maxX - x, z - r.minZ, r.maxZ - z) : Math.hypot(dx, dz);
+  };
+  const place = (p, block) => {
+    const r = p.collider ? Math.max(p.collider.hx, p.collider.hz) : 0;
+    if (p.collider && block && ringDist(block, p.x, p.z) < ringClear + PED_RADIUS + Math.min(p.collider.hx, p.collider.hz)) return null;
+    if (p.collider && blocked(p.x, p.z, r)) return null;
+    city.props.push(p);
+    added.push(p);
+    if (p.collider) solids.push(p);
+    return p;
+  };
+  const ground = (x, z) => terrainHeight(x, z) + GRID.curb;
+  const curbOff = GRID.sidewalk / 2 - 0.35; // a 35 cm del sardinel
+  const sidesOf = (b) => {
+    const r = b.ring;
+    return [
+      { side: 'N', x0: r.minX, x1: r.maxX, z: r.minZ - curbOff, horiz: true, rot: 0 },
+      { side: 'S', x0: r.minX, x1: r.maxX, z: r.maxZ + curbOff, horiz: true, rot: Math.PI },
+      { side: 'W', z0: r.minZ, z1: r.maxZ, x: r.minX - curbOff, horiz: false, rot: Math.PI / 2 },
+      { side: 'E', z0: r.minZ, z1: r.maxZ, x: r.maxX + curbOff, horiz: false, rot: -Math.PI / 2 },
+    ];
+  };
+  const blockOf = (b) => city.blocks.find((k) => b.minX >= k.minX - 0.5 && b.maxX <= k.maxX + 0.5 && b.minZ >= k.minZ - 0.5 && b.maxZ <= k.maxZ + 0.5);
+  // Normal hacia la calle y rotación "mirando a la calle" para cada frente.
+  const FRONT = {
+    N: { nx: 0, nz: -1, rot: Math.PI },
+    S: { nx: 0, nz: 1, rot: 0 },
+    W: { nx: -1, nz: 0, rot: -Math.PI / 2 },
+    E: { nx: 1, nz: 0, rot: Math.PI / 2 },
+  };
+  const facadeInfo = (b) => {
+    const f = FRONT[b.front];
+    const along = b.front === 'N' || b.front === 'S';
+    const fx = b.front === 'W' ? b.minX : b.front === 'E' ? b.maxX : (b.minX + b.maxX) / 2;
+    const fz = b.front === 'N' ? b.minZ : b.front === 'S' ? b.maxZ : (b.minZ + b.maxZ) / 2;
+    return { ...f, along, fx, fz, len: along ? b.maxX - b.minX : b.maxZ - b.minZ, tx: along ? 1 : 0, tz: along ? 0 : 1 };
+  };
+
+  // 1) Tiendas de barrio: sillas plásticas y canastas de cerveza en el andén.
+  const CHAIR_COLORS = ['#f4f4f0', '#f4f4f0', '#f4f4f0', '#d8312b', '#2f6fb3', '#3f8f4a'];
+  for (const b of city.buildings) {
+    if (b.style !== 'tienda' || !b.front || b.shop || b.floors >= 6 || !rng.chance(0.5)) continue;
+    const block = blockOf(b);
+    if (!block) continue;
+    const f = facadeInfo(b);
+    const n = rng.int(2, 4);
+    const color = rng.pick(CHAIR_COLORS);
+    const span = Math.min(f.len - 1.5, n * 0.75);
+    if (span < 1.4) continue;
+    const start = -span / 2;
+    for (let k = 0; k < n; k++) {
+      const a = start + (k + 0.5) * (span / n) + rng.range(-0.08, 0.08);
+      const x = f.fx + f.tx * a + f.nx * 0.42;
+      const z = f.fz + f.tz * a + f.nz * 0.42;
+      place({ type: 'chair', x, z, rot: f.rot + rng.range(-0.35, 0.35), color, collider: { hx: 0.24, hz: 0.24, maxY: ground(x, z) + 0.9 } }, block);
+    }
+    // Canastas apiladas a un lado de las sillas.
+    const a = (span / 2 + 0.45) * (rng.chance(0.5) ? 1 : -1);
+    const x = f.fx + f.tx * a + f.nx * 0.3;
+    const z = f.fz + f.tz * a + f.nz * 0.3;
+    const stack = rng.int(1, 4);
+    place({ type: 'crate', x, z, rot: f.rot + (rng.chance(0.5) ? Math.PI / 2 : 0) + rng.range(-0.1, 0.1), stack, collider: { hx: 0.25, hz: 0.25, maxY: ground(x, z) + 0.26 * stack } }, block);
+  }
+
+  // 2) Materas: en el andén junto a la fachada y en los balcones.
+  for (const b of city.buildings) {
+    if (!b.front || b.style === 'torre' || b.style === 'tienda') continue;
+    const f = facadeInfo(b);
+    const block = blockOf(b);
+    if (block && b.style === 'pintada' && rng.chance(0.18)) {
+      const a = rng.range(-f.len / 2 + 0.8, f.len / 2 - 0.8);
+      const x = f.fx + f.tx * a + f.nx * 0.36;
+      const z = f.fz + f.tz * a + f.nz * 0.36;
+      place({ type: 'planter', x, z, rot: rng.range(0, Math.PI * 2), s: rng.range(0.85, 1.1), collider: { hx: 0.3, hz: 0.3, maxY: ground(x, z) + 0.8 } }, block);
+    }
+    if (b.balcony && rng.chance(0.45)) {
+      // Mismo balcón que dibuja el render (centrado, 0.9 m de fondo).
+      const bw = Math.min(4.2, f.len * 0.6);
+      for (let fl = 1; fl < b.floors; fl++) {
+        if (!rng.chance(0.6)) continue;
+        const y = b.groundY + fl * 3;
+        const count = rng.int(1, 2);
+        for (let k = 0; k < count; k++) {
+          const a = (k === 0 ? -1 : 1) * (bw / 2 - 0.4);
+          place({ type: 'planter', x: f.fx + f.tx * a + f.nx * 0.45, z: f.fz + f.tz * a + f.nz * 0.45, y, rot: rng.range(0, Math.PI * 2), s: rng.range(0.6, 0.8) }, null);
+        }
+      }
+    }
+  }
+
+  // 3) Canecas, bolsas de basura, hidrantes y barreras de obra en el borde del andén.
+  for (const block of city.blocks) {
+    if (block.type === 'botanico' || block.type === 'moravia') continue;
+    for (const s of sidesOf(block)) {
+      const len = s.horiz ? s.x1 - s.x0 : s.z1 - s.z0;
+      const at = (t) => ({ x: s.horiz ? s.x0 + t : s.x, z: s.horiz ? s.z : s.z0 + t });
+      if (rng.chance(0.4)) {
+        for (let tries = 0; tries < 6; tries++) {
+          const t = rng.range(4, len - 4);
+          const { x, z } = at(t);
+          const c = place({ type: 'trashcan', x, z, rot: rng.range(0, Math.PI * 2), collider: { hx: 0.3, hz: 0.3, maxY: ground(x, z) + 0.95 } }, block);
+          if (!c) continue;
+          // Bolsas al pie de la caneca (el camión pasa mañana).
+          const nb = rng.chance(0.6) ? rng.int(1, 3) : 0;
+          for (let k = 0; k < nb; k++) {
+            const d = 0.55 + k * 0.45;
+            const dir = rng.chance(0.5) ? 1 : -1;
+            place({ type: 'trashbag', x: x + (s.horiz ? d * dir : 0), z: z + (s.horiz ? 0 : d * dir), rot: rng.range(0, Math.PI * 2), s: rng.range(0.8, 1.15) }, block);
+          }
+          break;
+        }
+      } else if (rng.chance(0.2)) {
+        // Solo bolsas sobre el andén, junto al sardinel.
+        const t = rng.range(4, len - 4);
+        const { x, z } = at(t);
+        const nb = rng.int(1, 3);
+        for (let k = 0; k < nb; k++) place({ type: 'trashbag', x: x + (s.horiz ? k * 0.45 : 0), z: z + (s.horiz ? 0 : k * 0.45), rot: rng.range(0, Math.PI * 2), s: rng.range(0.8, 1.15) }, block);
+      }
+      if (rng.chance(0.12)) {
+        const t = rng.range(3, 5) * (rng.chance(0.5) ? 1 : -1);
+        const { x, z } = at(t > 0 ? t : len + t);
+        place({ type: 'hydrant', x, z, rot: s.rot + Math.PI, collider: { hx: 0.16, hz: 0.16, maxY: ground(x, z) + 0.8 } }, block);
+      }
+      if (block.type === 'residencial' && rng.chance(0.05)) {
+        // Obra: dos o tres barreras seguidas, paralelas al sardinel.
+        const n = rng.int(2, 3);
+        const t0 = rng.range(6, len - 6 - n * 1.6);
+        for (let k = 0; k < n; k++) {
+          const { x, z } = at(t0 + k * 1.6);
+          place({ type: 'barrier', x, z, rot: s.horiz ? 0 : Math.PI / 2, collider: { hx: s.horiz ? 0.78 : 0.33, hz: s.horiz ? 0.33 : 0.78, maxY: ground(x, z) + 0.85 } }, block);
+        }
+      }
+    }
+  }
+
+  // 4) Alcantarillas en la calzada (sin colisión: van a ras del asfalto).
+  for (const e of city.edges) {
+    const a = city.nodes[e.a];
+    const b = city.nodes[e.b];
+    const n = rng.chance(0.5) ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const t = rng.range(0.25, 0.75);
+      const lane = (rng.chance(0.5) ? 1 : -1) * GRID.laneOffset * rng.range(0.3, 0.9);
+      const x = a.x + (b.x - a.x) * t + (e.axis === 'z' ? lane : 0);
+      const z = a.z + (b.z - a.z) * t + (e.axis === 'x' ? lane : 0);
+      place({ type: 'manhole', x, z, rot: rng.range(0, Math.PI * 2), onRoad: true }, null);
+    }
+  }
+
+  // 5) Faroles de parque alrededor de la fuente y en el mirador.
+  const parque = city.blocks.find((b) => b.type === 'parque');
+  if (parque) {
+    for (let k = 0; k < 8; k++) {
+      const ang = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      const x = parque.cx + Math.cos(ang) * 11.5;
+      const z = parque.cz + Math.sin(ang) * 11.5;
+      place({ type: 'parkLamp', x, z, rot: ang, collider: { hx: 0.15, hz: 0.15 } }, null);
+    }
+  }
+  const mirador = city.blocks.find((b) => b.type === 'mirador');
+  if (mirador) {
+    for (let k = 0; k < 4; k++) {
+      const x = mirador.cx - 18 + k * 12;
+      const z = mirador.cz + 10;
+      place({ type: 'parkLamp', x, z, rot: 0, collider: { hx: 0.15, hz: 0.15 } }, null);
+    }
+  }
+
+  for (const p of added) {
+    if (!p.collider) continue;
+    const c = p.collider;
+    city.collision.add({ minX: p.x - c.hx, maxX: p.x + c.hx, minZ: p.z - c.hz, maxZ: p.z + c.hz, minY: c.minY ?? -1000, maxY: c.maxY ?? 1000, kind: p.type });
+  }
+  return added;
+}
+
+const PED_RADIUS = 0.35;
 
 // ---------- Utilidades de construcción ----------
 

@@ -12,13 +12,14 @@ const H = +(process.argv[5] ?? 720);
 const steps = (process.argv[6] ?? 'all').split(',');
 const want = (k) => steps.includes('all') || steps.includes(k);
 
-const server = await serveDist(4181);
+const PORT = +(process.env.SHOTS_PORT ?? 4181);
+const server = await serveDist(PORT);
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && !m.text().includes('404') && errors.push(m.text()));
-await page.goto(`http://localhost:4181/?autotest=1&quality=${quality}`);
+await page.goto(`http://localhost:${PORT}/?autotest=1&quality=${quality}`);
 await page.waitForFunction(() => window.__game?.ready && window.__game.state().state === 'playing', null, { timeout: 600000 });
 const G = (fn, arg) => page.evaluate(fn, arg);
 const frames = async (n) => {
@@ -100,6 +101,35 @@ if (want('night')) {
   await G(() => { window.__game.setTime(20.2); window.__game.teleport(-35, 30.5); window.__game.look(-Math.PI / 2 + 0.3, -0.02); });
   await adv(2);
   await shot('13-aranjuez-de-noche');
+}
+if (want('vehiculos')) {
+  // Catálogo: cada tipo de vehículo con el jugador al volante, visto desde
+  // tres cuartos delantero (verifica escala, ruedas, orientación y puesto).
+  const tipos = (process.env.SHOTS_TIPOS ?? 'taxi,sedan,camioneta,policia,buseta,moto').split(',');
+  const hora = +(process.env.SHOTS_HORA ?? 10.5);
+  for (const [i, tipo] of tipos.entries()) {
+    const h = await G(([t, x, hr]) => {
+      window.__game.exitVehicle();
+      window.__game.setTime(hr);
+      window.__game.teleport(x, 30.5);
+      const v = window.__game.spawnVehicle(t);
+      window.__game.enterNearest(20);
+      const pv = window.__gameInstance.player.vehicle;
+      if (pv) pv.siren = pv.type === 'policia';
+      return v.heading;
+    }, [tipo, -35 - i * 22, hora]);
+    await adv(0.2);
+    await G(([yaw]) => {
+      window.__gameInstance.camRig.zoomLevel = 2;
+      window.__game.look(yaw, -0.12);
+    }, [h + Math.PI - +(process.env.SHOTS_ANG ?? 0.75)]);
+    await adv(0.2);
+    await shot(`20-vehiculo-${tipo}${hora >= 19 || hora < 6 ? '-noche' : ''}`);
+  }
+  await G(() => {
+    window.__game.exitVehicle();
+    window.__gameInstance.camRig.zoomLevel = 0;
+  });
 }
 if (want('menu')) {
   await G(() => { window.__game.setTime(17.2); window.__gameInstance.hud.show(false); window.__gameInstance.setState('menu'); });

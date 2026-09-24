@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
+import { buildModelProps } from './props.js';
 import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
@@ -645,10 +646,12 @@ export class CityRenderer {
     const props = this.city.props;
     const byType = {};
     for (const p of props) (byType[p.type] ??= []).push(p);
-    this._trees(byType.tree ?? []);
-    this._lamps(byType.lamp ?? []);
-    this._poles(byType.pole ?? [], byType.cable ?? []);
-    this._benches(byType.bench ?? []);
+    // Modelos glTF (props.js) donde los hay; lo demás sigue procedural.
+    const done = buildModelProps(this, byType, { glowSprite });
+    this._trees(done.trees);
+    if (!done.lamps) this._lamps(byType.lamp ?? []);
+    if (!done.poles) this._poles(byType.pole ?? [], byType.cable ?? []);
+    if (!done.benches) this._benches(byType.bench ?? []);
     for (const p of byType.sign ?? []) this._sign(p);
     for (const p of byType.fountain ?? []) this._fountain(p);
     for (const p of byType.kiosk ?? []) this._kiosk(p);
