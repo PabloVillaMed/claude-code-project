@@ -3,6 +3,9 @@
 
 import * as THREE from 'three';
 import { glowSprite } from './cityRenderer.js';
+import { groundHeight } from '../sim/terrain.js';
+
+const MAX_SKIDS = 900;
 
 const MAX_PARTICLES = 1500;
 
@@ -152,6 +155,60 @@ export class Effects {
       });
     }
     if (kind === 'dust') this.puff(pos, 0.5, [0.5, 0.47, 0.42], 0.4);
+  }
+
+  /**
+   * Marcas de llanta: segmentos oscuros sobre el asfalto detrás de las ruedas
+   * traseras mientras el vehículo derrapa (anillo de instancias reciclado).
+   */
+  skid(v, on, dt) {
+    void dt;
+    if (!this.skids) {
+      const geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x0d0d0d, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+      this.skids = new THREE.InstancedMesh(geo, mat, MAX_SKIDS);
+      this.skids.count = 0;
+      this.skids.frustumCulled = false;
+      this.skidNext = 0;
+      this.scene.add(this.skids);
+      this._sm = new THREE.Matrix4();
+      this._sq = new THREE.Quaternion();
+      this._sp = new THREE.Vector3();
+      this._ss = new THREE.Vector3();
+      this._up = new THREE.Vector3(0, 1, 0);
+    }
+    if (!on) {
+      v._skidPrev = null;
+      return;
+    }
+    const s = v.state;
+    const fx = -Math.sin(s.heading);
+    const fz = -Math.cos(s.heading);
+    const rx = Math.cos(s.heading);
+    const rz = -Math.sin(s.heading);
+    const back = s.spec.length * 0.32;
+    const track = s.spec.twoWheels ? [0] : [-s.spec.width * 0.42, s.spec.width * 0.42];
+    const cur = track.map((t) => ({ x: s.x - fx * back + rx * t, z: s.z - fz * back + rz * t }));
+    const prev = v._skidPrev;
+    if (prev && Math.hypot(cur[0].x - prev[0].x, cur[0].z - prev[0].z) < 0.3) return;
+    if (prev) {
+      for (let k = 0; k < cur.length; k++) {
+        const a = prev[k];
+        const b = cur[k];
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        if (len > 3) continue;
+        const mx = (a.x + b.x) / 2;
+        const mz = (a.z + b.z) / 2;
+        this._sp.set(mx, groundHeight(mx, mz) + 0.025, mz);
+        this._sq.setFromAxisAngle(this._up, Math.atan2(-(b.x - a.x), -(b.z - a.z)));
+        this._ss.set(0.24, 1, len + 0.05);
+        this.skids.setMatrixAt(this.skidNext, this._sm.compose(this._sp, this._sq, this._ss));
+        this.skidNext = (this.skidNext + 1) % MAX_SKIDS;
+        this.skids.count = Math.min(MAX_SKIDS, this.skids.count + 1);
+      }
+      this.skids.instanceMatrix.needsUpdate = true;
+    }
+    v._skidPrev = cur;
   }
 
   puff(pos, size = 1, color = [0.2, 0.2, 0.2], alpha = 0.6, vy = 1.2, life = 2) {

@@ -124,6 +124,41 @@ for (const [id, name, dx, dz, yaw, pitch, hour] of [
   await adv(1.5);
   await shot(name);
 }
+// Calle viva: mirar un elemento desde la calle (tipo de prop, índice, distancia, hora).
+const viewProp = (type, k, dist, hour) =>
+  G(([type, k, dist, hour]) => {
+    const g = window.__gameInstance;
+    g.env.setTime(hour);
+    const list = g.city.props.filter((p) => p.type === type);
+    const p = list[k % list.length];
+    const rot = p.rot ?? 0;
+    const fx = Math.sin(rot);
+    const fz = Math.cos(rot);
+    window.__game.teleport(p.x + fx * dist + Math.cos(rot) * 1.5, p.z + fz * dist - Math.sin(rot) * 1.5);
+    window.__game.look(Math.atan2(fx, fz), 0.08);
+    window.__game.advance(1.2);
+  }, [type, k, dist, hour]);
+if (want('vecinos')) {
+  await viewProp('chair', 4, 5, 17);
+  await adv(1);
+  await shot('21-vecinos-sentados-frente-a-la-tienda');
+}
+if (want('paradero')) {
+  await viewProp('busStop', 2, 5, 12);
+  await shot('22-paradero-en-carabobo');
+}
+if (want('ventero')) {
+  await viewProp('vendor', 0, 5, 10.5);
+  await shot('23-ventero-en-el-parque');
+}
+if (want('derrape')) {
+  await G(() => { window.__gameInstance.env.setTime(20.4); window.__game.teleport(-245, -150); window.__game.spawnVehicle('sedan'); window.__game.enterNearest(20); });
+  await adv(3.5, { throttle: 1 });
+  await adv(0.9, { throttle: 0.3, steer: 1, handbrake: true });
+  await adv(0.4, { throttle: 0.6, steer: -0.5 });
+  await shot('24-derrape-de-noche');
+  await G(() => window.__game.exitVehicle());
+}
 if (want('night')) {
   await G(() => { window.__game.setTime(20.2); window.__game.teleport(-35, 30.5); window.__game.look(-Math.PI / 2 + 0.3, -0.02); });
   await adv(2);

@@ -219,6 +219,28 @@ test('policía: con estrellas aparecen patrullas', async () => {
   expect(s.police).toBeGreaterThanOrEqual(1);
 });
 
+test('de noche: faros encendidos; el derrape deja marcas', async () => {
+  await G(() => {
+    window.__game.setTime(21);
+    window.__game.teleport(0, 30.5);
+    window.__game.spawnVehicle('sedan');
+    window.__game.enterNearest(20);
+  });
+  await G(() => window.__game.advance(3.5, { throttle: 1 }));
+  await G(() => window.__game.advance(1, { throttle: 0.3, steer: 1, handbrake: true }));
+  await frames(3);
+  const l = await G(() => window.__game.lights());
+  expect(l.night).toBeGreaterThan(0.5);
+  expect(l.on).toBe(true);
+  expect(l.pools).toBeGreaterThan(0); // luz de los faros sobre el asfalto
+  expect(l.skids).toBeGreaterThan(0);
+  await G(() => {
+    window.__game.exitVehicle();
+    window.__game.setTime(16.5);
+  });
+  await frames(2);
+});
+
 test('morir lleva al hospital y cobra la cuenta', async () => {
   const m0 = (await st()).money;
   await G(() => window.__game.damage(500));

@@ -408,11 +408,13 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
       tpl.lejos.push({ geometry: box, material: glass });
     }
     const set = new ChunkedInstances(tpl, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'faroles' });
+    r.lampHeads ??= [];
     for (const l of lamps) {
       set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot);
       const dx = Math.sin(l.rot) * luz[2];
       const dz = Math.cos(l.rot) * luz[2];
       glows.push({ x: l.x + dx, z: l.z + dz, s: 1 });
+      r.lampHeads.push({ x: l.x + dx, y: groundY(l.x, l.z) + luz[1] - 0.3, z: l.z + dz });
     }
     set.build(r.root, r.lodChunks);
     handledStreet = true;
@@ -422,9 +424,11 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
     if (ptpl) lampMaterials(ptpl, r.nightMaterials, 3);
     const k = ptpl ? 4.4 / ptpl.height : 1;
     const set = new ChunkedInstances(t, { near: 400, far: 700, name: 'faroles-parque' });
+    r.lampHeads ??= [];
     for (const l of parkLamps) {
       set.add(l.x, groundY(l.x, l.z), l.z, l.rot ?? 0, k);
       glows.push({ x: l.x, z: l.z, s: 0.6 });
+      r.lampHeads.push({ x: l.x, y: groundY(l.x, l.z) + 4.1, z: l.z, park: true });
     }
     set.build(r.root);
   }

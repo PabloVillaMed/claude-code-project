@@ -357,7 +357,8 @@ export class SkinnedRig {
     // asiento - 0.5 (+0.35 en moto); en carro se sube un poco para que se
     // vean hombros y brazos por la ventana.
     const db = this.driveBlend;
-    const seatHip = driving === 'moto' ? 0.55 : 0.64;
+    // Sentado: en moto, en carro o en una silla plástica frente a la tienda.
+    const seatHip = driving === 'moto' ? 0.55 : driving === 'chair' ? 0.47 : 0.64;
     this.model.position.y = (seatHip - this.sitHip) * db;
     this.model.position.z = 0;
 
@@ -368,10 +369,10 @@ export class SkinnedRig {
 
     // ---------------------------------------------- capas por código
     const a = this.aimBlend;
-    const needArms = a > 0.01 || this.punchTimer > 0 || db > 0.01 || d > 0.01;
+    const needArms = a > 0.01 || this.punchTimer > 0 || (db > 0.01 && driving !== 'chair') || d > 0.01;
     if (needArms) {
       this.root.updateMatrixWorld(true);
-      if (db > 0.01) this._driveArms(driving === 'moto', db * (1 - a));
+      if (db > 0.01 && driving !== 'chair') this._driveArms(driving === 'moto', db * (1 - a));
       if (a > 0.01 && d < 0.5) this._aimArms(st.aimPitch ?? 0, a);
       if (this.punchTimer > 0) this._punchArm();
       if (d > 0.01) this._limp(d);

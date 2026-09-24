@@ -3,6 +3,9 @@
 import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
 import { buildModelProps, updatePropLod } from './props.js';
+import { FacadeBuilder } from './facadeBuilder.js';
+import { buildStreetFurniture } from './streetFurniture.js';
+import { facadeLayout } from '../sim/facades.js';
 import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
@@ -34,6 +37,7 @@ export class CityRenderer {
     this.lampGlow = null;
     this.cityLights = null;
     this.materials = this._materials();
+    this.facades = new FacadeBuilder(this);
     this._terrain();
     this._backdrop();
     this._roads();
@@ -436,8 +440,11 @@ export class CityRenderer {
     const rng = makeRng(123);
     const murals = [];
 
-    for (const b of this.city.buildings) {
+    for (let bi = 0; bi < this.city.buildings.length; bi++) {
+      const b = this.city.buildings[bi];
       const { minX, maxX, minZ, maxZ, groundY, topY, baseY } = b;
+      // Casas del barrio: fachada modelada (facadeBuilder); el resto, caja texturizada.
+      const layout = facadeLayout(b, bi);
       const w = maxX - minX;
       const d = maxZ - minZ;
       let matKey;
@@ -481,8 +488,9 @@ export class CityRenderer {
       for (const [x0, z0, nx, nz, len] of faces) {
         // Cimiento visible en la ladera (concreto) + fachada.
         if (groundY - baseY > 0.05) concrete.wall(x0, z0, nx, nz, len, baseY, groundY, 3, [0.8, 0.78, 0.74]);
-        g.wall(x0, z0, nx, nz, len, groundY, topY + parapet, uvScale, color, uOff, groundY);
+        if (!layout) g.wall(x0, z0, nx, nz, len, groundY, topY + parapet, uvScale, color, uOff, groundY);
       }
+      if (layout) this.facades.add(b, layout, parapet);
       // Murales en culatas laterales de algunas casas (arte urbano).
       if (b.style !== 'torre' && !isWall && rng.chance(0.05) && topY - groundY > 5) murals.push(b);
 
@@ -517,7 +525,7 @@ export class CityRenderer {
         }
       }
       // Balcones con baranda en la fachada principal.
-      if (b.balcony && b.front) this._balconies(concrete, railing, get('railingBars'), b);
+      if (b.balcony && b.front && !layout) this._balconies(concrete, railing, get('railingBars'), b);
       if (b.tower) {
         // Campanario: remate piramidal.
         const cx = (minX + maxX) / 2;
@@ -535,6 +543,7 @@ export class CityRenderer {
       }
     }
 
+    this.facades.build(this.root);
     for (const [key, gb] of groups) {
       let mat;
       if (key.startsWith('brick')) mat = this.materials.brick[+key.slice(5)];
@@ -672,6 +681,7 @@ export class CityRenderer {
     for (const p of byType.pond ?? []) this._pond(p);
     for (const p of byType.parking ?? []) this._parking(p);
     for (const p of byType.railing ?? []) this._railing(p);
+    buildStreetFurniture(this, byType);
     this._tombs(byType.tomb ?? []);
     this._flowers([...(byType.garden ?? [])]);
   }
@@ -1211,10 +1221,11 @@ export class CityRenderer {
   /** Detalle por instancia de árboles, postes y faroles según la cámara. */
   updateLod(camPos) {
     updatePropLod(this, camPos);
+    this.facades.update(camPos);
   }
 
   update(dt, nightFactor) {
-    for (const { m, max } of this.nightMaterials) m.emissiveIntensity = max * nightFactor;
+    for (const { m, max, base = 0 } of this.nightMaterials) m.emissiveIntensity = base + max * nightFactor;
     if (this.lampGlow) this.lampGlow.opacity = 0.55 * nightFactor;
     if (this.cityLights) this.cityLights.material.opacity = Math.min(1, nightFactor * 1.3);
     // Tren: acelera, frena en la estación Universidad y se devuelve al final.

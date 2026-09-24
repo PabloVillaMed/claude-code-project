@@ -4,14 +4,14 @@
 import * as THREE from 'three';
 import { makeRng } from '../sim/rng.js';
 
-function canvas(w, h = w) {
+export function canvas(w, h = w) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   return c;
 }
 
-function toTexture(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
+export function toTexture(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -48,7 +48,7 @@ function normalFromHeight(hc, strength = 2) {
   return toTexture(out, { srgb: false });
 }
 
-function noise(ctx, w, h, rng, amount, alpha = 0.08, size = 2) {
+export function noise(ctx, w, h, rng, amount, alpha = 0.08, size = 2) {
   for (let i = 0; i < amount; i++) {
     const v = Math.floor(rng.next() * 255);
     ctx.fillStyle = `rgba(${v},${v},${v},${alpha})`;
@@ -56,7 +56,7 @@ function noise(ctx, w, h, rng, amount, alpha = 0.08, size = 2) {
   }
 }
 
-function stains(ctx, w, h, rng, n, color = '0,0,0', maxA = 0.12) {
+export function stains(ctx, w, h, rng, n, color = '0,0,0', maxA = 0.12) {
   for (let i = 0; i < n; i++) {
     const x = rng.next() * w;
     const y = rng.next() * h;

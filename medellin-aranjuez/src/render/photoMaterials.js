@@ -6,29 +6,37 @@ import * as THREE from 'three';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 
-// Tamaño real (m) que cubre cada textura (de la API de Poly Haven).
+// Tamaño real (m) que cubre cada textura (de la API de Poly Haven) y si
+// tiene color HD (2048 px, calidades Alta/Ultra). Ver scripts/assets/texturas.mjs.
 export const PHOTO_TEXTURES = {
-  red_brick: 1.4,
-  large_red_bricks: 2.0,
-  painted_plaster_wall: 2.0,
-  beige_wall_001: 3.0,
-  asphalt_02: 3.0,
-  grey_tiles: 2.2,
-  herringbone_brick: 1.8,
-  leafy_grass: 2.0,
-  clay_roof_tiles_02: 2.5,
-  concrete_floor_02: 2.0,
-  concrete_wall_008: 2.71,
-  corrugated_iron_02: 2.7,
+  red_brick: { m: 1.4, hd: true },
+  large_red_bricks: { m: 2.0, hd: true },
+  brick_wall_07: { m: 1.7, hd: true },
+  painted_brick: { m: 1.8, hd: true },
+  peeling_painted_wall: { m: 1.8, hd: true },
+  painted_plaster_wall: { m: 2.0, hd: true },
+  beige_wall_001: { m: 3.0, hd: true },
+  asphalt_02: { m: 3.0, hd: true },
+  grey_tiles: { m: 2.2, hd: true },
+  herringbone_brick: { m: 1.8 },
+  leafy_grass: { m: 2.0, hd: true },
+  clay_roof_tiles_02: { m: 2.5 },
+  concrete_floor_02: { m: 2.0 },
+  concrete_wall_008: { m: 2.71 },
+  corrugated_iron_02: { m: 2.7 },
+  painted_metal_shutter: { m: 2.0 },
+  dirty_tiles: { m: 2.26 },
+  granite_tile: { m: 2.3 },
+  rusty_painted_metal: { m: 2.2 },
 };
 
 registerAssets([
-  ...Object.keys(PHOTO_TEXTURES).flatMap((id) => [
-    { key: `tex/${id}/color`, type: 'texture', url: `textures/${id}/color.webp`, srgb: true },
+  ...Object.entries(PHOTO_TEXTURES).flatMap(([id, t]) => [
+    { key: `tex/${id}/color`, type: 'texture', url: `textures/${id}/color.webp`, urlHd: t.hd ? `textures/${id}/hd/color.webp` : undefined, srgb: true },
     { key: `tex/${id}/normal`, type: 'texture', url: `textures/${id}/normal.webp`, srgb: false },
     { key: `tex/${id}/rough`, type: 'texture', url: `textures/${id}/rough.webp`, srgb: false },
   ]),
-  { key: 'hdri/dia', type: 'hdr', url: 'hdri/kloofendal_48d_partly_cloudy_puresky.hdr' },
+  { key: 'hdri/dia', type: 'hdr', url: 'hdri/kloofendal_48d_partly_cloudy_puresky.hdr', urlHd: 'hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr' },
 ]);
 
 export function hasPhotoTextures() {
@@ -52,7 +60,7 @@ function withRepeat(tex, repeat) {
 export function photoMaterial(id, { uvMeters = 1, vertexColors = false, color = 0xffffff, normalScale = 1, roughness = 1, extra = {} } = {}) {
   const base = assets.texture(`tex/${id}/color`);
   if (!base) return null;
-  const repeat = uvMeters / (PHOTO_TEXTURES[id] ?? 2);
+  const repeat = uvMeters / (PHOTO_TEXTURES[id]?.m ?? 2);
   const m = new THREE.MeshStandardMaterial({
     map: withRepeat(base, repeat),
     normalMap: withRepeat(assets.texture(`tex/${id}/normal`), repeat),

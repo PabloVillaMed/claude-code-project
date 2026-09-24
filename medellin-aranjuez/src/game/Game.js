@@ -15,6 +15,7 @@ import { createTextureLibrary } from '../render/textures.js';
 import { assets } from '../render/assets.js';
 import '../render/assetManifest.js';
 import { CityRenderer } from '../render/cityRenderer.js';
+import { NightLights } from '../render/nightLights.js';
 import { Environment } from '../render/environment.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
@@ -31,7 +32,7 @@ import { WeaponWheel } from '../ui/weaponWheel.js';
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -117,7 +118,7 @@ export class Game {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.quality.post, powerPreference: 'high-performance', stencil: false });
     this.basePixelRatio = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio);
     this.resScale = 1; // escala de la resolución dinámica (ver _adaptResolution)
-    this.dynamicRes = opts.dynamicResolution ?? !opts.autotest;
+    this.dynamicRes = opts.dynamicResolution ?? (!opts.autotest && this.settings.dynamicRes !== false);
     renderer.setPixelRatio(this.basePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -174,11 +175,13 @@ export class Game {
     await step(0.3);
     // Recursos externos (modelos, texturas fotográficas, HDRI). Si alguno
     // falta, cada módulo usa su versión procedural.
+    assets.hd = !!this.quality.hdTextures;
     this.assetReport = await assets.loadAll(this.renderer, (p) => progress(0.3 + p * 0.15));
     await step(0.45);
     this.env = new Environment(this.renderer, this.scene, this.quality);
     await step(0.55);
     this.cityRenderer = new CityRenderer(this.scene, this.city, this.textures, this.quality);
+    this.nightLights = new NightLights(this.scene, this.quality, this.cityRenderer.lampHeads ?? []);
     await step(0.8);
     this.effects = new Effects(this.scene);
     this.audio = new AudioSystem();
@@ -224,10 +227,15 @@ export class Game {
    */
   async _warmUp(sp) {
     const r = this.renderer;
-    try {
-      await r.compileAsync(this.scene, this.camera);
-    } catch {
-      r.compile(this.scene, this.camera);
+    // Las dos variantes de iluminación (día sin luces de faroles, noche con
+    // ellas) quedan compiladas: al anochecer no hay tirones.
+    for (const on of [true, false]) {
+      this.nightLights.setEnabled(on);
+      try {
+        await r.compileAsync(this.scene, this.camera);
+      } catch {
+        r.compile(this.scene, this.camera);
+      }
     }
     const seen = new Set();
     this.scene.traverse((o) => {
@@ -282,6 +290,13 @@ export class Game {
         d.good = 0;
       }
     } else d.good = 0;
+  }
+
+  /** Activa/desactiva la resolución dinámica (al desactivarla vuelve a la resolución completa). */
+  setDynamicResolution(on) {
+    this.dynamicRes = on;
+    this._dres = null;
+    if (!on && this.resScale !== 1) this._setResScale(1);
   }
 
   _setResScale(s) {
@@ -400,6 +415,7 @@ export class Game {
     this.env.update(running ? dt : 0, focus);
     this.cityRenderer.update(running ? dt : 0, this.env.night);
     this.cityRenderer.updateLod(this.camera.position);
+    this.nightLights.update(running ? dt : 0, this.camera.position, this.env.night, this.world.vehicles, this.player.vehicle);
     if (running) this.effects.update(dt);
     this.postfx.setNight(this.env.night);
     this.player.damageFlash = Math.max(0, this.player.damageFlash - dt * 1.5);
@@ -482,7 +498,7 @@ export class Game {
       y: p.y,
       z: p.z,
       inVehicle: !!v,
-      vehicleHeading: v?.state.heading ?? 0,
+      vehicleHeading: v ? this._driveCamHeading(v.state) : 0,
       vehicleSpeed: v?.state.forwardSpeed ?? 0,
       vehicleSize: v ? v.state.spec.length : 0,
       aiming: p.aiming,
@@ -498,6 +514,7 @@ export class Game {
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
     this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
+    this._ambientAudio(dt);
     this.pickups.update(dt, p);
     this._updateMissions(dt);
     this._updatePois(realDt, a);
@@ -510,6 +527,46 @@ export class Game {
       this.save();
     }
     this.hud.update(realDt, this._hudState());
+  }
+
+  /** Sonido ambiente según dónde está el jugador y la hora. */
+  _ambientAudio(dt) {
+    const p = this.player;
+    if (!this._shopSpots) {
+      this._shopSpots = this.city.buildings.filter((b) => b.style === 'tienda').map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }));
+      this._church = this.city.pois.find((q) => q.id === 'iglesia');
+      this._park = this.city.pois.find((q) => q.id === 'parque');
+    }
+    let shopDist = Infinity;
+    for (const s of this._shopSpots) shopDist = Math.min(shopDist, Math.hypot(s.x - p.x, s.z - p.z));
+    const d = (q) => (q ? Math.hypot(q.x - p.x, q.z - p.z) : Infinity);
+    // En carro, con las ventanas arriba, casi no se oye la música de afuera.
+    this.audio.updateAmbient(dt, { night: this.env.night, shopDist: p.inVehicle ? Infinity : shopDist, churchDist: d(this._church), parkDist: d(this._park), hour: this.env.timeOfDay });
+  }
+
+  /** En un derrape la cámara mira hacia donde va el carro, no hacia donde apunta. */
+  _driveCamHeading(s) {
+    const sp = Math.hypot(s.vx, s.vz);
+    if (sp < 4 || s.forwardSpeed < 0) return s.heading;
+    const velH = Math.atan2(-s.vx, -s.vz);
+    let d = velH - s.heading;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    const k = Math.min(0.6, (s.slip ?? 0) / 10);
+    return s.heading + d * k;
+  }
+
+  /** Marcas de llanta y humo al derrapar, con freno de mano o en frenadas de pánico. */
+  _skid(v, a, dt) {
+    const s = v.state;
+    const speed = Math.abs(s.forwardSpeed);
+    const skidding = s.slip > 2.6 || (a.brake > 0.8 && speed > 15) || (a.handbrake && speed > 5);
+    this.effects.skid(v, skidding && !s.destroyed, dt);
+    if (skidding && Math.random() < dt * 14) {
+      const back = s.spec.length * 0.4;
+      const k = 0.75 * (1 - this.env.night * 0.65); // de noche el humo no brilla
+      this.effects.puff({ x: s.x + Math.sin(s.heading) * back, y: s.y + 0.3, z: s.z + Math.cos(s.heading) * back }, 1.1, [k, k, k * 0.99], 0.35, 0.6, 1.6);
+    }
+    this.audio.skid?.(skidding ? Math.min(1, 0.4 + s.slip / 8) : 0);
   }
 
   // ================================================================ a pie
@@ -636,7 +693,15 @@ export class Game {
       if (impact > 16) this.combat.damagePlayer((impact - 16) * 2, null);
     }
     this.stats.distance += Math.abs(s.forwardSpeed) * dt;
-    this.audio.setEngine(true, Math.min(1, Math.abs(s.forwardSpeed) / s.spec.maxSpeed + a.throttle * 0.15), s.type);
+    // Motor con cambios: las revoluciones suben en cada marcha y caen al cambiar.
+    const ratio = Math.min(1, Math.abs(s.forwardSpeed) / s.spec.maxSpeed);
+    const GEARS = s.type === 'buseta' ? [0, 0.22, 0.45, 0.7, 1.01] : [0, 0.17, 0.35, 0.55, 0.77, 1.01];
+    let gi = 0;
+    while (gi < GEARS.length - 2 && ratio > GEARS[gi + 1]) gi++;
+    const inGear = (ratio - GEARS[gi]) / (GEARS[gi + 1] - GEARS[gi]);
+    const rpm = Math.min(1, 0.22 + inGear * 0.72 + a.throttle * 0.08 + (s.slip > 3 ? 0.1 : 0));
+    this.audio.setEngine(true, rpm, s.type);
+    this._skid(v, a, dt);
     this.audio.horn(a.horn);
     if (a.horn) this.world.addThreat(s.x, s.z, 12, 0.3);
 
@@ -697,6 +762,7 @@ export class Game {
   }
 
   exitVehicle(force = false) {
+    this.audio.skid(0);
     const p = this.player;
     const v = p.vehicle;
     if (!v) return;
@@ -1071,6 +1137,18 @@ export class Game {
       },
       get frames() {
         return g.frameCount ?? 0;
+      },
+      /** Estado de la iluminación nocturna y de las marcas de llanta (pruebas). */
+      lights() {
+        const n = g.nightLights;
+        return {
+          on: n.on,
+          lamps: n.lights.filter((l) => l.visible && l.intensity > 0).length,
+          spot: n.spot ? n.spot.intensity : 0,
+          pools: n.pools.count,
+          night: g.env.night,
+          skids: g.effects.skids?.count ?? 0,
+        };
       },
       perf() {
         const r = g.renderer.info;

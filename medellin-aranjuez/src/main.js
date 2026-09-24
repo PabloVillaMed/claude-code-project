@@ -165,6 +165,7 @@ function loadSettingsUi() {
   $('set-fov').value = s.fov;
   $('set-invert').checked = s.invertY;
   $('set-fps').checked = s.showFps;
+  $('set-dynres').checked = s.dynamicRes !== false;
 }
 
 function applySettings() {
@@ -175,6 +176,8 @@ function applySettings() {
   s.fov = +$('set-fov').value;
   s.invertY = $('set-invert').checked;
   s.showFps = $('set-fps').checked;
+  s.dynamicRes = $('set-dynres').checked;
+  game.setDynamicResolution(s.dynamicRes);
   game.input.sensitivity = s.sensitivity;
   game.input.invertY = s.invertY;
   game.audio.setVolume(s.volume);
@@ -182,7 +185,7 @@ function applySettings() {
   game.hud.showFps(s.showFps);
   saveSettings(s);
 }
-for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps']) $(id).addEventListener('input', applySettings);
+for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-dynres']) $(id).addEventListener('input', applySettings);
 
 // ---------------------------------------------------------------- carga
 $('menu-main').classList.add('hidden');

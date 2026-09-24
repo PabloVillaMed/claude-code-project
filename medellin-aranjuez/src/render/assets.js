@@ -14,7 +14,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 /**
  * Entrada de manifiesto:
  *  { key: 'personajes/male01', type: 'gltf' | 'texture' | 'hdr', url: 'models/x.glb',
- *    srgb?: boolean, repeat?: boolean, optional?: boolean }
+ *    urlHd?: 'models/x-hd.glb', srgb?: boolean, repeat?: boolean, optional?: boolean }
  */
 class AssetLibrary {
   constructor() {
@@ -22,6 +22,7 @@ class AssetLibrary {
     this.failed = new Map();
     this.manifest = new Map();
     this.renderer = null;
+    this.hd = false; // usar `urlHd` (texturas de 2048 px) cuando la entrada la tenga
   }
 
   /** Declara recursos a cargar (se puede llamar desde cualquier módulo). */
@@ -55,17 +56,28 @@ class AssetLibrary {
   }
 
   async _loadOne(e) {
+    if (this.hd && e.urlHd) {
+      try {
+        return await this._loadUrl(e, e.urlHd);
+      } catch {
+        // Sin la versión HD se usa la normal.
+      }
+    }
+    return this._loadUrl(e, e.url);
+  }
+
+  async _loadUrl(e, url) {
     const anisotropy = this.renderer ? Math.min(8, this.renderer.capabilities.getMaxAnisotropy()) : 4;
     switch (e.type) {
       case 'gltf':
-        return this._gltfLoader().loadAsync(e.url);
+        return this._gltfLoader().loadAsync(url);
       case 'hdr': {
-        const t = await new HDRLoader().setDataType(THREE.HalfFloatType).loadAsync(e.url);
+        const t = await new HDRLoader().setDataType(THREE.HalfFloatType).loadAsync(url);
         t.mapping = THREE.EquirectangularReflectionMapping;
         return t;
       }
       case 'texture': {
-        const t = await new THREE.TextureLoader().loadAsync(e.url);
+        const t = await new THREE.TextureLoader().loadAsync(url);
         t.colorSpace = e.srgb === false ? THREE.NoColorSpace : THREE.SRGBColorSpace;
         if (e.repeat !== false) t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = anisotropy;

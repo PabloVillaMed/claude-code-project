@@ -621,7 +621,7 @@ export class VehicleView {
   /** Sincroniza con el estado de la simulación. */
   sync(v, dt, night, siren = false) {
     this.group.position.set(v.x, v.y, v.z);
-    this.group.rotation.set(v.pitch, v.heading, v.roll + (v.lean ?? 0));
+    this.group.rotation.set(v.pitch + (v.bodyPitch ?? 0), v.heading, v.roll + (v.lean ?? 0) + (v.bodyRoll ?? 0));
     for (const w of this.wheels) w.rotation.x = -v.wheelSpin;
     for (const p of this.frontPivots) p.rotation.y = -v.steer;
     if (this.lights.head) this.lights.head.emissiveIntensity = 0.2 + night * 4;

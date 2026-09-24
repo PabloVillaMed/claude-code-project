@@ -141,6 +141,17 @@ export class World {
       threats: this.threats,
       player: { x: 0, z: 0 },
     };
+    // Gente quieta del barrio: venteros detrás de su carreta y vecinos
+    // sentados en las sillas plásticas frente a las tiendas.
+    const spotRng = makeRng(99);
+    this.fixedSpots = [];
+    for (const p of this.city.props) {
+      const fx = Math.sin(p.rot ?? 0);
+      const fz = Math.cos(p.rot ?? 0);
+      if (p.type === 'vendor') this.fixedSpots.push({ x: p.x - fx * 0.85, z: p.z - fz * 0.85, yaw: (p.rot ?? 0) + Math.PI, sit: false, ped: null });
+      else if (p.type === 'chair' && spotRng.chance(0.45)) this.fixedSpots.push({ x: p.x, z: p.z, yaw: (p.rot ?? 0) + Math.PI, sit: true, ped: null });
+    }
+    this.fixedTimer = 0;
     // Vehículos parqueados (persistentes).
     for (const p of this.city.parkedVehicles) {
       this.vehicles.push(new VehicleEntity(this, p.type, p.x, p.z, p.heading, { kind: 'parked', persistent: true }));
@@ -220,7 +231,7 @@ export class World {
   /** Llena de inmediato el barrio alrededor de (x, z) con peatones y tráfico. */
   populate(x, z) {
     let guard = 0;
-    while (this.peds.filter((p) => p.faction === 'civil').length < this.quality.peds && guard++ < this.quality.peds * 3) this.spawnPed(x, z, 12, 110);
+    while (this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed).length < this.quality.peds && guard++ < this.quality.peds * 3) this.spawnPed(x, z, 12, 110);
     guard = 0;
     while (this.vehicles.filter((v) => v.kind === 'traffic').length < this.quality.traffic && guard++ < this.quality.traffic * 3) this.spawnTraffic(x, z, 30, 200);
   }
@@ -280,7 +291,7 @@ export class World {
       this.spawnTimer = 0.4;
       const traffic = this.vehicles.filter((v) => v.kind === 'traffic').length;
       if (traffic < this.quality.traffic) this.spawnTraffic(px, pz);
-      const civ = this.peds.filter((p) => p.faction === 'civil').length;
+      const civ = this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed).length;
       if (civ < this.quality.peds) this.spawnPed(px, pz);
       // Despawn lejano.
       for (const v of [...this.vehicles]) {
@@ -295,8 +306,33 @@ export class World {
       }
     }
 
+    this._updateFixed(dt, px, pz);
     this._updateVehicles(dt, player);
     this._updatePeds(dt, player);
+  }
+
+  /** Aparece (y desaparece) la gente quieta cerca del jugador. */
+  _updateFixed(dt, px, pz) {
+    this.fixedTimer -= dt;
+    if (this.fixedTimer > 0) return;
+    this.fixedTimer = 0.5;
+    const near = this.quality.pedDraw ?? 90;
+    for (const sp of this.fixedSpots) {
+      if (sp.ped && (!this.peds.includes(sp.ped) || !sp.ped.sim.fixed)) sp.ped = null; // se fue (huyó o la borraron)
+      const d = dist2D(sp.x, sp.z, px, pz);
+      if (!sp.ped && d < near * 0.8 && d > 8) {
+        const ped = this.spawnPedAt(sp.x, sp.z, { outfit: 'civil' });
+        ped.sim.fixed = true;
+        ped.sim.sitting = sp.sit;
+        ped.sim.mode = 'idle';
+        ped.sim.yaw = sp.yaw;
+        ped.sim.speed = 0;
+        sp.ped = ped;
+      } else if (sp.ped && d > near * 1.1) {
+        this.removePed(sp.ped);
+        sp.ped = null;
+      }
+    }
   }
 
   _updateVehicles(dt, player) {
@@ -396,7 +432,18 @@ export class World {
             s.hostile = false;
           }
         }
-        if (d < 150) stepPed(s, dt, this.pedWorld);
+        if (s.fixed) {
+          // Quietos (sentados o atendiendo) hasta que algo los asuste.
+          const th = this.threats.find((t) => dist2D(t.x, t.z, s.x, s.z) < t.radius);
+          if (th) {
+            s.fixed = false;
+            s.sitting = false;
+            s.mode = 'flee';
+            s.fleeFrom = { x: th.x, z: th.z };
+            s.timer = 8 + this.rng.next() * 5;
+          } else s.speed = 0;
+        }
+        if (d < 150 && !s.fixed) stepPed(s, dt, this.pedWorld);
         if (s.mode === 'attack' && !player.dead && this.game.state === 'playing') this.game.combat.npcAttack(p, dt, player, d);
         // Atropellos.
         for (const v of this.vehicles) {
@@ -432,6 +479,7 @@ export class World {
         p.rig.animate(dt, {
           speed: s.speed ?? 0,
           onGround: true,
+          driving: s.sitting ? 'chair' : null,
           aiming: s.mode === 'attack' && !!p.weapon && s.speed < 0.5,
           dead: !p.alive,
           aimPitch: 0,

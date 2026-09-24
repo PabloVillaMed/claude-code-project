@@ -55,15 +55,18 @@ export class CameraRig {
     let fov = this.baseFov;
     if (ctx.inVehicle) {
       const s = ctx.vehicleSize;
-      dist = [s * 1.55 + 3, s * 2 + 4, s * 1.1 + 2][this.zoomLevel];
+      const sp = Math.abs(ctx.vehicleSpeed);
+      // Un poco más lejos a alta velocidad (se lee mejor la vía).
+      dist = [s * 1.55 + 3, s * 2 + 4, s * 1.1 + 2][this.zoomLevel] * (1 + Math.min(0.22, sp / 130));
       height = 1.2 + s * 0.22;
-      // Volver detrás del vehículo si no se mueve el ratón.
-      if (this.idleLook > 1.2 && Math.abs(ctx.vehicleSpeed) > 2) {
+      // Volver detrás del vehículo si no se mueve el ratón: más rápido cuanto
+      // más rápido se va (y mirando hacia donde derrapa: vehicleHeading).
+      if (this.idleLook > 0.6 && sp > 2) {
         const behind = ctx.vehicleSpeed >= 0 ? ctx.vehicleHeading : ctx.vehicleHeading + Math.PI;
-        this.yaw = dampAngle(this.yaw, behind, 2.5, dt);
-        this.pitch = damp(this.pitch, -0.18, 2, dt);
+        this.yaw = dampAngle(this.yaw, behind, Math.min(6, 2.2 + sp * 0.12), dt);
+        this.pitch = damp(this.pitch, -0.16 - Math.min(0.06, sp / 400), 2.5, dt);
       }
-      fov += Math.min(16, Math.abs(ctx.vehicleSpeed) * 0.35);
+      fov += Math.min(16, sp * 0.35);
     } else {
       dist = [4.2, 6, 2.8][this.zoomLevel];
       height = 1.55;

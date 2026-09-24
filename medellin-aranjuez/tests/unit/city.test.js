@@ -76,6 +76,21 @@ describe('ciudad: Aranjuez (MVP)', () => {
     expect(houses.every((h) => h.style !== 'torre')).toBe(true);
   });
 
+  it('venteros en andenes o plazas; placas y paraderos en los andenes', () => {
+    const c = city();
+    const vendors = c.props.filter((p) => p.type === 'vendor');
+    expect(vendors.length).toBeGreaterThan(8);
+    expect(c.props.filter((p) => p.type === 'streetSign').length).toBeGreaterThan(50);
+    expect(c.props.filter((p) => p.type === 'busStop').length).toBeGreaterThan(5);
+    for (const p of [...vendors, ...c.props.filter((q) => q.type === 'busStop' || q.type === 'streetSign')]) {
+      expect(onRoad(p.x, p.z)).toBe(false);
+      const b = c.blocks.find((k) => p.x > k.minX && p.x < k.maxX && p.z > k.minZ && p.z < k.maxZ);
+      expect(b).toBeTruthy();
+      const inLot = p.x > b.lot.minX && p.x < b.lot.maxX && p.z > b.lot.minZ && p.z < b.lot.maxZ;
+      if (inLot) expect(['parque', 'mirador']).toContain(b.type);
+    }
+  });
+
   it('ningún edificio invade la calzada', () => {
     for (const b of city().buildings) {
       const pts = [

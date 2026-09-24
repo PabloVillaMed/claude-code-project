@@ -440,7 +440,7 @@ function addStreetLife(city, rng) {
       if (!block || onRoadCheck(x, z)) continue;
       // Solo en el andén (no dentro de los lotes) o en plazas abiertas.
       const inLot = x > block.lot.minX && x < block.lot.maxX && z > block.lot.minZ && z < block.lot.maxZ;
-      if (inLot && !['parque', 'botanico', 'moravia', 'cancha', 'mirador'].includes(block.type)) continue;
+      if (inLot && !['parque', 'mirador'].includes(block.type)) continue;
       // Mirando hacia la calle más cercana.
       const dW = x - block.minX;
       const dE = block.maxX - x;
