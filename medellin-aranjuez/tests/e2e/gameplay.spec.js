@@ -11,7 +11,7 @@ const G = (fn, arg) => page.evaluate(fn, arg);
 const st = () => G(() => window.__game.state());
 async function frames(n) {
   const start = await G(() => window.__game.frames);
-  await page.waitForFunction((t) => window.__game.frames >= t, start + n, { timeout: 300000 });
+  await page.waitForFunction((t) => window.__game.frames >= t, start + n, { timeout: 600000 });
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -224,7 +224,9 @@ test('morir lleva al hospital y cobra la cuenta', async () => {
   await G(() => window.__game.damage(500));
   await frames(2);
   expect((await st()).dead).toBe(true);
-  await frames(110);
+  // 5 s de juego simulados (el render por software de CI es muy lento).
+  await G(() => window.__game.advance(5.5));
+  await frames(2);
   const s = await st();
   expect(s.dead).toBe(false);
   expect(s.health).toBe(100);
