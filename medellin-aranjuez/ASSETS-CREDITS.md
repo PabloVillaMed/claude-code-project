@@ -45,3 +45,15 @@ MIT, CC-BY (con atribución aquí y en el menú de créditos).
 | Utilería: Modular Electricity Poles + Street Lamp 02 (Farol de calle (poste + lámpara de brazo), 1,443 triángulos) | `public/models/utileria/farol_calle.glb` | [https://polyhaven.com/a/modular_electricity_poles](https://polyhaven.com/a/modular_electricity_poles), [https://polyhaven.com/a/street_lamp_02](https://polyhaven.com/a/street_lamp_02) | James Ray Cock, Josh Dean | CC0 |
 | Utilería: Jacaranda Tree (Árbol de copa ancha (guayacanes, ceiba), 7,997 triángulos) | `public/models/utileria/arbol_copa_ancha.glb` | [https://polyhaven.com/a/jacaranda_tree](https://polyhaven.com/a/jacaranda_tree) | Rob Tuytel, Rico Cilliers | CC0 |
 | Utilería: Island Tree 01 (Árbol de copa redonda (mango, ficus), 5,670 triángulos) | `public/models/utileria/arbol_copa_redonda.glb` | [https://polyhaven.com/a/island_tree_01](https://polyhaven.com/a/island_tree_01) | Rob Tuytel, Rico Cilliers | CC0 |
+
+## Datos geográficos
+
+El trazado del mapa (orden de los lugares, nombres de calles y carreras) se
+basó en datos de OpenStreetMap y el perfil del terreno en la elevación SRTM.
+No se incluye ninguna base de datos en el juego; solo el orden y los nombres
+derivados de ella.
+
+| Datos | Uso | Fuente | Licencia |
+|---|---|---|---|
+| OpenStreetMap (consulta Overpass de la Comuna 4 - Aranjuez) | Ubicación relativa de lugares y nombres reales de vías | © colaboradores de OpenStreetMap, [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright) | ODbL 1.0 |
+| SRTM 30 m (vía OpenTopoData) | Perfil de pendiente oeste-este del terreno | NASA / USGS, [opentopodata.org](https://www.opentopodata.org/datasets/srtm/) | Dominio público |
