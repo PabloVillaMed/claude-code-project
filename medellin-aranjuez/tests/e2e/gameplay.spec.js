@@ -152,16 +152,19 @@ test('moto: aceleración y giro', async () => {
   await frames(2);
   expect(await G(() => window.__game.enterNearest(10))).toBe(true);
   expect((await st()).vehicleType).toBe('moto');
-  const y0 = (await st()).yaw;
   await page.keyboard.down('KeyW');
   await frames(25);
+  const fast = await st();
+  expect(fast.speedKmh).toBeGreaterThan(25);
+  // Giro corto a la derecha: el rumbo cambia sin perder la moto.
   await page.keyboard.down('KeyD');
-  await frames(15);
+  await frames(6);
   await page.keyboard.up('KeyD');
   await page.keyboard.up('KeyW');
   const s = await st();
-  expect(s.speedKmh).toBeGreaterThan(15);
-  expect(Math.abs(s.yaw - y0)).toBeGreaterThan(0.2);
+  const turned = Math.abs(Math.atan2(Math.sin(s.yaw - fast.yaw), Math.cos(s.yaw - fast.yaw)));
+  expect(turned).toBeGreaterThan(0.08);
+  expect(s.inVehicle).toBe(true);
   await G(() => window.__game.exitVehicle());
 });
 

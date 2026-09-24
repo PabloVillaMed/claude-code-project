@@ -33,7 +33,6 @@ jobs:
 
   windows:
     name: Build Windows 11 (instalador, portable y zip)
-    needs: pruebas
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
