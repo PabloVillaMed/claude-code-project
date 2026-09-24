@@ -190,7 +190,9 @@ export function facadeLayout(b, idx) {
     const base = fl * floorH;
     // Moravia: en algunos pisos las ventanas no quedan alineadas.
     const jitter = informal && rng.chance(0.4) ? rng.range(-0.4, 0.4) : 0;
-    if (balcony) {
+    // Sobre un local, el segundo piso deja libre el aviso del negocio.
+    const balc = balcony && !(b.style === 'tienda' && fl === 1);
+    if (balc) {
       layout.balconies.push({ floor: fl, u0: bc - bw / 2, u1: bc + bw / 2, v: base });
       layout.openings.push({ kind: 'balconyDoor', floor: fl, u0: bc - doorW / 2, u1: bc + doorW / 2, v0: base + 0.02, v1: base + 2.3, ...windowAttrs(rng, false, informal, layout.frameColor), grille: -1 });
     }
@@ -201,7 +203,7 @@ export function facadeLayout(b, idx) {
         u0 = a0;
         u1 = a1;
       }
-      if (balcony && u1 > bc - doorW / 2 - 0.3 && u0 < bc + doorW / 2 + 0.3) continue; // la puerta del balcón ocupa ese sitio
+      if (balc && u1 > bc - doorW / 2 - 0.3 && u0 < bc + doorW / 2 + 0.3) continue; // la puerta del balcón ocupa ese sitio
       const v0 = base + (tower ? 0.8 : FACADE.sillH);
       layout.openings.push({ kind: 'window', floor: fl, u0, u1, v0, v1: v0 + (tower ? 1.5 : FACADE.winH), ...windowAttrs(rng, false, informal, layout.frameColor) });
     }

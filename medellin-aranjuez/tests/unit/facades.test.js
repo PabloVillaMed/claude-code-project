@@ -78,4 +78,10 @@ describe('fachadas casa por casa', () => {
     };
     expect(walls(true)).toBeGreaterThan(walls(false));
   });
+
+  it('el aviso de la tienda no queda tapado por un balcón del segundo piso', () => {
+    const shops = modeled().map(([b, i]) => facadeLayout(b, i)).filter((L) => L.shop);
+    expect(shops.length).toBeGreaterThan(20);
+    for (const L of shops) expect(L.balconies.some((bal) => bal.floor === 1)).toBe(false);
+  });
 });

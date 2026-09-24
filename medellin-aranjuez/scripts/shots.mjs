@@ -43,8 +43,11 @@ if (want('walk')) {
   await shot('02-corriendo-por-el-parque');
 }
 if (want('street')) {
-  await G(() => { window.__game.teleport(-35, 30.5); window.__game.look(-Math.PI / 2 + 0.25, -0.08); });
-  await adv(8, { moveY: 1 });
+  // Por el andén de la Carrera 51 (Bolívar), mirando calle abajo con las fachadas a ambos lados.
+  await G(() => { window.__game.teleport(-29.2, 26); window.__game.look(0, -0.08); });
+  await adv(6, { moveY: 1 });
+  await G(() => window.__game.look(0.38, -0.05));
+  await adv(0.4);
   await shot('03-calle-del-barrio');
 }
 if (want('aim')) {
