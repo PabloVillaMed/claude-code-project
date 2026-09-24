@@ -281,6 +281,29 @@ export class Hud {
     return { x: sx / k / MAP_SCALE + this.mapOrigin.minX, z: sy / k / MAP_SCALE + this.mapOrigin.minZ };
   }
 
+  // --------------------------------------------------------- DOM
+  /** Escribe en el DOM solo si el valor cambió (cada escritura invalida estilos y layout). */
+  _set(id, prop, value) {
+    const cache = (this._dom ??= {});
+    const byProp = (cache[prop] ??= new Map());
+    if (byProp.get(id) === value) return;
+    byProp.set(id, value);
+    const el = $(id);
+    if (!el) return;
+    if (prop === 'text') el.textContent = value;
+    else if (prop === 'html') el.innerHTML = value;
+    else el.style[prop] = value;
+  }
+
+  _toggle(id, cls, on) {
+    const cache = (this._cls ??= new Map());
+    const key = `${id} ${cls}`;
+    on = !!on;
+    if (cache.get(key) === on) return;
+    cache.set(key, on);
+    $(id)?.classList.toggle(cls, on);
+  }
+
   // --------------------------------------------------------- actualización
   update(dt, st) {
     // FPS.
@@ -292,41 +315,44 @@ export class Hud {
       this.fps.value = Math.round((this.fps.frames * 1000) / (now - this.fps.start));
       this.fps.frames = 0;
       this.fps.start = now;
-      $('fps').textContent = `${this.fps.value} FPS`;
+      this._set('fps', 'text', `${this.fps.value} FPS`);
     }
-    $('clock').textContent = st.clock;
+    this._set('clock', 'text', st.clock);
     // Plata con conteo animado.
     if (this.moneyShown !== st.money) {
       const diff = st.money - this.moneyShown;
       this.moneyShown += Math.abs(diff) < 2 ? diff : diff * Math.min(1, dt * 8);
       if (Math.abs(st.money - this.moneyShown) < 1) this.moneyShown = st.money;
-      $('money').textContent = `$${Math.round(this.moneyShown).toLocaleString('es-CO')}`;
+      this._set('money', 'text', `$${Math.round(this.moneyShown).toLocaleString('es-CO')}`);
     }
     const w = st.weapon;
-    $('weapon-icon').textContent = w.icon;
-    $('weapon-name').textContent = w.name;
-    $('weapon-ammo').innerHTML = w.kind === 'gun' ? `${st.ammo.mag}<small> / ${st.ammo.reserve}</small>${st.reloading ? ' <small>recargando…</small>' : ''}` : '';
-    if (st.wanted !== this.lastWanted || st.wantedFlash) {
-      $('wanted').innerHTML = st.wanted > 0 ? Array.from({ length: 5 }, (_, i) => `<span class="star ${i < st.wanted ? 'on' : ''}">★</span>`).join('') : '';
+    this._set('weapon-icon', 'text', w.icon);
+    this._set('weapon-name', 'text', w.name);
+    this._set('weapon-ammo', 'html', w.kind === 'gun' ? `${st.ammo.mag}<small> / ${st.ammo.reserve}</small>${st.reloading ? ' <small>recargando…</small>' : ''}` : '');
+    if (st.wanted !== this.lastWanted) {
+      this._set('wanted', 'html', st.wanted > 0 ? Array.from({ length: 5 }, (_, i) => `<span class="star ${i < st.wanted ? 'on' : ''}">★</span>`).join('') : '');
       this.lastWanted = st.wanted;
     }
-    $('wanted').classList.toggle('flash', st.wantedFlash);
-    $('health-bar').style.width = `${Math.max(0, st.health)}%`;
-    $('armor-bar').style.width = `${Math.max(0, st.armor)}%`;
-    $('stamina-bar').style.width = `${st.stamina}%`;
-    $('street-name').innerHTML = st.street;
-    const ch = $('crosshair');
-    ch.classList.toggle('hidden', !(st.aiming || (st.weapon.kind === 'gun' && !st.inVehicle)) || st.dead);
-    ch.classList.toggle('aim', st.aiming && st.weapon.kind === 'gun');
-    ch.classList.toggle('enemy', !!st.aimEnemy);
-    const sp = $('speedometer');
-    sp.classList.toggle('hidden', !st.inVehicle);
+    this._toggle('wanted', 'flash', st.wantedFlash);
+    this._set('health-bar', 'width', `${Math.round(Math.max(0, st.health))}%`);
+    this._set('armor-bar', 'width', `${Math.round(Math.max(0, st.armor))}%`);
+    this._set('stamina-bar', 'width', `${Math.round(st.stamina)}%`);
+    this._set('street-name', 'html', st.street);
+    this._toggle('crosshair', 'hidden', !(st.aiming || (st.weapon.kind === 'gun' && !st.inVehicle)) || st.dead);
+    this._toggle('crosshair', 'aim', st.aiming && st.weapon.kind === 'gun');
+    this._toggle('crosshair', 'enemy', !!st.aimEnemy);
+    this._toggle('speedometer', 'hidden', !st.inVehicle);
     if (st.inVehicle) {
-      $('speed-value').textContent = Math.round(st.speedKmh);
-      $('vehicle-name').textContent = st.vehicleName;
-      $('vehicle-health').style.width = `${Math.max(0, st.vehicleHealth * 100)}%`;
+      this._set('speed-value', 'text', String(Math.round(st.speedKmh)));
+      this._set('vehicle-name', 'text', st.vehicleName);
+      this._set('vehicle-health', 'width', `${Math.round(Math.max(0, st.vehicleHealth * 100))}%`);
     }
-    this.drawMinimap(st);
+    // Minimapa a ~30 Hz: se ve igual de fluido y cuesta la mitad.
+    this.miniAccum = (this.miniAccum ?? 1) + dt;
+    if (this.miniAccum >= 1 / 30) {
+      this.miniAccum = 0;
+      this.drawMinimap(st);
+    }
 
     // Temporizadores de mensajes.
     if (this.bigTimer > 0) {

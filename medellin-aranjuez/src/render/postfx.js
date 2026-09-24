@@ -73,6 +73,10 @@ export class PostFX {
     if (this.composer) this.composer.setSize(w, h);
   }
 
+  setPixelRatio(pr) {
+    if (this.composer) this.composer.setPixelRatio(pr);
+  }
+
   setDamage(v) {
     if (this.grade) this.grade.uniforms.uDamage.value = v;
   }
@@ -91,9 +95,12 @@ export class PostFX {
   }
 }
 
+// Presupuesto por calidad. pedDraw/driverDraw: distancia (m) a la que se
+// dibujan peatones y conductores; shadowChars: hasta dónde proyectan sombra.
+// minScale: resolución mínima que puede usar el escalado dinámico.
 export const QUALITY_PRESETS = {
-  baja: { label: 'Baja', pixelRatio: 0.8, shadows: 0, shadowExtent: 60, post: false, ao: false, smaa: false, backdropHouses: 3000, peds: 24, traffic: 14, drawDistance: 900 },
-  media: { label: 'Media', pixelRatio: 1, shadows: 2048, shadowExtent: 70, post: true, ao: false, smaa: false, backdropHouses: 6000, peds: 34, traffic: 20, drawDistance: 1500 },
-  alta: { label: 'Alta', pixelRatio: 1, shadows: 4096, shadowExtent: 80, post: true, ao: true, smaa: true, backdropHouses: 9000, peds: 44, traffic: 26, drawDistance: 2500 },
-  ultra: { label: 'Ultra', pixelRatio: 2, shadows: 4096, shadowExtent: 90, post: true, ao: true, smaa: true, backdropHouses: 14000, peds: 56, traffic: 32, drawDistance: 4000 },
+  baja: { label: 'Baja', pixelRatio: 0.75, minScale: 0.5, shadows: 0, shadowExtent: 50, post: false, ao: false, smaa: false, backdropHouses: 2500, peds: 20, traffic: 12, drawDistance: 800, pedDraw: 55, driverDraw: 35, shadowChars: 0, treeNear: 45 },
+  media: { label: 'Media', pixelRatio: 1, minScale: 0.6, shadows: 1024, shadowExtent: 55, post: true, ao: false, smaa: false, backdropHouses: 5000, peds: 28, traffic: 16, drawDistance: 1200, pedDraw: 70, driverDraw: 40, shadowChars: 20, treeNear: 55 },
+  alta: { label: 'Alta', pixelRatio: 1, minScale: 0.7, shadows: 2048, shadowExtent: 65, post: true, ao: false, smaa: true, backdropHouses: 8000, peds: 36, traffic: 22, drawDistance: 2000, pedDraw: 90, driverDraw: 50, shadowChars: 30, treeNear: 70 },
+  ultra: { label: 'Ultra', pixelRatio: 1.5, minScale: 0.75, shadows: 4096, shadowExtent: 85, post: true, ao: true, smaa: true, backdropHouses: 12000, peds: 48, traffic: 28, drawDistance: 3000, pedDraw: 120, driverDraw: 70, shadowChars: 45, treeNear: 100 },
 };

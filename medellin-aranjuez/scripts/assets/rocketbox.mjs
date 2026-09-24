@@ -342,8 +342,11 @@ async function convertAvatar(a, nio) {
   });
   g.setIndex(newIndex);
   // FBXLoader entrega vértices sin compartir: se sueldan los idénticos.
+  // (mergeVertices clona la geometría con sus grupos: se reponen una sola
+  // vez; si no, cada material queda dos veces y el personaje se dibuja doble.)
   const groups = g.groups.map((q) => ({ ...q }));
   g = mergeVertices(g);
+  g.clearGroups();
   for (const q of groups) g.addGroup(q.start, q.count, q.materialIndex);
   mesh.geometry = g;
   const uv = g.attributes.uv;

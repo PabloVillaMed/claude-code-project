@@ -251,6 +251,8 @@ export class SkinnedRig {
     this.weaponId = id;
     if (this.weaponMesh) this.weaponMount.remove(this.weaponMesh);
     this.weaponMesh = id && id !== 'fists' ? buildWeaponMesh(id) : null;
+    this._shadowMeshes = null; // la lista de mallas con sombra cambió
+    this._shadowOn = undefined;
     if (this.weaponMesh) {
       // buildWeaponMesh orienta el cañón para el muñeco; aquí el agarre ya
       // está calculado: cañón en -Z y empuñadura en el origen.
@@ -502,11 +504,25 @@ export class SkinnedRig {
     }
   }
 
+  /** Sombra solo de cerca: cada personaje con sombra repite su malla con esqueleto en el mapa de sombras. */
+  setShadow(on) {
+    setRigShadow(this, on);
+  }
+
   dispose() {
     this.mixer.stopAllAction();
     this.mixer.uncacheRoot(this.model);
     this.root.removeFromParent();
   }
+}
+
+/** Activa/desactiva castShadow de todas las mallas del personaje (solo si cambia). */
+export function setRigShadow(rig, on) {
+  if (rig._shadowOn === on) return;
+  rig._shadowOn = on;
+  rig._shadowMeshes ??= [];
+  if (!rig._shadowMeshes.length) rig.root.traverse((o) => o.isMesh && rig._shadowMeshes.push(o));
+  for (const m of rig._shadowMeshes) m.castShadow = on;
 }
 
 // ------------------------------------------------------------------ fábrica

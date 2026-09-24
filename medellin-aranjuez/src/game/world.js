@@ -300,6 +300,8 @@ export class World {
 
   _updateVehicles(dt, player) {
     const night = this.game.env.night;
+    const camPos = this.game.camera.position;
+    const q = this.quality;
     const obstaclesFor = (self) => {
       const list = [];
       for (const o of this.vehicles) {
@@ -359,7 +361,16 @@ export class World {
         }
       }
       v.view.sync(s, dt, night, v.siren);
-      if (v.driverRig) v.driverRig.animate(dt, { speed: 0, onGround: true, driving: v.type === 'moto' ? 'moto' : 'car' });
+      if (v.driverRig) {
+        // Conductores: solo se dibujan (y animan) de cerca; en moto se ven desde más lejos.
+        const dc = dist2D(s.x, s.z, camPos.x, camPos.z);
+        const show = dc < (v.type === 'moto' ? q.driverDraw * 1.6 : q.driverDraw);
+        v.driverRig.root.visible = show;
+        if (show) {
+          v.driverRig.setShadow(dc < q.shadowChars);
+          v.driverRig.animate(dt, { speed: 0, onGround: true, driving: v.type === 'moto' ? 'moto' : 'car' });
+        }
+      }
     }
   }
 
@@ -409,10 +420,12 @@ export class World {
       p.y = groundHeight(s.x, s.z);
       p.rig.root.position.set(s.x, p.y, s.z);
       p.rig.root.rotation.y = s.yaw;
-      // Animación solo si está cerca de la cámara (ahorra CPU).
-      const visible = dist2D(s.x, s.z, camPos.x, camPos.z) < 140;
+      // Solo se dibuja y anima de cerca; la sombra, más cerca todavía.
+      const dc = dist2D(s.x, s.z, camPos.x, camPos.z);
+      const visible = dc < this.quality.pedDraw;
       p.rig.root.visible = visible;
       if (visible) {
+        p.rig.setShadow(dc < this.quality.shadowChars);
         p.rig.animate(dt, {
           speed: s.speed ?? 0,
           onGround: true,

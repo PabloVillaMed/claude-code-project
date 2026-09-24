@@ -140,9 +140,89 @@ const _s = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 
 /**
+ * Trozo con nivel de detalle POR INSTANCIA: cada árbol/poste elige su versión
+ * (completa o reducida) según su propia distancia a la cámara, no la del
+ * trozo. Las mallas de cada nivel comparten un único buffer de matrices, así
+ * que repartir las instancias cuesta una copia pequeña por trozo y solo se
+ * hace cuando la cámara se mueve.
+ */
+class LodChunk {
+  constructor(group, center, radius, items, nearLevel, farLevel, near, far) {
+    this.group = group;
+    this.cx = center.x;
+    this.cz = center.z;
+    this.radius = radius;
+    this.near = near;
+    this.far = far;
+    this.n = items.length;
+    this.px = Float32Array.from(items, (it) => it.x);
+    this.pz = Float32Array.from(items, (it) => it.z);
+    this.levels = [nearLevel, farLevel];
+    // Copia fija de las matrices/colores originales (fuente de las particiones).
+    this.srcMatrix = nearLevel.matrix.array.slice();
+    this.srcColor = nearLevel.color ? nearLevel.color.array.slice() : null;
+    this.idx = [new Uint16Array(this.n), new Uint16Array(this.n)];
+    this.mode = -1; // 0 = todo lejos, 1 = todo cerca, 2 = mezclado
+  }
+
+  update(x, z) {
+    const d = Math.hypot(x - this.cx, z - this.cz);
+    if (d - this.radius > this.far) {
+      this.group.visible = false;
+      return;
+    }
+    this.group.visible = true;
+    if (d - this.radius > this.near) return this._all(0);
+    if (d + this.radius < this.near) return this._all(1);
+    this.mode = 2;
+    const near2 = this.near * this.near;
+    const [ni, fi] = this.idx;
+    let kn = 0;
+    let kf = 0;
+    for (let i = 0; i < this.n; i++) {
+      const dx = this.px[i] - x;
+      const dz = this.pz[i] - z;
+      if (dx * dx + dz * dz < near2) ni[kn++] = i;
+      else fi[kf++] = i;
+    }
+    this._write(this.levels[0], ni, kn);
+    this._write(this.levels[1], fi, kf);
+  }
+
+  _all(nearMode) {
+    if (this.mode === nearMode) return;
+    this.mode = nearMode;
+    const all = this.idx[0];
+    for (let i = 0; i < this.n; i++) all[i] = i;
+    this._write(this.levels[nearMode ? 0 : 1], all, this.n);
+    this._write(this.levels[nearMode ? 1 : 0], all, 0);
+  }
+
+  _write(level, idx, k) {
+    const m = level.matrix.array;
+    for (let j = 0; j < k; j++) m.set(this.srcMatrix.subarray(idx[j] * 16, idx[j] * 16 + 16), j * 16);
+    level.matrix.clearUpdateRanges();
+    level.matrix.addUpdateRange(0, Math.max(16, k * 16));
+    level.matrix.needsUpdate = true;
+    if (level.color && this.srcColor) {
+      const c = level.color.array;
+      for (let j = 0; j < k; j++) c.set(this.srcColor.subarray(idx[j] * 3, idx[j] * 3 + 3), j * 3);
+      level.color.clearUpdateRanges();
+      level.color.addUpdateRange(0, Math.max(3, k * 3));
+      level.color.needsUpdate = true;
+    }
+    for (const im of level.meshes) {
+      im.count = k;
+      im.visible = k > 0;
+    }
+  }
+}
+
+/**
  * Conjunto de instancias de una plantilla repartidas en trozos de ciudad.
- * Cada trozo es un THREE.LOD: modelo completo cerca, versión reducida lejos
- * (si la hay) y nada más allá de `far`.
+ * Si la plantilla tiene versión reducida ('lejos'), cada instancia elige su
+ * nivel según su distancia (LodChunk); si no, el trozo entero es un
+ * THREE.LOD que desaparece más allá de `far`.
  */
 class ChunkedInstances {
   constructor(tpl, { near = 140, far = 1500, castShadow = true, receiveShadow = true, tint = null, name = 'utileria' } = {}) {
@@ -156,7 +236,8 @@ class ChunkedInstances {
     this.items.push({ x, y, z, rotY, sx, sy, sz, color: color ? color.clone() : null, q: q ? q.clone() : null });
   }
 
-  build(root) {
+  /** lodChunks: lista donde se registran los trozos con detalle por instancia. */
+  build(root, lodChunks = null) {
     if (!this.items.length) return [];
     const chunks = new Map();
     for (const it of this.items) {
@@ -164,50 +245,86 @@ class ChunkedInstances {
       if (!chunks.has(k)) chunks.set(k, []);
       chunks.get(k).push(it);
     }
-    const lods = [];
+    const out = [];
+    const reach = Math.max(this.tpl.box.max.x - this.tpl.box.min.x, this.tpl.box.max.z - this.tpl.box.min.z);
     for (const list of chunks.values()) {
       const c = new THREE.Vector3();
       for (const it of list) c.add(_v.set(it.x, it.y, it.z));
       c.divideScalar(list.length);
+      if (this.tpl.lejos && lodChunks) {
+        let radius = 0;
+        for (const it of list) radius = Math.max(radius, Math.hypot(it.x - c.x, it.z - c.z) + reach * Math.max(it.sx, it.sz));
+        const g = new THREE.Group();
+        g.name = this.opts.name;
+        g.position.copy(c);
+        const nearLevel = this._level(this.tpl.cerca, list, c, this.opts.castShadow);
+        const farLevel = this._level(this.tpl.lejos, list, c, false);
+        g.add(nearLevel.group, farLevel.group);
+        root.add(g);
+        const lc = new LodChunk(g, c, radius, list, nearLevel, farLevel, this.opts.near, this.opts.far);
+        lc._all(0);
+        lodChunks.push(lc);
+        out.push(g);
+        continue;
+      }
       const lod = new THREE.LOD();
       lod.name = this.opts.name;
       lod.position.copy(c);
-      lod.addLevel(this._level(this.tpl.cerca, list, c), 0);
-      if (this.tpl.lejos) lod.addLevel(this._level(this.tpl.lejos, list, c), this.opts.near);
+      lod.addLevel(this._level(this.tpl.cerca, list, c, this.opts.castShadow).group, 0);
+      if (this.tpl.lejos) lod.addLevel(this._level(this.tpl.lejos, list, c, false).group, this.opts.near);
       lod.addLevel(new THREE.Object3D(), this.opts.far);
       root.add(lod);
-      lods.push(lod);
+      out.push(lod);
     }
-    return lods;
+    return out;
   }
 
-  _level(parts, list, c) {
+  /** Un nivel de detalle: una InstancedMesh por material, todas con el mismo buffer de matrices. */
+  _level(parts, list, c, castShadow) {
     const g = new THREE.Group();
+    const n = list.length;
+    const matrix = new THREE.InstancedBufferAttribute(new Float32Array(n * 16), 16);
+    matrix.setUsage(THREE.DynamicDrawUsage);
+    const tinted = this.opts.tint && parts.some((p) => this.opts.tint(p.material));
+    const color = tinted ? new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3) : null;
     const col = new THREE.Color();
+    list.forEach((it, i) => {
+      if (it.q) _q.copy(it.q);
+      else _q.setFromAxisAngle(_up, it.rotY);
+      _m.compose(_v.set(it.x - c.x, it.y - c.y, it.z - c.z), _q, _s.set(it.sx, it.sy, it.sz));
+      _m.toArray(matrix.array, i * 16);
+      if (color) (it.color ? col.copy(it.color) : col.setRGB(1, 1, 1)).toArray(color.array, i * 3);
+    });
+    const meshes = [];
     for (const part of parts) {
-      const im = new THREE.InstancedMesh(part.geometry, part.material, list.length);
-      const tinted = this.opts.tint && this.opts.tint(part.material);
-      list.forEach((it, i) => {
-        if (it.q) _q.copy(it.q);
-        else _q.setFromAxisAngle(_up, it.rotY);
-        _m.compose(_v.set(it.x - c.x, it.y - c.y, it.z - c.z), _q, _s.set(it.sx, it.sy, it.sz));
-        im.setMatrixAt(i, _m);
-        if (tinted) im.setColorAt(i, it.color ? col.copy(it.color) : col.setRGB(1, 1, 1));
-      });
-      im.instanceMatrix.needsUpdate = true;
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      im.castShadow = this.opts.castShadow;
+      const im = new THREE.InstancedMesh(part.geometry, part.material, n);
+      im.instanceMatrix = matrix;
+      if (color && this.opts.tint(part.material)) im.instanceColor = color;
+      im.castShadow = castShadow;
       im.receiveShadow = this.opts.receiveShadow;
-      im.computeBoundingSphere();
+      im.computeBoundingSphere(); // con todas las instancias: vale aunque cambie count
       g.add(im);
+      meshes.push(im);
     }
-    return g;
+    return { group: g, meshes, matrix, color };
   }
 }
 
 // ------------------------------------------------------------------ utilidades
 
 const groundY = (x, z) => terrainHeight(x, z) + GRID.curb;
+
+/** Distancia a la que postes y faroles pasan a su versión reducida. */
+const propNear = (r) => Math.round((r.quality?.treeNear ?? 70) * 0.85);
+
+/** Reparte el detalle por instancia según la posición de la cámara (barato: solo si se movió). */
+export function updatePropLod(r, camPos) {
+  const last = (r._lodAt ??= { x: Infinity, z: Infinity });
+  if (Math.abs(camPos.x - last.x) + Math.abs(camPos.z - last.z) < 2.5) return;
+  last.x = camPos.x;
+  last.z = camPos.z;
+  for (const c of r.lodChunks) c.update(camPos.x, camPos.z);
+}
 
 /** Cuaternión que apoya un objeto plano sobre la pendiente del terreno. */
 function slopeQuat(x, z, rotY, out) {
@@ -243,7 +360,7 @@ function buildTrees(r, trees) {
   const leftovers = [];
   const sets = new Map();
   const col = new THREE.Color();
-  const near = r.quality?.drawDistance >= 2500 ? 160 : r.quality?.drawDistance >= 1500 ? 120 : 90;
+  const near = r.quality?.treeNear ?? 70;
   for (const t of trees) {
     const sp = SPECIES[t.kind];
     const tpl = sp && propTemplate(sp.model);
@@ -270,7 +387,7 @@ function buildTrees(r, trees) {
     col.set(sp.color).offsetHSL(rng.range(-0.015, 0.015), rng.range(-sp.jitter, sp.jitter) * 0.5, rng.range(-sp.jitter, sp.jitter));
     sets.get(sp.model).add(t.x, y, t.z, rng.next() * Math.PI * 2, k * w, k, k * w, col);
   }
-  for (const s of sets.values()) s.build(r.root);
+  for (const s of sets.values()) s.build(r.root, r.lodChunks);
   return leftovers;
 }
 
@@ -290,14 +407,14 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
       box.computeBoundingSphere();
       tpl.lejos.push({ geometry: box, material: glass });
     }
-    const set = new ChunkedInstances(tpl, { near: 95, far: r.quality?.drawDistance ?? 1500, name: 'faroles' });
+    const set = new ChunkedInstances(tpl, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'faroles' });
     for (const l of lamps) {
       set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot);
       const dx = Math.sin(l.rot) * luz[2];
       const dz = Math.cos(l.rot) * luz[2];
       glows.push({ x: l.x + dx, z: l.z + dz, s: 1 });
     }
-    set.build(r.root);
+    set.build(r.root, r.lodChunks);
     handledStreet = true;
   }
   if (parkLamps.length) {
@@ -334,8 +451,8 @@ function buildPoles(r, poles, cables) {
   const rng = makeRng(313);
   const H = 9;
   const variant = new Map();
-  const setA = new ChunkedInstances(ta, { near: 100, far: r.quality?.drawDistance ?? 1500, name: 'postes' });
-  const setB = tb ? new ChunkedInstances(tb, { near: 100, far: r.quality?.drawDistance ?? 1500, name: 'postes-transformador' }) : null;
+  const setA = new ChunkedInstances(ta, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'postes' });
+  const setB = tb ? new ChunkedInstances(tb, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'postes-transformador' }) : null;
   for (const p of poles) {
     const useB = setB && rng.chance(0.3);
     const tpl = useB ? tb : ta;
@@ -345,8 +462,8 @@ function buildPoles(r, poles, cables) {
     (useB ? setB : setA).add(p.x, groundY(p.x, p.z) - 0.1, p.z, rot, k);
     variant.set(p, { tpl, k });
   }
-  setA.build(r.root);
-  setB?.build(r.root);
+  setA.build(r.root, r.lodChunks);
+  setB?.build(r.root, r.lodChunks);
   // Cables con catenaria entre los aisladores de postes vecinos.
   const pts = [];
   const anchorsOf = (p) => {

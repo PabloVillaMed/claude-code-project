@@ -326,6 +326,10 @@ export class ProceduralRig {
     this.body.position.z = 0;
   }
 
+  setShadow(on) {
+    for (const o of (this._shadowMeshes ??= collectMeshes(this.root))) o.castShadow = on;
+  }
+
   dispose() {
     this.root.removeFromParent();
   }
@@ -387,4 +391,10 @@ export function buildWeaponMesh(id) {
   g.rotation.x = -Math.PI / 2;
   g.position.y = -0.05;
   return g;
+}
+
+function collectMeshes(root) {
+  const out = [];
+  root.traverse((o) => o.isMesh && out.push(o));
+  return out;
 }

@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
-import { buildModelProps } from './props.js';
+import { buildModelProps, updatePropLod } from './props.js';
 import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
@@ -30,6 +30,7 @@ export class CityRenderer {
     this.root.name = 'ciudad';
     scene.add(this.root);
     this.nightMaterials = []; // materiales cuya emisión depende de la noche
+    this.lodChunks = []; // utilería con nivel de detalle por instancia (props.js)
     this.lampGlow = null;
     this.cityLights = null;
     this.materials = this._materials();
@@ -111,6 +112,9 @@ export class CityRenderer {
       water: new THREE.MeshPhysicalMaterial({ color: 0x2b4a4f, roughness: 0.06, metalness: 0.1, clearcoat: 1, envMapIntensity: 1.2 }),
       wood: std({ color: 0x7a5534, roughness: 0.7 }),
       darkMetal: std({ color: 0x23262a, roughness: 0.5, metalness: 0.7 }),
+      // Barrotes de balcón: un solo plano con recorte alfa (2 triángulos por
+      // baranda en vez de ~200 de cajitas).
+      railingBars: std({ color: 0x23262a, roughness: 0.5, metalness: 0.7, alphaMap: barsTexture(), alphaTest: 0.5, side: THREE.DoubleSide }),
       white: std({ color: 0xf2f2ee, roughness: 0.4 }),
       ...photoMats,
     };
@@ -513,7 +517,7 @@ export class CityRenderer {
         }
       }
       // Balcones con baranda en la fachada principal.
-      if (b.balcony && b.front) this._balconies(concrete, railing, b);
+      if (b.balcony && b.front) this._balconies(concrete, railing, get('railingBars'), b);
       if (b.tower) {
         // Campanario: remate piramidal.
         const cx = (minX + maxX) / 2;
@@ -608,13 +612,15 @@ export class CityRenderer {
     }
   }
 
-  _balconies(concrete, railing, b) {
+  _balconies(concrete, railing, bars, b) {
     const { minX, maxX, minZ, maxZ, groundY } = b;
     const depth = 0.9;
     const along = b.front === 'N' || b.front === 'S';
     const len = along ? maxX - minX : maxZ - minZ;
     const bw = Math.min(4.2, len * 0.6);
     const c0 = (along ? (minX + maxX) / 2 : (minZ + maxZ) / 2) - bw / 2;
+    const rh = 1.0;
+    const uMax = Math.round(bw / BAR_SPACING);
     for (let f = 1; f < b.floors; f++) {
       const y = groundY + f * 3;
       let box;
@@ -624,20 +630,24 @@ export class CityRenderer {
       else box = [maxX, c0, maxX + depth, c0 + bw];
       const [x0, z0, x1, z1] = box;
       concrete.box(x0, y - 0.15, z0, x1, y, z1, 2, [0.85, 0.84, 0.8], false);
-      // Baranda: pasamanos y barrotes finos.
-      const rh = 1.0;
-      if (b.front === 'N') railing.box(x0, y + rh - 0.05, z0, x1, y + rh, z0 + 0.05);
-      else if (b.front === 'S') railing.box(x0, y + rh - 0.05, z1 - 0.05, x1, y + rh, z1);
-      else if (b.front === 'W') railing.box(x0, y + rh - 0.05, z0, x0 + 0.05, y + rh, z1);
-      else railing.box(x1 - 0.05, y + rh - 0.05, z0, x1, y + rh, z1);
-      const n = Math.floor(bw / 0.25);
-      for (let k = 0; k <= n; k++) {
-        const t = k / n;
-        if (b.front === 'N') railing.box(x0 + (x1 - x0) * t, y, z0, x0 + (x1 - x0) * t + 0.03, y + rh, z0 + 0.03);
-        else if (b.front === 'S') railing.box(x0 + (x1 - x0) * t, y, z1 - 0.03, x0 + (x1 - x0) * t + 0.03, y + rh, z1);
-        else if (b.front === 'W') railing.box(x0, y, z0 + (z1 - z0) * t, x0 + 0.03, y + rh, z0 + (z1 - z0) * t + 0.03);
-        else railing.box(x1 - 0.03, y, z0 + (z1 - z0) * t, x1, y + rh, z0 + (z1 - z0) * t + 0.03);
+      // Baranda: pasamanos (caja) y barrotes (plano recortado).
+      let a;
+      let c;
+      let n;
+      if (b.front === 'N') {
+        railing.box(x0, y + rh - 0.05, z0, x1, y + rh, z0 + 0.05);
+        [a, c, n] = [[x0, z0 + 0.02], [x1, z0 + 0.02], [0, 0, -1]];
+      } else if (b.front === 'S') {
+        railing.box(x0, y + rh - 0.05, z1 - 0.05, x1, y + rh, z1);
+        [a, c, n] = [[x1, z1 - 0.02], [x0, z1 - 0.02], [0, 0, 1]];
+      } else if (b.front === 'W') {
+        railing.box(x0, y + rh - 0.05, z0, x0 + 0.05, y + rh, z1);
+        [a, c, n] = [[x0 + 0.02, z1], [x0 + 0.02, z0], [-1, 0, 0]];
+      } else {
+        railing.box(x1 - 0.05, y + rh - 0.05, z0, x1, y + rh, z1);
+        [a, c, n] = [[x1 - 0.02, z0], [x1 - 0.02, z1], [1, 0, 0]];
       }
+      bars.quad([a[0], y, a[1]], [c[0], y, c[1]], [c[0], y + rh, c[1]], [a[0], y + rh, a[1]], n, [[0, 0], [uMax, 0], [uMax, 1], [0, 1]]);
     }
   }
 
@@ -1198,6 +1208,11 @@ export class CityRenderer {
     this.trainState = { z: mt.z0, dir: 1, wait: 0, speed: 0 };
   }
 
+  /** Detalle por instancia de árboles, postes y faroles según la cámara. */
+  updateLod(camPos) {
+    updatePropLod(this, camPos);
+  }
+
   update(dt, nightFactor) {
     for (const { m, max } of this.nightMaterials) m.emissiveIntensity = max * nightFactor;
     if (this.lampGlow) this.lampGlow.opacity = 0.55 * nightFactor;
@@ -1227,6 +1242,24 @@ export class CityRenderer {
     }
     this.train.position.z = ts.z;
   }
+}
+
+const BAR_SPACING = 0.25; // m entre barrotes
+
+/** Máscara alfa de barrotes verticales (se repite en U cada BAR_SPACING). */
+function barsTexture() {
+  const c = document.createElement('canvas');
+  c.width = 16;
+  c.height = 4;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 16, 4);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 3, 4);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.magFilter = THREE.NearestFilter;
+  return t;
 }
 
 let _glow = null;

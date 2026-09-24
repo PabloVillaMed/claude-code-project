@@ -6,6 +6,10 @@ export class CollisionWorld {
     this.cellSize = cellSize;
     this.cells = new Map();
     this.boxes = [];
+    // Marca por consulta para no repetir cajas que ocupan varias celdas
+    // (sin crear un Set en cada consulta: se llaman cientos por frame).
+    this.stamp = 0;
+    this._scratch = [];
   }
 
   _key(ix, iz) {
@@ -34,14 +38,14 @@ export class CollisionWorld {
   query(minX, minZ, maxX, maxZ, out = []) {
     out.length = 0;
     const cs = this.cellSize;
-    const seen = new Set();
+    const stamp = ++this.stamp;
     for (let ix = Math.floor(minX / cs); ix <= Math.floor(maxX / cs); ix++) {
       for (let iz = Math.floor(minZ / cs); iz <= Math.floor(maxZ / cs); iz++) {
         const cell = this.cells.get(this._key(ix, iz));
         if (!cell) continue;
         for (const b of cell) {
-          if (seen.has(b.id)) continue;
-          seen.add(b.id);
+          if (b.stamp === stamp) continue;
+          b.stamp = stamp;
           if (b.maxX >= minX && b.minX <= maxX && b.maxZ >= minZ && b.minZ <= maxZ) out.push(b);
         }
       }
@@ -51,7 +55,7 @@ export class CollisionWorld {
 
   /** ¿Un punto (a una altura y) está dentro de algún volumen? */
   pointBlocked(x, z, y = null) {
-    for (const b of this.query(x, z, x, z)) {
+    for (const b of this.query(x, z, x, z, this._scratch)) {
       if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) {
         if (y === null || (y >= b.minY && y <= b.maxY)) return true;
       }
@@ -95,7 +99,7 @@ export class CollisionWorld {
     // Recorremos celdas a lo largo del rayo (DDA simple por muestreo).
     const cs = this.cellSize;
     const steps = Math.ceil(maxDist / (cs * 0.5)) + 1;
-    const checked = new Set();
+    const stamp = ++this.stamp;
     let best = null;
     for (let s = 0; s <= steps; s++) {
       const t = Math.min(maxDist, s * cs * 0.5);
@@ -109,8 +113,8 @@ export class CollisionWorld {
           const cell = this.cells.get(this._key(ix, iz));
           if (!cell) continue;
           for (const b of cell) {
-            if (checked.has(b.id)) continue;
-            checked.add(b.id);
+            if (b.stamp === stamp) continue;
+            b.stamp = stamp;
             const hit = rayVsAABB(ox, oy, oz, dx, dy, dz, b, maxDist);
             if (hit && (!best || hit.t < best.t)) best = { ...hit, box: b };
           }

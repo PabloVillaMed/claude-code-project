@@ -115,13 +115,17 @@ export class Game {
     this.nearPoi = null;
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.quality.post, powerPreference: 'high-performance', stencil: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio));
+    this.basePixelRatio = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio);
+    this.resScale = 1; // escala de la resolución dinámica (ver _adaptResolution)
+    this.dynamicRes = opts.dynamicResolution ?? !opts.autotest;
+    renderer.setPixelRatio(this.basePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = this.quality.shadows > 0;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.info.autoReset = false; // se reinicia por frame (incluye sombras y postproceso)
     this.renderer = renderer;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, this.quality.drawDistance);
@@ -179,7 +183,7 @@ export class Game {
     // Precalentar: pobla el barrio y compila shaders antes de mostrarlo.
     this.world.populate(sp.x, sp.z);
     for (let i = 0; i < 30; i++) this.world.update(0.05, this.player);
-    this.renderer.compile(this.scene, this.camera);
+    await this._warmUp(sp);
     await step(1);
     this.state = 'menu';
     this.last = performance.now();
@@ -190,6 +194,82 @@ export class Game {
     };
     this.raf = requestAnimationFrame(this._loop);
     this._exposeApi();
+  }
+
+  /**
+   * Precalentado detrás de la pantalla de carga: compila los shaders en
+   * paralelo (KHR_parallel_shader_compile), sube las texturas a la GPU y
+   * dibuja unos cuadros mirando a cada lado (sombras y postproceso incluidos),
+   * para que el primer minuto de juego no tenga tirones.
+   */
+  async _warmUp(sp) {
+    const r = this.renderer;
+    try {
+      await r.compileAsync(this.scene, this.camera);
+    } catch {
+      r.compile(this.scene, this.camera);
+    }
+    const seen = new Set();
+    this.scene.traverse((o) => {
+      for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) {
+        for (const v of Object.values(m)) if (v?.isTexture && !seen.has(v.source)) {
+          seen.add(v.source);
+          r.initTexture(v);
+        }
+      }
+    });
+    const cam = this.camera;
+    const y = groundHeight(sp.x, sp.z) + 2;
+    const views = this.opts.autotest ? 1 : 4;
+    for (let i = 0; i < views; i++) {
+      cam.position.set(sp.x, y, sp.z);
+      cam.rotation.set(-0.1, (i / 4) * Math.PI * 2, 0, 'YXZ');
+      cam.updateMatrixWorld();
+      this.env.update(0, cam.position);
+      this.cityRenderer.updateLod(cam.position);
+      this.postfx.render(this.scene, cam);
+      await new Promise((res) => setTimeout(res, 0));
+    }
+  }
+
+  /**
+   * Resolución dinámica: mide el tiempo real entre cuadros y, si el juego no
+   * alcanza la frecuencia de la pantalla (~60 fps), baja la resolución
+   * interna hasta quality.minScale; cuando sobra margen la sube de a poco.
+   * Si una subida hace caer los fps, no lo vuelve a intentar en un rato.
+   */
+  _adaptResolution(realDt) {
+    if (!this.dynamicRes || this.state !== 'playing' || !(realDt > 0) || realDt > 0.25) return;
+    const d = (this._dres ??= { avg: 1 / 60, minDt: 1 / 60, t: 0, good: 0, clock: 0, lastRaise: -1e9, blockUntil: 0 });
+    d.clock += realDt;
+    d.avg += (realDt - d.avg) * 0.08;
+    // Pantallas de más de 60 Hz: el cuadro más rápido visto (la meta sigue siendo >= ~55 fps).
+    d.minDt = Math.min(d.minDt, realDt);
+    d.t += realDt;
+    if (d.t < 0.5) return;
+    d.t = 0;
+    const budget = Math.max(1 / 54, d.minDt * 1.12);
+    const min = this.quality.minScale ?? 0.6;
+    if (d.avg > budget && this.resScale > min + 1e-3) {
+      if (d.clock - d.lastRaise < 4) d.blockUntil = d.clock + 30; // la subida no aguantó
+      this._setResScale(Math.max(min, this.resScale - (d.avg > 1 / 40 ? 0.15 : 0.08)));
+      d.good = 0;
+    } else if (d.avg < Math.max(1 / 58.5, d.minDt * 1.03)) {
+      d.good += 0.5;
+      if (d.good >= 3 && this.resScale < 1 && d.clock > d.blockUntil) {
+        this._setResScale(Math.min(1, this.resScale + 0.05));
+        d.lastRaise = d.clock;
+        d.good = 0;
+      }
+    } else d.good = 0;
+  }
+
+  _setResScale(s) {
+    this.resScale = s;
+    const pr = this.basePixelRatio * s;
+    this.renderer.setPixelRatio(pr);
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    this.postfx?.setPixelRatio(pr);
   }
 
   // ================================================================ partida
@@ -276,8 +356,12 @@ export class Game {
   // ================================================================ bucle
   frame(t) {
     this.frameCount = (this.frameCount ?? 0) + 1;
-    let dt = Math.min(0.05, (t - this.last) / 1000);
+    const tCpu0 = performance.now();
+    this.renderer.info.reset();
+    const realDt = (t - this.last) / 1000;
+    let dt = Math.min(0.05, realDt);
     this.last = t;
+    this._adaptResolution(realDt);
     if (!(dt > 0)) dt = 1 / 60;
     const a = this.input.poll();
     if (this.state === 'playing') {
@@ -289,16 +373,32 @@ export class Game {
       if (a.map || a.pause) this.closeMap();
       else this.hud.drawFullMap(this._hudState());
     }
-    const focus = this.state === 'playing' || this.state === 'paused' ? new THREE.Vector3(this.player.x, this.player.y, this.player.z) : this.camRig.pos.clone().setY(0);
+    const focus = (this._focus ??= new THREE.Vector3());
+    if (this.state === 'playing' || this.state === 'paused') focus.set(this.player.x, this.player.y, this.player.z);
+    else focus.copy(this.camRig.pos).setY(0);
     const running = this.state !== 'paused' && this.state !== 'shop';
     this.env.update(running ? dt : 0, focus);
     this.cityRenderer.update(running ? dt : 0, this.env.night);
+    this.cityRenderer.updateLod(this.camera.position);
     if (running) this.effects.update(dt);
     this.postfx.setNight(this.env.night);
     this.player.damageFlash = Math.max(0, this.player.damageFlash - dt * 1.5);
     this.postfx.setDamage(this.player.damageFlash + (this.player.health < 25 && !this.player.dead ? 0.25 : 0));
+    const tRender0 = performance.now();
     this.postfx.render(this.scene, this.camera);
     this.input.endFrame();
+    this._recordPerf(tCpu0, tRender0, performance.now());
+  }
+
+  /** Telemetría de rendimiento (promedios móviles) para ajustar calidad y depurar. */
+  _recordPerf(t0, tRender, t1) {
+    const info = this.renderer.info.render;
+    const p = (this.perf ??= { updateMs: 0, renderMs: 0, calls: 0, triangles: 0 });
+    const k = 0.1;
+    p.updateMs += (tRender - t0 - p.updateMs) * k;
+    p.renderMs += (t1 - tRender - p.renderMs) * k;
+    p.calls += (info.calls - p.calls) * k;
+    p.triangles += (info.triangles - p.triangles) * k;
   }
 
   updateMenuCamera(dt) {
@@ -949,6 +1049,10 @@ export class Game {
       },
       get frames() {
         return g.frameCount ?? 0;
+      },
+      perf() {
+        const r = g.renderer.info;
+        return { ...g.perf, geometries: r.memory.geometries, textures: r.memory.textures, programs: r.programs?.length ?? 0, pixelRatio: g.renderer.getPixelRatio() };
       },
       assetReport() {
         return { ...g.assetReport, keys: [...assets.items.keys()] };
