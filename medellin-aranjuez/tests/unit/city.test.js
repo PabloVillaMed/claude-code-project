@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateCity } from '../../src/sim/cityLayout.js';
+import { generateCity, isMoravia } from '../../src/sim/cityLayout.js';
 import { RoadGraph } from '../../src/sim/roadNav.js';
 import { groundHeight, onRoad, terrainHeight, GRID, MERGED_BLOCKS, roadLine } from '../../src/sim/terrain.js';
 import { city } from './helpers.js';
@@ -46,6 +46,34 @@ describe('ciudad: Aranjuez (MVP)', () => {
     const b = c.blocks.find((x) => x.type === 'botanico');
     expect(onRoad(b.cx, b.cz)).toBe(false);
     expect(onRoad(roadLine(MERGED_BLOCKS[0].ix0 + 1, GRID.nx), b.cz)).toBe(false);
+  });
+
+  it('geografía real: norte-sur y oeste-este como en la Comuna 4', () => {
+    const c = city();
+    const at = (id) => c.pois.find((p) => p.id === id);
+    // Norte = -Z, oeste = -X.
+    expect(at('parque').z).toBeLessThan(at('museo').z); // Calle 92 al norte de la 85
+    expect(at('museo').z).toBeLessThan(at('botanico').z); // Calle 73 más al sur
+    expect(at('botanico').z).toBeLessThan(at('cementerio').z);
+    expect(at('cementerio').z).toBeLessThan(at('hospital').z); // Calle 64, lo más al sur
+    expect(at('moravia').x).toBeLessThan(at('museo').x); // Moravia al oeste de Carabobo
+    expect(at('explora').x).toBeLessThan(at('botanico').x);
+    expect(at('parque').x).toBeGreaterThan(at('museo').x); // el parque hacia el oriente
+    expect(Math.abs(at('metro').z - at('botanico').z)).toBeLessThan(80); // Universidad, junto al Botánico
+    // La ladera sube hacia Manrique (este).
+    expect(terrainHeight(250, 0)).toBeGreaterThan(terrainHeight(-250, 0) + 30);
+  });
+
+  it('Moravia: casas angostas, casi todas de ladrillo a la vista', () => {
+    const c = city();
+    const blocks = c.blocks.filter(isMoravia).filter((b) => b.type === 'residencial');
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    const inside = (h) => blocks.some((b) => h.minX >= b.minX && h.maxX <= b.maxX && h.minZ >= b.minZ && h.maxZ <= b.maxZ);
+    const houses = c.buildings.filter(inside);
+    expect(houses.length).toBeGreaterThan(30);
+    const brick = houses.filter((h) => h.style === 'ladrillo').length / houses.length;
+    expect(brick).toBeGreaterThan(0.65);
+    expect(houses.every((h) => h.style !== 'torre')).toBe(true);
   });
 
   it('ningún edificio invade la calzada', () => {

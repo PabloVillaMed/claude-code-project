@@ -156,7 +156,9 @@ export function generateCity(seed = 4) {
   const ctx = { city, rng };
   for (const block of city.blocks) {
     const gen = BLOCK_GENERATORS[block.type] || genResidential;
-    gen(block, ctx);
+    // Barrio Moravia: al oeste de Carabobo, alrededor del Morro.
+    if (block.type === 'residencial' && isMoravia(block)) genResidential(block, ctx, { informal: true });
+    else gen(block, ctx);
     addSidewalkProps(block, ctx);
   }
   addMetro(ctx);
@@ -452,6 +454,14 @@ function pickHouseStyle(rng) {
   return 'tienda';
 }
 
+/** Moravia: casi todo ladrillo a la vista sin revocar, alguna fachada pintada y tiendas. */
+function pickInformalStyle(rng) {
+  const r = rng.next();
+  if (r < 0.8) return 'ladrillo';
+  if (r < 0.92) return 'pintada';
+  return 'tienda';
+}
+
 function houseColor(rng, style) {
   if (style === 'ladrillo') {
     const v = rng.range(0.85, 1.05);
@@ -474,16 +484,17 @@ function fillSide(ctx, lot, side, depthMax, opts = {}) {
   const a1 = along ? end : end - depthMax;
   let a = a0;
   while (a < a1 - 3) {
-    let w = rng.range(6, 11);
+    // Moravia: autoconstrucción en lotes angostos (4-7 m de frente).
+    let w = opts.informal ? rng.range(4.2, 7.5) : rng.range(6, 11);
     if (a1 - (a + w) < 5) w = a1 - a;
     if (!opts.noGaps && rng.chance(0.06)) {
       a += Math.min(w, 5); // lote vacío
       continue;
     }
     const depth = rng.range(depthMax * 0.7, depthMax);
-    let floors = rng.int(opts.minFloors ?? 2, opts.maxFloors ?? 4);
-    if (!opts.low && rng.chance(0.08)) floors = rng.int(6, 11);
-    const style = opts.style ?? (floors >= 6 ? 'torre' : pickHouseStyle(rng));
+    let floors = rng.int(opts.minFloors ?? 2, opts.maxFloors ?? (opts.informal ? 5 : 4));
+    if (!opts.low && !opts.informal && rng.chance(0.08)) floors = rng.int(6, 11);
+    const style = opts.style ?? (floors >= 6 ? 'torre' : opts.informal ? pickInformalStyle(rng) : pickHouseStyle(rng));
     let b;
     if (side === 'N') b = { minX: a, maxX: a + w, minZ: lot.minZ, maxZ: lot.minZ + depth };
     else if (side === 'S') b = { minX: a, maxX: a + w, minZ: lot.maxZ - depth, maxZ: lot.maxZ };
@@ -497,7 +508,7 @@ function fillSide(ctx, lot, side, depthMax, opts = {}) {
       front: side,
       tank: floors < 6 && rng.chance(0.55),
       roof: floors <= 2 && rng.chance(0.3) ? 'tejas' : 'flat',
-      balcony: floors >= 3 && rng.chance(0.5),
+      balcony: floors >= 3 && rng.chance(opts.informal ? 0.2 : 0.5),
     });
     a += w;
   }
@@ -560,6 +571,11 @@ function addSidewalkProps(block, ctx) {
       break;
     }
   }
+}
+
+/** Manzanas del barrio Moravia (entre la Carrera 52 y el río, Calles 92 a 77). */
+export function isMoravia(block) {
+  return block.ix <= 0 && block.iz >= 1 && block.iz <= 4;
 }
 
 // ---------- Generadores de manzanas especiales ----------
