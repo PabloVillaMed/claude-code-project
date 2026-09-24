@@ -30,29 +30,39 @@ const PAINT_COLORS = [
   [0.9, 0.36, 0.33], // rojo
 ];
 
-export const CALLE = (j) => 100 - j * 2;
-export const CARRERA = (i) => 52 - i;
+// Nombres reales de las vías (OpenStreetMap), de norte a sur y de oeste a
+// este. El mapa comprime la Comuna 4 (~1,7 x 2,5 km) en 9 x 9 manzanas, pero
+// cada lugar queda entre las vías reales que lo rodean.
+export const CALLES = ['Calle 94', 'Calle 92', 'Calle 89', 'Calle 86', 'Calle 82', 'Calle 77', 'Calle 73', 'Calle 69', 'Calle 67', 'Calle 64'];
+export const CARRERAS = ['Carrera 53', 'Carrera 52 (Carabobo)', 'Carrera 51D', 'Carrera 51B', 'Carrera 51 (Bolívar)', 'Carrera 50', 'Carrera 49', 'Carrera 48', 'Carrera 46', 'Carrera 45 (Manrique)'];
 
 export function roadName(edge) {
-  if (edge.axis === 'x') return `Calle ${CALLE(edge.j)}`;
-  if (edge.i === 0) return 'Carrera 52 (Carabobo)';
-  return `Carrera ${CARRERA(edge.i)}`;
+  if (edge.axis === 'x') return CALLES[edge.j] ?? `Calle ${94 - edge.j * 3}`;
+  return CARRERAS[edge.i] ?? `Carrera ${53 - edge.i}`;
 }
 
-// Manzanas especiales -> tipo.
+// Manzanas especiales -> tipo, según la geografía real (norte arriba):
+//  - Calle 92: Parque de Aranjuez con la iglesia San Nicolás (Cra 49-48).
+//  - Centro: Casa Museo Pedro Nel Gómez (Cra 51B con Calle 85).
+//  - Oeste de la Carrera 52 (Carabobo): Morro de Moravia; más al sur Parque
+//    Explora, y el Jardín Botánico enfrente, junto a la estación Universidad
+//    (Calle 73).
+//  - Sur: Cementerio San Pedro (Cra 51 Bolívar, Calle 68) y el Hospital San
+//    Vicente (Calle 64).
+//  - Este: la ladera sube hacia Manrique (Carrera 45), con el mirador.
 const SPECIAL = {
-  '0,4': 'explora',
-  '4,4': 'parque',
-  '5,4': 'iglesia',
-  '6,2': 'museo',
-  '3,6': 'cancha',
-  '1,6': 'cementerio',
-  '2,1': 'hospital',
-  '0,7': 'moravia',
-  '5,6': 'armeria',
-  '7,5': 'taller',
+  '6,0': 'parque',
+  '7,0': 'iglesia',
+  '3,1': 'cancha',
+  '3,3': 'museo',
+  '0,3': 'moravia',
+  '1,4': 'taller',
+  '5,3': 'armeria',
   '8,3': 'mirador',
-  '3,3': 'parqueadero',
+  '0,5': 'explora',
+  '5,5': 'parqueadero',
+  '4,7': 'cementerio',
+  '1,8': 'hospital',
 };
 
 export function generateCity(seed = 4) {
@@ -577,7 +587,7 @@ const BLOCK_GENERATORS = {
     addPoi(ctx, {
       id: 'parque',
       name: 'Parque de Aranjuez',
-      desc: 'El corazón del barrio: tinto, dominó y la iglesia de San Cayetano al frente.',
+      desc: 'El corazón del barrio sobre la Calle 92: tinto, dominó y la iglesia San Nicolás al lado.',
       type: 'landmark',
       x: block.cx,
       z: block.cz + 6,
@@ -591,8 +601,8 @@ const BLOCK_GENERATORS = {
     addBuilding(ctx, { minX: lot.minX + 2, maxX: lot.minX + 32, minZ: block.cz - 8, maxZ: block.cz + 8, height: 13, style: 'iglesia', color: [0.95, 0.92, 0.84], roof: 'tejas' });
     addBuilding(ctx, { minX: lot.minX, maxX: lot.minX + 6, minZ: block.cz - 3, maxZ: block.cz + 3, height: 27, style: 'iglesia', color: [0.95, 0.92, 0.84], tower: true });
     genResidential(block, ctx, { sides: ['N', 'S', 'E'] });
-    addProp(ctx, { type: 'sign', x: lot.minX - 1.2, z: block.cz + 5.5, rot: Math.PI / 2, text: 'Parroquia San Cayetano' });
-    addPoi(ctx, { id: 'iglesia', name: 'Iglesia de San Cayetano', desc: 'Parroquia emblemática frente al parque.', type: 'landmark', ...sidewalkPoint(block, 'W', 0.5) });
+    addProp(ctx, { type: 'sign', x: lot.minX - 1.2, z: block.cz + 5.5, rot: Math.PI / 2, text: 'Iglesia San Nicolás' });
+    addPoi(ctx, { id: 'iglesia', name: 'Iglesia San Nicolás', desc: 'La parroquia junto al Parque de Aranjuez.', type: 'landmark', ...sidewalkPoint(block, 'W', 0.5) });
   },
 
   museo(block, ctx) {
@@ -602,7 +612,7 @@ const BLOCK_GENERATORS = {
     for (let k = 0; k < 6; k++) addProp(ctx, { type: 'tree', kind: ctx.rng.pick(['mango', 'guayacan', 'palma']), x: lot.minX + 6 + k * 4, z: lot.maxZ - 26 + (k % 2) * 3, scale: 1.1 });
     genResidential(block, ctx, { sides: ['N', 'E'] });
     addProp(ctx, { type: 'sign', x: lot.minX + 15, z: lot.maxZ + 1.4, rot: 0, text: 'Casa Museo Pedro Nel Gómez' });
-    addPoi(ctx, { id: 'museo', name: 'Casa Museo Pedro Nel Gómez', desc: 'La casa-taller del gran muralista antioqueño.', type: 'landmark', ...sidewalkPoint(block, 'S', 0.3) });
+    addPoi(ctx, { id: 'museo', name: 'Casa Museo Pedro Nel Gómez', desc: 'La casa-taller del gran muralista antioqueño (Carrera 51B con Calle 85).', type: 'landmark', ...sidewalkPoint(block, 'S', 0.3) });
   },
 
   explora(block, ctx) {
@@ -771,7 +781,7 @@ function addMetro(ctx) {
   const z0 = MAP_MIN_Z - 160;
   const z1 = MAP_MAX_Z + 160;
   const deckY = terrainHeight(x, 0) + 11;
-  const stationZ = roadLine(3, GRID.nz);
+  const stationZ = roadLine(6, GRID.nz); // Calle 73, frente al Botánico y Explora
   ctx.city.metro = { x, z0, z1, deckY, stationZ, stationLength: 70 };
   for (let z = z0; z <= z1; z += 30) {
     if (Math.abs(z - stationZ) < 40) continue;

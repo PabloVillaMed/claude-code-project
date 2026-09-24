@@ -158,8 +158,8 @@ describe('movilidad a pie', () => {
   it('en Aranjuez: recorre una ruta por calles entre dos puntos de interés', () => {
     const c = city();
     const env = cityEnv();
-    const s = createPlayerState(c.spawn.x, c.spawn.z, groundHeight);
-    // Ruta: parque -> vía al sur -> iglesia (andén oeste)
+    // Ruta por el centro: andén -> vía al sureste -> vía hacia el norte.
+    const s = createPlayerState(0, 30.5, groundHeight);
     const waypoints = [
       { x: 0, z: 30.5 },
       { x: 35, z: 35 },

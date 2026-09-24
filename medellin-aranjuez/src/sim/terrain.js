@@ -29,13 +29,20 @@ export const PLAY_BOUNDS = {
   maxZ: MAP_MAX_Z + 30,
 };
 
-// Morro de Moravia: una loma verde (jardín comunitario sobre el antiguo basurero).
-export const MORAVIA = { x: roadLine(0, GRID.nx) + 35, z: roadLine(7, GRID.nz) + 35, h: 9, r: 18 };
+// Morro de Moravia: una loma verde (jardín comunitario sobre el antiguo
+// basurero), al oeste de la Carrera 52, hacia el río.
+export const MORAVIA = { x: roadLine(0, GRID.nx) + 35, z: roadLine(3, GRID.nz) + 35, h: 9, r: 18 };
 
-/** Altura del terreno natural en (x, z). Pendiente media ~8 % con ondulaciones. */
+/**
+ * Altura del terreno natural en (x, z). Perfil según la elevación real (SRTM):
+ * casi plano junto a Carabobo y Moravia (~5 %) y cada vez más empinado hacia
+ * Manrique (~10 %), con poca variación norte-sur y ondulaciones suaves.
+ */
 export function terrainHeight(x, z) {
+  const d = x - MAP_MIN_X;
   let h =
-    (x - MAP_MIN_X) * 0.075 +
+    d * 0.055 +
+    d * d * 0.00004 +
     5.5 * Math.sin(z * 0.012 + 1.3) * Math.sin(x * 0.009) +
     2.0 * Math.sin(x * 0.021 + z * 0.017) +
     1.2 * Math.cos(z * 0.031 - x * 0.006);
@@ -58,9 +65,10 @@ export function insideGrid(x, z) {
 
 /**
  * Manzanas fusionadas (sin vías internas). Cada una se expresa en índices de
- * manzana [ix0, iz0, ix1, iz1] inclusivos. El Jardín Botánico ocupa 2x2.
+ * manzana [ix0, iz0, ix1, iz1] inclusivos. El Jardín Botánico ocupa 2x2, al
+ * este de la Carrera 52 y al lado de la estación Universidad (Calle 73).
  */
-export const MERGED_BLOCKS = [{ id: 'botanico', ix0: 0, iz0: 2, ix1: 1, iz1: 3 }];
+export const MERGED_BLOCKS = [{ id: 'botanico', ix0: 1, iz0: 5, ix1: 2, iz1: 6 }];
 
 export function mergedRect(m) {
   return {

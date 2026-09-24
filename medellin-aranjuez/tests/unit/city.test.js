@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCity } from '../../src/sim/cityLayout.js';
 import { RoadGraph } from '../../src/sim/roadNav.js';
-import { groundHeight, onRoad, terrainHeight, GRID, roadLine } from '../../src/sim/terrain.js';
+import { groundHeight, onRoad, terrainHeight, GRID, MERGED_BLOCKS, roadLine } from '../../src/sim/terrain.js';
 import { city } from './helpers.js';
 
 describe('ciudad: Aranjuez (MVP)', () => {
@@ -45,7 +45,7 @@ describe('ciudad: Aranjuez (MVP)', () => {
     // Centro del Botánico: no es vía.
     const b = c.blocks.find((x) => x.type === 'botanico');
     expect(onRoad(b.cx, b.cz)).toBe(false);
-    expect(onRoad(roadLine(1, GRID.nx), b.cz)).toBe(false);
+    expect(onRoad(roadLine(MERGED_BLOCKS[0].ix0 + 1, GRID.nx), b.cz)).toBe(false);
   });
 
   it('ningún edificio invade la calzada', () => {
