@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <base href="/" />
+    <title>Visor de personajes</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #9ab; overflow: hidden; }
+      #info { position: fixed; left: 8px; top: 8px; font: 13px sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
+    </style>
+  </head>
+  <body>
+    <div id="info">Visor de personajes (npx vite y abrir /scripts/assets/visor.html)</div>
+    <script type="module">
+      // Herramienta de desarrollo: muestra todos los avatares Rocketbox con
+      // distintos estados de animación. ?estado=walk|jog|sprint|aim|rifle|crouch|drive|moto|dead|punch|air|idle
+      import * as THREE from 'three';
+      import { assets } from '/src/render/assets.js';
+      import { CharacterRig, AVATARS } from '/src/render/characterRig.js';
+
+      const q = new URLSearchParams(location.search);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9aabbb);
+      const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 200);
+      scene.add(new THREE.HemisphereLight(0xdfefff, 0x5a4a3a, 1.2));
+      const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+      sun.position.set(5, 10, 6);
+      sun.castShadow = true;
+      sun.shadow.camera.left = sun.shadow.camera.bottom = -15;
+      sun.shadow.camera.right = sun.shadow.camera.top = 15;
+      scene.add(sun);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x8a8a80, roughness: 0.95 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      scene.add(floor);
+      // Regla de 1.75 m.
+      const ruler = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.75, 0.05), new THREE.MeshBasicMaterial({ color: 0xff0044 }));
+      ruler.position.set(-1, 0.875, 0);
+      scene.add(ruler);
+
+      await assets.loadAll(renderer);
+      const estado = q.get('estado') ?? 'idle';
+      const only = q.get('ids')?.split(',');
+      const ids = Object.values(AVATARS).flat().map((a) => a.id).filter((id) => !only || only.includes(id));
+      const rigs = ids.map((id, i) => {
+        const rig = new CharacterRig({ avatar: id, outfit: 'civil', height: 1 });
+        rig.root.position.set(i * 1.1, 0, 0);
+        rig.root.rotation.y = +(q.get('yaw') ?? 0.5);
+        scene.add(rig.root);
+        const weapon = { aim: 'pistol', rifle: 'rifle', punch: 'machete', walkarmed: 'pistol' }[estado] ?? null;
+        rig.setWeapon(weapon);
+        return rig;
+      });
+      const n = rigs.length;
+      const cx = ((n - 1) * 1.1) / 2;
+      const dist = +(q.get('dist') ?? Math.max(4, n * 0.9));
+      cam.position.set(cx, +(q.get('camy') ?? 1.3), dist);
+      cam.lookAt(cx, +(q.get('looky') ?? 0.9), 0);
+      const st = (t) => {
+        const s = { speed: 0, onGround: true, aiming: false, crouching: false, driving: null, dead: false, aimPitch: +(q.get('pitch') ?? 0) };
+        if (estado === 'walk' || estado === 'walkarmed') s.speed = 1.4;
+        if (estado === 'jog') s.speed = 4.6;
+        if (estado === 'sprint') s.speed = 7.4;
+        if (estado === 'aim' || estado === 'rifle') s.aiming = true;
+        if (estado === 'crouch') s.crouching = true;
+        if (estado === 'drive') s.driving = 'car';
+        if (estado === 'moto') s.driving = 'moto';
+        if (estado === 'dead') s.dead = true;
+        if (estado === 'air') s.onGround = false;
+        return s;
+      };
+      let t = 0;
+      window.__visor = {
+        rigs,
+        advance(sec) {
+          const dt = 1 / 30;
+          for (let k = 0; k < sec / dt; k++) {
+            t += dt;
+            for (const r of rigs) {
+              if (estado === 'punch' && Math.abs(t % 1 - 0.1) < dt / 2) r.punch();
+              r.animate(dt, st(t));
+            }
+          }
+          renderer.render(scene, cam);
+          for (const r of rigs) r.animate(0.001, st(t));
+          renderer.render(scene, cam);
+        },
+      };
+      window.__visor.advance(+(q.get('t') ?? 1.0));
+      window.__visorReady = true;
+    </script>
+  </body>
+</html>
