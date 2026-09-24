@@ -22,6 +22,15 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
+  '.bin': 'application/octet-stream',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.hdr': 'image/vnd.radiance',
+  '.ktx2': 'image/ktx2',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
 // Rendimiento: usar la GPU dedicada y no limitar por lista negra de drivers.

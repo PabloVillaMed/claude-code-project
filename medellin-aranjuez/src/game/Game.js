@@ -12,6 +12,8 @@ import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
 import { MissionSystem, createMissionDefs } from '../sim/missions.js';
 import { createTextureLibrary } from '../render/textures.js';
+import { assets } from '../render/assets.js';
+import '../render/assetManifest.js';
 import { CityRenderer } from '../render/cityRenderer.js';
 import { Environment } from '../render/environment.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
@@ -145,6 +147,10 @@ export class Game {
     this.city = generateCity(4);
     await step(0.2);
     this.textures = createTextureLibrary();
+    await step(0.3);
+    // Recursos externos (modelos, texturas fotográficas, HDRI). Si alguno
+    // falta, cada módulo usa su versión procedural.
+    this.assetReport = await assets.loadAll(this.renderer, (p) => progress(0.3 + p * 0.15));
     await step(0.45);
     this.env = new Environment(this.renderer, this.scene, this.quality);
     await step(0.55);
@@ -943,6 +949,9 @@ export class Game {
       },
       get frames() {
         return g.frameCount ?? 0;
+      },
+      assetReport() {
+        return { ...g.assetReport, keys: [...assets.items.keys()] };
       },
       state() {
         const p = g.player;
