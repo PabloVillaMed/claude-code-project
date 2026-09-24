@@ -10,11 +10,11 @@ import { aabbToObb, obbVsObb } from './collision.js';
 import { PLAY_BOUNDS } from './terrain.js';
 
 export const VEHICLE_TYPES = {
-  taxi: { name: 'Taxi', length: 3.7, width: 1.65, height: 1.5, mass: 950, maxSpeed: 40, accel: 7.5, brake: 16, reverseMax: 8, steerMax: 0.6, wheelBase: 2.4, grip: 10, handbrakeGrip: 1.6, mu: 0.95, health: 1000, seats: 4 },
-  sedan: { name: 'Sedán', length: 4.4, width: 1.8, height: 1.45, mass: 1250, maxSpeed: 46, accel: 8.5, brake: 17, reverseMax: 9, steerMax: 0.58, wheelBase: 2.7, grip: 10, handbrakeGrip: 1.5, mu: 1.0, health: 1000, seats: 4 },
-  camioneta: { name: 'Camioneta', length: 4.7, width: 1.95, height: 1.85, mass: 1900, maxSpeed: 42, accel: 7, brake: 15, reverseMax: 8, steerMax: 0.55, wheelBase: 2.85, grip: 9, handbrakeGrip: 1.8, mu: 0.88, health: 1400, seats: 5 },
-  buseta: { name: 'Buseta', length: 7.8, width: 2.3, height: 2.9, mass: 5500, maxSpeed: 26, accel: 3.6, brake: 10, reverseMax: 5, steerMax: 0.5, wheelBase: 4.6, grip: 8, handbrakeGrip: 3, mu: 0.75, health: 2200, seats: 1 },
-  policia: { name: 'Patrulla', length: 4.5, width: 1.85, height: 1.55, mass: 1400, maxSpeed: 50, accel: 9.5, brake: 18, reverseMax: 9, steerMax: 0.6, wheelBase: 2.75, grip: 11, handbrakeGrip: 1.6, mu: 1.08, health: 1300, seats: 2 },
+  taxi: { name: 'Taxi', length: 4.0, width: 1.73, height: 1.5, mass: 950, maxSpeed: 40, accel: 7.5, brake: 16, reverseMax: 8, steerMax: 0.6, wheelBase: 2.5, grip: 10, handbrakeGrip: 1.6, mu: 0.95, health: 1000, seats: 4 },
+  sedan: { name: 'Sedán', length: 4.45, width: 1.77, height: 1.47, mass: 1250, maxSpeed: 46, accel: 8.5, brake: 17, reverseMax: 9, steerMax: 0.58, wheelBase: 2.75, grip: 10, handbrakeGrip: 1.5, mu: 1.0, health: 1000, seats: 4 },
+  camioneta: { name: 'Camioneta', length: 4.4, width: 1.85, height: 1.65, mass: 1900, maxSpeed: 42, accel: 7, brake: 15, reverseMax: 8, steerMax: 0.55, wheelBase: 2.75, grip: 9, handbrakeGrip: 1.8, mu: 0.88, health: 1400, seats: 5 },
+  buseta: { name: 'Buseta', length: 7.8, width: 2.3, height: 2.9, mass: 5500, maxSpeed: 26, accel: 3.6, brake: 10, reverseMax: 5, steerMax: 0.5, wheelBase: 4.4, grip: 8, handbrakeGrip: 3, mu: 0.75, health: 2200, seats: 1 },
+  policia: { name: 'Patrulla', length: 4.4, width: 1.85, height: 1.65, mass: 1400, maxSpeed: 50, accel: 9.5, brake: 18, reverseMax: 9, steerMax: 0.6, wheelBase: 2.75, grip: 11, handbrakeGrip: 1.6, mu: 1.08, health: 1300, seats: 2 },
   moto: { name: 'Moto', length: 2.0, width: 0.75, height: 1.2, mass: 180, maxSpeed: 44, accel: 10.5, brake: 15, reverseMax: 2.5, steerMax: 0.62, wheelBase: 1.35, grip: 12, handbrakeGrip: 2.2, mu: 1.05, health: 500, seats: 2, twoWheels: true },
 };
 

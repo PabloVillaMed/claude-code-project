@@ -1,0 +1,25 @@
+Modelos 3D de vehículos (public/models/vehiculos/*.glb)
+Licencia de todos: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Modificados para el juego: reorientados, escalados, materiales reagrupados,
+ruedas separadas, texturas reducidas y comprimidas (scripts/assets/vehiculos.mjs).
+
+hatchback.glb (taxi): "Ace '11 - Low Poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd
+  This work is based on "Ace '11 - Low Poly model" (https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+sedan.glb (sedán): "Kiri '10 - Low poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6
+  This work is based on "Kiri '10 - Low poly model" (https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+suv.glb (camioneta y patrulla): "Urban '10 - Low poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d
+  This work is based on "Urban '10 - Low poly model" (https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+buseta.glb (buseta): "Busscar Micruss" por Red Fox (nokillnando)
+  https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0
+  This work is based on "Busscar Micruss" (https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0) by Red Fox (nokillnando) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+moto.glb (moto): "pulsar 135 ls" por Emanuel Restrepo Vélez (e-restrepo1114)
+  https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5
+  This work is based on "pulsar 135 ls" (https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5) by Emanuel Restrepo Vélez (e-restrepo1114) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

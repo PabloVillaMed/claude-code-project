@@ -1,24 +1,29 @@
-// Descarga y procesa los modelos 3D de vehículos (todos CC0) para el juego.
-// Reproducible: `node scripts/assets/vehiculos.mjs` (usa caché en .cache/).
+// Descarga y procesa los modelos 3D de vehículos (CC BY 4.0) para el juego.
+// Reproducible: `node scripts/assets/vehiculos.mjs [taxi sedan suv buseta moto]`
+// (usa caché en .cache/vehiculos/).
+//
+// Fuente: modelos descargables de Sketchfab con licencia CC BY 4.0, tomados
+// del conjunto Objaverse (allenai/objaverse en Hugging Face), que redistribuye
+// los GLB originales con su licencia por modelo. Los créditos quedan en
+// ASSETS-CREDITS.md y en public/models/vehiculos/CREDITOS.txt.
 //
 // Cada modelo se normaliza a un formato común que entiende VehicleView:
 //  - metros, eje Y hacia arriba, frente hacia -Z, piso en y = 0, centrado en X/Z;
 //  - nodo "carroceria" con una malla por material, nombrada con una clave
-//    estándar (pintura, vidrio, negro, plastico, cromo, faro, stop, ...);
-//  - una rueda por nodo ("rueda_del_izq", "rueda_tras", ...) con el origen en
-//    el eje, para que el juego las haga girar y virar;
-//  - normales suavizadas por ángulo (se ve menos facetado), sin UV ni colores
-//    de vértice salvo que haya textura; meshopt + texturas webp ≤ 1024 px.
+//    estándar (pintura, vidrio, negro, plastico, gris, cromo, caucho, rin,
+//    faro, stop, textura...). Una clave puede traer textura de color (y de
+//    normales); el juego conserva el mapa al cambiar el material;
+//  - una rueda por nodo ("rueda_del_izq", "rueda_tras_der", ...) con el origen
+//    en el eje, para que el juego las haga girar y virar;
+//  - sin textura: normales suavizadas por ángulo; con textura: las del autor;
+//  - meshopt + texturas webp (≤ 1024 px).
 //
 // Salida: public/models/vehiculos/*.glb
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import sharp from 'sharp';
 
-// three.js en Node: los cargadores solo necesitan `self` y el exportador un
-// FileReader mínimo.
 globalThis.self ??= globalThis;
 globalThis.FileReader ??= class {
   readAsArrayBuffer(b) {
@@ -28,40 +33,54 @@ globalThis.FileReader ??= class {
       this.onload?.({ target: this });
     });
   }
-  readAsDataURL(b) {
-    b.arrayBuffer().then((r) => {
-      this.result = `data:${b.type};base64,` + Buffer.from(r).toString('base64');
-      this.onloadend?.({ target: this });
-      this.onload?.({ target: this });
-    });
-  }
 };
 
 const THREE = await import('three');
-const { FBXLoader } = await import('three/examples/jsm/loaders/FBXLoader.js');
-const { OBJLoader } = await import('three/examples/jsm/loaders/OBJLoader.js');
-const { MTLLoader } = await import('three/examples/jsm/loaders/MTLLoader.js');
 const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
 const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
 const { mergeGeometries, toCreasedNormals, mergeVertices } = await import('three/examples/jsm/utils/BufferGeometryUtils.js');
-const { NodeIO } = await import('@gltf-transform/core');
+const { NodeIO, PropertyType } = await import('@gltf-transform/core');
 const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions');
 const { dedup, prune, weld, meshopt, textureCompress } = await import('@gltf-transform/functions');
-const { MeshoptEncoder, MeshoptDecoder } = await import('meshoptimizer');
+const { MeshoptEncoder, MeshoptDecoder, MeshoptSimplifier } = await import('meshoptimizer');
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 const CACHE = path.join(ROOT, '.cache/vehiculos');
 const OUT = path.join(ROOT, 'public/models/vehiculos');
 
 // --------------------------------------------------------------- fuentes
-const drive = (id) => `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
-const OGA = 'https://opengameart.org/sites/default/files/';
-
-// Quaternius "Cars Pack" (CC0): https://quaternius.com/packs/cars.html
-const QUATERNIUS = {
-  'License.txt': drive('1CqsvhpIzBNSDlZsBWdJcJNC1B-TE3cXK'),
-  'NormalCar1.fbx': drive('1Xxe0nYbAx5epeoY8nT9kY48e9vG3LPWK'),
-  'SUV.fbx': drive('1r4gr34s-cNetFINZio-M4i8m2PgzVq_5'),
+const OBJAVERSE = 'https://huggingface.co/datasets/allenai/objaverse/resolve/main/';
+const SOURCES = {
+  ace: {
+    path: 'glbs/000-125/055ff8a21b8d4d279debca089e2fafcd.glb',
+    title: "Ace '11 - Low Poly model",
+    author: 'Daniel Zhabotinsky',
+    url: 'https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd',
+  },
+  kiri: {
+    path: 'glbs/000-107/7fd6e15785fa4aa9bfd6e31eb7c97ba6.glb',
+    title: "Kiri '10 - Low poly model",
+    author: 'Daniel Zhabotinsky',
+    url: 'https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6',
+  },
+  urban: {
+    path: 'glbs/000-005/2866efdfa943484391ef8313768e074d.glb',
+    title: "Urban '10 - Low poly model",
+    author: 'Daniel Zhabotinsky',
+    url: 'https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d',
+  },
+  micruss: {
+    path: 'glbs/000-009/60c006be9a834849895438f15d4927c0.glb',
+    title: 'Busscar Micruss',
+    author: 'Red Fox (nokillnando)',
+    url: 'https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0',
+  },
+  pulsar: {
+    path: 'glbs/000-099/36d04d99171e4d59b540c25d8650dbd5.glb',
+    title: 'pulsar 135 ls',
+    author: 'Emanuel Restrepo Vélez (e-restrepo1114)',
+    url: 'https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5',
+  },
 };
 
 const isHtml = (buf) => /^\s*<(!doctype|html)/i.test(buf.subarray(0, 64).toString('latin1'));
@@ -69,8 +88,6 @@ const isHtml = (buf) => /^\s*<(!doctype|html)/i.test(buf.subarray(0, 64).toStrin
 async function download(url, file) {
   if (fs.existsSync(file) && fs.statSync(file).size > 0 && !isHtml(fs.readFileSync(file))) return file;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  // Google Drive a veces responde con una página de "cuota excedida": se
-  // reintenta y nunca se guarda HTML en la caché.
   for (let intento = 1; intento <= 4; intento++) {
     console.log('descargando', url);
     const r = await fetch(url);
@@ -84,48 +101,100 @@ async function download(url, file) {
   throw new Error(`No se pudo descargar ${url}. Descárguelo a mano en ${file} (ver ASSETS-CREDITS.md).`);
 }
 
-async function zip(name) {
-  const file = await download(OGA + name, path.join(CACHE, name));
-  const dir = file.replace(/\.zip$/, '');
-  if (!fs.existsSync(dir)) execFileSync('unzip', ['-q', '-o', file, '-d', dir]);
-  return dir;
-}
-
 const ab = (buf) => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 
-function loadFBX(file) {
-  return new FBXLoader().parse(ab(fs.readFileSync(file)), path.dirname(file) + '/');
-}
-
-function loadOBJ(file) {
-  const loader = new OBJLoader();
-  const mtl = file.replace(/\.obj$/i, '.mtl');
-  if (fs.existsSync(mtl)) {
-    const m = new MTLLoader().parse(fs.readFileSync(mtl, 'utf8'), '');
-    loader.setMaterials(m);
-  }
-  return loader.parse(fs.readFileSync(file, 'utf8'));
-}
-
-/** GLB con texturas: devuelve la escena (sin imágenes) y la primera imagen. */
-async function loadGLB(file) {
-  const io = new NodeIO();
+/**
+ * GLB de Sketchfab: devuelve la escena de three.js (sin imágenes, que en Node
+ * no se pueden decodificar) y, por material, sus texturas originales.
+ */
+async function loadSource(key) {
+  const file = await download(OBJAVERSE + SOURCES[key].path, path.join(CACHE, `${key}.glb`));
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
   const doc = await io.read(file);
-  const tex = doc.getRoot().listTextures()[0];
-  const image = tex ? Buffer.from(tex.getImage()) : null;
+  const tex = new Map();
+  const img = (t) => (t ? Buffer.from(t.getImage()) : null);
+  for (const m of doc.getRoot().listMaterials()) {
+    tex.set(m.getName(), { color: img(m.getBaseColorTexture()), normal: img(m.getNormalTexture()), factor: m.getBaseColorFactor() });
+  }
   for (const t of doc.getRoot().listTextures()) t.dispose();
   const glb = await io.writeBinary(doc);
   const scene = await new Promise((res, rej) => new GLTFLoader().parse(ab(Buffer.from(glb)), '', (g) => res(g.scene), rej));
-  return { scene, image };
+  scene.updateMatrixWorld(true);
+  return { scene, tex };
+}
+
+/** Lector de píxeles (RGB 0-255) de una imagen, por coordenada UV de glTF. */
+async function sampler(buf) {
+  const { data, info } = await sharp(buf).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return (uv) => {
+    const u = uv.x - Math.floor(uv.x);
+    const v = uv.y - Math.floor(uv.y);
+    const x = Math.min(info.width - 1, Math.floor(u * info.width));
+    const y = Math.min(info.height - 1, Math.floor(v * info.height));
+    const i = (y * info.width + x) * info.channels;
+    return [data[i], data[i + 1], data[i + 2]];
+  };
+}
+
+/** UV del bloque de 8x8 px más oscuro y parejo de una imagen (para llantas). */
+async function darkSpot(buf) {
+  const { data, info } = await sharp(buf).removeAlpha().resize(256, 256, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+  let best = null;
+  for (let by = 0; by < 32; by++) {
+    for (let bx = 0; bx < 32; bx++) {
+      let sum = 0;
+      let sq = 0;
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const i = ((by * 8 + y) * 256 + bx * 8 + x) * info.channels;
+          const l = (data[i] + data[i + 1] + data[i + 2]) / 3;
+          sum += l;
+          sq += l * l;
+        }
+      }
+      const mean = sum / 64;
+      const dev = Math.sqrt(Math.max(0, sq / 64 - mean * mean));
+      // Gris muy oscuro (no negro puro) y sin detalle.
+      const score = Math.abs(mean - 22) + dev * 3;
+      if (!best || score < best.score) best = { score, u: (bx * 8 + 4) / 256, v: (by * 8 + 4) / 256, mean };
+    }
+  }
+  return new THREE.Vector2(best.u, best.v);
+}
+
+/** Color de la textura en el centro de un triángulo. */
+const triUV = (tri) => tri.uv[0].clone().add(tri.uv[1]).add(tri.uv[2]).multiplyScalar(1 / 3);
+const centroid = (tri) => tri.p[0].clone().add(tri.p[1]).add(tri.p[2]).multiplyScalar(1 / 3);
+
+/**
+ * Matriz que orienta (giro en Y), escala a `length` metros de largo (eje Z)
+ * y centra el modelo en X/Z con el punto más bajo en y = 0.
+ */
+function fit(root, rotY, length) {
+  const R = new THREE.Matrix4().makeRotationY(rotY);
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  const m = new THREE.Matrix4();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    m.multiplyMatrices(R, o.matrixWorld);
+    const p = o.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) box.expandByPoint(v.fromBufferAttribute(p, i).applyMatrix4(m));
+  });
+  const s = length / (box.max.z - box.min.z);
+  const c = box.getCenter(new THREE.Vector3());
+  return new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeTranslation(-c.x, -box.min.y, -c.z)).multiply(R);
 }
 
 // --------------------------------------------------------------- utilidades
 /**
  * Recorre las mallas y reparte sus triángulos (en espacio mundo, ya
  * orientados con `pre`) en cubetas {parte: {material: [geometrías]}} según
- * `classify(mesh, materialName, tri) -> {part, mat} | null`.
+ * `classify(mesh, materialName, tri) -> {part, mat, color?, uv?} | null`.
+ * Los materiales de `textured` conservan UV (o la fija `uv`) y normales
+ * originales; `color` ([r, g, b] sRGB 0-255) se guarda como color de vértice.
  */
-function collect(root, pre, classify, keepUV = false) {
+function collect(root, pre, classify, textured = new Set()) {
   root.updateMatrixWorld(true);
   const buckets = new Map();
   const add = (part, mat, g) => {
@@ -135,17 +204,19 @@ function collect(root, pre, classify, keepUV = false) {
     b.get(mat).push(g);
   };
   const m4 = new THREE.Matrix4();
-  root.traverse((mesh) => {
-    if (!mesh.isMesh) return;
-    let g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
+  const meshes = [];
+  root.traverse((o) => o.isMesh && meshes.push(o));
+  for (const mesh of meshes) {
+    const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone();
     m4.multiplyMatrices(pre, mesh.matrixWorld);
     g.applyMatrix4(m4);
+    // Espejos (escala negativa): se invierte el orden de los vértices.
+    const flip = m4.determinant() < 0;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const groups = mesh.geometry.groups.length ? mesh.geometry.groups : [{ start: 0, count: g.attributes.position.count, materialIndex: 0 }];
     const pos = g.attributes.position;
     const uv = g.attributes.uv;
-    // Triángulo a triángulo: permite dividir por posición (ruedas de la moto,
-    // colores de paleta).
+    const nrm = g.attributes.normal;
     const tmp = new Map();
     for (const gr of groups) {
       const matName = mats[gr.materialIndex]?.name ?? '';
@@ -155,42 +226,55 @@ function collect(root, pre, classify, keepUV = false) {
         if (!c) continue;
         const key = `${c.part}\u0000${c.mat}`;
         if (!tmp.has(key)) tmp.set(key, []);
-        tmp.get(key).push(i);
+        tmp.get(key).push([i, c]);
       }
     }
     for (const [key, starts] of tmp) {
       const [part, mat] = key.split('\u0000');
+      const keep = textured.has(mat) && uv;
       const ng = new THREE.BufferGeometry();
       const P = new Float32Array(starts.length * 9);
-      const U = keepUV && uv ? new Float32Array(starts.length * 6) : null;
-      const nrm = g.attributes.normal;
-      const N = keepUV && nrm ? new Float32Array(starts.length * 9) : null;
-      starts.forEach((s, j) => {
+      const U = keep ? new Float32Array(starts.length * 6) : null;
+      const N = keep && nrm ? new Float32Array(starts.length * 9) : null;
+      const C = starts[0][1].color ? new Float32Array(starts.length * 9) : null;
+      const col = new THREE.Color();
+      starts.forEach(([s, c], j) => {
+        // Colores cuantizados (pasos de 12): triángulos vecinos del mismo
+        // color comparten vértices y el archivo queda más liviano.
+        const q = (v) => Math.min(255, Math.round(v / 12) * 12) / 255;
+        if (C) col.setRGB(q(c.color[0]), q(c.color[1]), q(c.color[2]), THREE.SRGBColorSpace);
         for (let k = 0; k < 3; k++) {
-          P.set([pos.getX(s + k), pos.getY(s + k), pos.getZ(s + k)], j * 9 + k * 3);
-          if (U) U.set([uv.getX(s + k), uv.getY(s + k)], j * 6 + k * 2);
-          if (N) N.set([nrm.getX(s + k), nrm.getY(s + k), nrm.getZ(s + k)], j * 9 + k * 3);
+          const src = s + (flip ? [0, 2, 1][k] : k);
+          P.set([pos.getX(src), pos.getY(src), pos.getZ(src)], j * 9 + k * 3);
+          if (U) U.set(c.uv ? [c.uv.x, c.uv.y] : [uv.getX(src), uv.getY(src)], j * 6 + k * 2);
+          if (N) N.set([nrm.getX(src), nrm.getY(src), nrm.getZ(src)], j * 9 + k * 3);
+          if (C) C.set([col.r, col.g, col.b], j * 9 + k * 3);
         }
       });
       ng.setAttribute('position', new THREE.BufferAttribute(P, 3));
       if (U) ng.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+      if (C) ng.setAttribute('color', new THREE.BufferAttribute(C, 3));
       if (N) ng.setAttribute('normal', new THREE.BufferAttribute(N, 3));
       add(part, mat, ng);
     }
-  });
+  }
   return buckets;
 }
 
+// Colores base de cada clave (el juego reemplaza casi todos por sus
+// materiales PBR; los que no conoce se quedan con este).
 const COLORS = {
   pintura: 0xb0b4b8, vidrio: 0x10161b, negro: 0x151515, plastico: 0x2a2b2d, gris: 0x44474a, cromo: 0xcccccc,
   placa: 0xd8d8d8, faro: 0xfff4dc, stop: 0x8a0a0a, direccional: 0xd07010, caucho: 0x161616, rin: 0x9a9ea2, textura: 0xffffff,
+  asiento: 0x2c2d30,
 };
 
 /**
- * Construye la escena normalizada. `wheelInfo[part] = true` marca las ruedas.
- * Escala a metros con `scale`, apoya en el piso y centra.
+ * Construye la escena normalizada: una malla por (parte, material); las
+ * ruedas con el origen en su centro. Apoya en el piso (rueda más baja) y
+ * centra en X/Z.
  */
-function build(buckets, { crease = 35, textureMat = null } = {}) {
+function build(buckets, { crease = 35, textured = new Set() } = {}) {
   const all = new THREE.Box3();
   const wheelBox = new THREE.Box3();
   const parts = new Map();
@@ -199,10 +283,10 @@ function build(buckets, { crease = 35, textureMat = null } = {}) {
     for (const [mat, geos] of mats) {
       let g = mergeGeometries(geos, false);
       if (!g.attributes.uv) {
+        g.deleteAttribute('normal');
         // Suavizado por ángulo: menos facetas sin redondear aristas vivas.
         g = toCreasedNormals(g, THREE.MathUtils.degToRad(part.startsWith('rueda') ? 50 : crease));
       } else {
-        // Con textura se conservan las normales originales del autor.
         if (!g.attributes.normal) g.computeVertexNormals();
         g = mergeVertices(g, 1e-5);
       }
@@ -213,14 +297,14 @@ function build(buckets, { crease = 35, textureMat = null } = {}) {
     }
     parts.set(part, meshes);
   }
-  // Piso: punto más bajo de las ruedas; centro: caja total en X/Z.
   const off = new THREE.Vector3(-(all.min.x + all.max.x) / 2, -(wheelBox.isEmpty() ? all.min.y : wheelBox.min.y), -(all.min.z + all.max.z) / 2);
   const scene = new THREE.Group();
   scene.name = 'vehiculo';
   const matCache = new Map();
-  const material = (name) => {
+  const material = (name, vc) => {
     if (!matCache.has(name)) {
-      const m = name === 'textura' && textureMat ? textureMat : new THREE.MeshStandardMaterial({ color: COLORS[name] ?? 0x888888, roughness: 0.5 });
+      // Con color de vértice ("detalle") o textura, el color base es blanco.
+      const m = new THREE.MeshStandardMaterial({ color: textured.has(name) || vc ? 0xffffff : COLORS[name] ?? 0x888888, roughness: vc ? 0.6 : 0.5, vertexColors: vc });
       m.name = name;
       matCache.set(name, m);
     }
@@ -229,7 +313,7 @@ function build(buckets, { crease = 35, textureMat = null } = {}) {
   for (const [part, meshes] of parts) {
     const node = new THREE.Group();
     node.name = part;
-    let center = new THREE.Vector3();
+    const center = new THREE.Vector3();
     if (part.startsWith('rueda')) {
       const b = new THREE.Box3();
       for (const [, g] of meshes) b.union(g.boundingBox);
@@ -237,7 +321,7 @@ function build(buckets, { crease = 35, textureMat = null } = {}) {
     }
     for (const [mat, g] of meshes) {
       g.translate(off.x - center.x, off.y - center.y, off.z - center.z);
-      const mesh = new THREE.Mesh(g, material(mat));
+      const mesh = new THREE.Mesh(g, material(mat, !!g.attributes.color));
       mesh.name = `${part}_${mat}`;
       node.add(mesh);
     }
@@ -249,187 +333,283 @@ function build(buckets, { crease = 35, textureMat = null } = {}) {
 
 function stats(scene) {
   let tris = 0;
+  let meshes = 0;
   scene.traverse((o) => {
-    if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+    if (!o.isMesh) return;
+    meshes++;
+    tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
   });
   const b = new THREE.Box3().setFromObject(scene);
-  return { tris, size: b.getSize(new THREE.Vector3()).toArray().map((v) => +v.toFixed(2)) };
+  const wheels = scene.children.filter((o) => o.name.startsWith('rueda')).map((o) => `${o.name}(${o.position.toArray().map((v) => v.toFixed(2)).join(',')})`);
+  return { tris, meshes, size: b.getSize(new THREE.Vector3()).toArray().map((v) => +v.toFixed(2)), wheels };
 }
 
-async function write(scene, name, textures = null) {
+/**
+ * Exporta a GLB con meshopt. `textures[clave] = {color, normal?, size}`: las
+ * imágenes (PNG/JPG originales) se asignan al material de esa clave.
+ */
+async function write(scene, name, textures = {}) {
   const glb = await new GLTFExporter().parseAsync(scene, { binary: true });
   const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
   const doc = await io.readBinary(new Uint8Array(glb));
-  if (textures) await textures(doc);
-  await doc.transform(dedup(), weld(), prune({ keepLeaves: true }));
-  if (textures) await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 85 }));
+  const R = doc.getRoot();
+  const cache = new Map();
+  const texture = async (buf, size, label, gain = 1) => {
+    const key = `${label}:${size}:${gain}:${buf.length}:${buf.subarray(0, 64).toString('hex')}`;
+    if (!cache.has(key)) {
+      let img = sharp(buf).resize(size, size, { fit: 'fill' });
+      // `gain`: aclara u oscurece el color (p. ej. pintura blanca de la buseta).
+      if (gain !== 1) img = img.linear(gain, 0);
+      const png = await img.png().toBuffer();
+      cache.set(key, doc.createTexture(label).setImage(png).setMimeType('image/png'));
+    }
+    return cache.get(key);
+  };
+  for (const mat of R.listMaterials()) {
+    const t = textures[mat.getName()];
+    if (!t) continue;
+    mat.setBaseColorTexture(await texture(t.color, t.size ?? 512, `${mat.getName()}_color`, t.gain));
+    if (t.normal) mat.setNormalTexture(await texture(t.normal, t.size ?? 512, `${mat.getName()}_normal`));
+    if (t.metal !== undefined) mat.setMetallicFactor(t.metal).setRoughnessFactor(t.rough ?? 0.5);
+  }
+  // Sin deduplicar materiales: pintura, faro, stop y detalles pueden compartir
+  // textura y valores, pero el juego los distingue por nombre.
+  await doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE] }), weld(), prune({ keepLeaves: true }));
+  await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 82 }));
   await MeshoptEncoder.ready;
   await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
   const out = path.join(OUT, `${name}.glb`);
   await io.write(out, doc);
   const st = stats(scene);
-  console.log(`${name}.glb`, (fs.statSync(out).size / 1024).toFixed(0), 'KB', st.tris, 'triángulos', st.size.join(' x '), 'm');
+  console.log(`${name}.glb`, (fs.statSync(out).size / 1024).toFixed(0), 'KB', st.tris, 'triángulos', st.meshes, 'mallas', st.size.join(' x '), 'm');
+  console.log('   ruedas', st.wheels.join(' '));
   return { name, bytes: fs.statSync(out).size, ...st };
 }
 
-// --------------------------------------------------------------- modelos
-const Q_MAT = {
-  Yellow: 'pintura', White: 'pintura', Blue: 'pintura', LightBlue: 'pintura',
-  Windows: 'vidrio', Black: 'negro', Grey: 'gris', Headlights: 'faro', TailLights: 'stop',
-  WhiteLights: 'cromo', BlueLights: 'cromo', DarkOrange: 'negro',
-};
+/** Rueda por cuadrante (frente en -Z, izquierda en -X). */
+const quadWheel = (c) => `rueda_${c.z < 0 ? 'del' : 'tras'}_${c.x < 0 ? 'izq' : 'der'}`;
 
-/** Quaternius Cars Pack: frente -Z, centímetros, ruedas separadas. */
-async function quaternius(file, name) {
-  const src = await download(QUATERNIUS[file], path.join(CACHE, 'quaternius-cars', file));
-  const root = loadFBX(src);
-  const pre = new THREE.Matrix4().makeScale(0.01, 0.01, 0.01);
-  const buckets = collect(root, pre, (mesh, mat) => {
-    const n = mesh.name;
-    const wheel = /FrontLeftWheel/.test(n) ? 'rueda_del_izq' : /FrontRightWheel/.test(n) ? 'rueda_del_der' : /BackWheels/.test(n) ? 'rueda_tras' : null;
-    if (wheel) return { part: wheel, mat: mat === 'Black' ? 'caucho' : 'rin' };
-    return { part: 'carroceria', mat: Q_MAT[mat] ?? 'plastico' };
-  });
-  return write(build(buckets), name);
-}
-
-/** "Red Car" de mabaci (CC0): hatchback con textura de paleta; frente +Z. */
-async function hatchback() {
-  const dir = await zip('redcar.zip');
-  const { scene, image } = await loadGLB(path.join(dir, 'RedCar.glb'));
-  const { data, info } = await sharp(image).raw().toBuffer({ resolveWithObject: true });
-  const cellOf = (uv) => [Math.floor((uv.x * info.width) / 68.2), Math.floor((uv.y * info.height) / 68.2)];
-  const pre = new THREE.Matrix4().makeRotationY(Math.PI);
-  const buckets = collect(scene, pre, (mesh, mat, tri) => {
-    const wheel = { FrontLeftTire: 'rueda_del_izq', FrontRightTire: 'rueda_del_der', RearLeftTire: 'rueda_tras_izq', RearRightTire: 'rueda_tras_der' }[mesh.name];
-    const uv = tri.uv[0].clone().add(tri.uv[1]).add(tri.uv[2]).multiplyScalar(1 / 3);
-    const [cx, cy] = cellOf(uv);
-    if (wheel) return { part: wheel, mat: cx === 1 && cy === 0 ? 'caucho' : 'rin' };
-    if (mat === 'Glass') return { part: 'carroceria', mat: 'vidrio' };
-    // Ya rotado: frente en -Z.
-    const z = (tri.p[0].z + tri.p[1].z + tri.p[2].z) / 3;
-    const cell = `${cx},${cy}`;
-    const byCell = {
-      '4,1': 'pintura', '1,0': 'negro', '2,0': 'plastico', '3,0': 'plastico', '5,0': 'placa', '7,0': 'cromo',
-      '9,0': 'faro', '4,6': 'direccional', '2,6': 'stop', '3,1': 'faro',
-    };
-    if (cell === '7,6') return { part: 'carroceria', mat: z > 0.8 ? 'stop' : 'negro' };
-    return { part: 'carroceria', mat: byCell[cell] ?? 'plastico' };
-  });
-  // El original es de escala arbitraria (2.16 u de largo): a 3.7 m (taxi).
-  const scene2 = build(buckets);
-  const len = new THREE.Box3().setFromObject(scene2).getSize(new THREE.Vector3()).z;
-  const s = 3.7 / len;
-  scene2.traverse((o) => {
-    if (o.isMesh) o.geometry.scale(s, s, s);
-    else if (o !== scene2) o.position.multiplyScalar(s);
-  });
-  return write(scene2, 'hatchback');
-}
-
-/** "3D Bus" de ajanhallinta (CC0): +X al frente, Y arriba, metros. */
-async function buseta() {
-  const dir = await zip('3DBus_by_ajanhallinta.zip');
-  const root = loadOBJ(path.join(dir, 'OBJ/BUS.obj'));
-  const pre = new THREE.Matrix4().makeRotationY(Math.PI / 2);
-  const map = { Body: 'pintura', Windows: 'vidrio', karmi: 'negro', RearLights: 'stop', FrontLights: 'faro', Indicators: 'direccional', Metal: 'rin', Tire: 'caucho', Bolt: 'negro' };
-  const buckets = collect(root, pre, (mesh, mat) => {
-    const m = /^wheel(FL|FR|LR|RR)/.exec(mesh.name);
-    // En el OBJ, +Z es el lado izquierdo del bus antes de rotar.
-    const part = m ? { FL: 'rueda_del_a', FR: 'rueda_del_b', LR: 'rueda_tras_a', RR: 'rueda_tras_b' }[m[1]] : 'carroceria';
-    return { part, mat: map[mat] ?? 'plastico' };
-  });
-  return write(build(buckets, { crease: 30 }), 'buseta');
-}
-
-/** Harley-Davidson FLH 1972 de elopez7 (CC0), versión low poly con PBR. */
-async function moto() {
-  const dir = await zip('FLH1200.zip');
-  const root = loadFBX(path.join(dir, 'OPEN_GAME/MODELS/Bike_new_low.fbx'));
-  // +X al frente y en cm -> -Z y metros.
-  const pre = new THREE.Matrix4().makeRotationY(Math.PI / 2).premultiply(new THREE.Matrix4().makeScale(0.01, 0.01, 0.01));
-  // Ruedas: el modelo es una sola malla. Se localiza cada rueda (anillo de la
-  // llanta tocando el piso) y se separan los triángulos dentro del cilindro.
-  root.updateMatrixWorld(true);
-  const verts = [];
-  root.traverse((m) => {
-    if (!m.isMesh) return;
-    const p = m.geometry.attributes.position;
-    const M = new THREE.Matrix4().multiplyMatrices(pre, m.matrixWorld);
-    for (let i = 0; i < p.count; i++) verts.push(new THREE.Vector3().fromBufferAttribute(p, i).applyMatrix4(M));
-  });
-  const minY = Math.min(...verts.map((v) => v.y));
-  const wheels = [];
-  for (const sign of [-1, 1]) {
-    // sign -1: rueda delantera (z < 0).
-    const ground = verts.filter((v) => v.y < minY + 0.03 && Math.sign(v.z) === sign);
-    const cz = ground.reduce((a, v) => a + v.z, 0) / ground.length;
-    // Radio exterior de la llanta: a la altura aproximada del eje, la mayor
-    // distancia horizontal que aparece simétrica a ambos lados del centro.
-    let r = 0.35;
-    for (let it = 0; it < 3; it++) {
-      const d = verts.filter((v) => Math.abs(v.x) < 0.09 && Math.abs(v.y - (minY + r)) < 0.03 && Math.abs(v.z - cz) < 0.45).map((v) => v.z - cz);
-      const sym = d.filter((a) => a > 0.2 && d.some((b) => Math.abs(b + a) < 0.004));
-      if (sym.length) r = Math.max(...sym);
-    }
-    const best = { r };
-    wheels.push({ part: sign < 0 ? 'rueda_del' : 'rueda_tras', z: cz, y: minY + best.r, r: best.r });
-    console.log('moto rueda', sign < 0 ? 'delantera' : 'trasera', 'z', cz.toFixed(3), 'radio', best.r.toFixed(3));
+/** Simplifica (meshoptimizer) las geometrías de una clave de material. */
+async function simplify(buckets, matKey, ratio) {
+  await MeshoptSimplifier.ready;
+  for (const [, mats] of buckets) {
+    const geos = mats.get(matKey);
+    if (!geos) continue;
+    const merged = mergeVertices(mergeGeometries(geos, false).deleteAttribute('normal'), 1e-4);
+    const idx = new Uint32Array(merged.index.array);
+    const target = Math.floor((idx.length * ratio) / 3) * 3;
+    const [out] = MeshoptSimplifier.simplify(idx, merged.attributes.position.array, 3, target, 0.02);
+    merged.setIndex(new THREE.BufferAttribute(out, 1));
+    mats.set(matKey, [merged.toNonIndexed()]);
   }
+}
+
+// --------------------------------------------------------------- modelos
+/**
+ * Autos de Daniel Zhabotinsky ("Kiri '10" sedán y "Urban '10" camioneta):
+ * pintura sin textura, detalles (rejillas, bajos, rines) con su textura de
+ * 512 px, faros/stops con la textura de luces y llantas con la de caucho.
+ * El frente está en -X; las cuatro ruedas vienen en una sola malla.
+ */
+async function zhabotinsky(key, name, length, prefix) {
+  const { scene, tex } = await loadSource(key);
+  const pre = fit(scene, -Math.PI / 2, length);
+  const T = (s) => `${prefix}_${s}`;
+  const map = {
+    [T('body')]: 'pintura', [T('bottom')]: 'textura', [T('void')]: 'negro', [T('glass_rim')]: 'negro', [T('glass')]: 'vidrio',
+    '07_-_Default': 'negro', plastic: 'plastico',
+  };
+  const tire = [...tex.keys()].find((k) => /tier/.test(k));
+  const lamps = T('headlights');
+  // Las llantas usan un punto oscuro de la textura de detalles: así cada
+  // rueda es una sola malla (una llamada de dibujo) con el rin texturizado.
+  const dark = await darkSpot(tex.get(T('bottom')).color);
+  const textured = new Set(['textura', 'faro', 'stop']);
   const buckets = collect(
-    root,
+    scene,
     pre,
     (mesh, mat, tri) => {
-      for (const w of wheels) {
-        const inside = tri.p.every((p) => Math.abs(p.x) < 0.085 && Math.hypot(p.z - w.z, p.y - w.y) < w.r + 0.008);
-        if (inside) return { part: w.part, mat: 'textura' };
-      }
+      const c = centroid(tri);
+      if (/^wheels/.test(mesh.name)) return { part: quadWheel(c), mat: 'textura', uv: mat === tire ? dark : undefined };
+      // Micas de los faros: se omiten (el faro queda visible debajo).
+      if (mat === T('glass') && (/light/.test(mesh.name) || c.y < 0.92)) return null;
+      if (mat === lamps) return { part: 'carroceria', mat: c.z < 0 ? 'faro' : 'stop' };
+      return { part: 'carroceria', mat: map[mat] ?? 'plastico' };
+    },
+    textured,
+  );
+  const t = (m) => tex.get(m).color;
+  return write(build(buckets, { textured }), name, {
+    // Algo metálico: rines, rejillas y cromados no se ven blancos.
+    textura: { color: t(T('bottom')), size: 512, metal: 0.45, rough: 0.4, gain: 0.78 },
+    faro: { color: t(lamps), size: 512 },
+    stop: { color: t(lamps), size: 512 },
+  });
+}
+
+/**
+ * "Ace '11" (hatchback moderno, tipo Chevrolet Sonic/Aveo): taxi. Carrocería,
+ * ruedas y luces comparten un atlas de 1024 px con mapa de normales; la
+ * pintura (blanca en el atlas) se separa por color para teñirla de amarillo.
+ */
+async function ace() {
+  const { scene, tex } = await loadSource('ace');
+  const pre = fit(scene, -Math.PI / 2, 4.0);
+  const body = tex.get('MODERNHATCH_body');
+  const px = await sampler(body.color);
+  const textured = new Set(['textura', 'pintura', 'faro', 'stop']);
+  const buckets = collect(
+    scene,
+    pre,
+    (mesh, mat, tri) => {
+      const n = mesh.name;
+      const c = centroid(tri);
+      const w = /^wheel_(f|r)(l|r)/.exec(n);
+      // En el original la izquierda está en +Z (antes de girar).
+      if (w) return { part: `rueda_${w[1] === 'f' ? 'del' : 'tras'}_${c.x < 0 ? 'izq' : 'der'}`, mat: 'textura' };
+      if (mat === 'GLASS') return /^headlights/.test(n) ? null : { part: 'carroceria', mat: 'vidrio' };
+      if (mat === 'MODERNHATCH_INTERIOR') return { part: 'carroceria', mat: 'negro' };
+      if (/^headlights/.test(n)) return { part: 'carroceria', mat: 'faro' };
+      const [r, g, b] = px(triUV(tri));
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      // Stops: rojo intenso en la parte trasera.
+      if (c.z > 1.6 && r > 90 && r > g * 1.8 && r > b * 1.8) return { part: 'carroceria', mat: 'stop' };
+      // Pintura: zonas claras y sin color del atlas.
+      if (max > 150 && max - min < 28) return { part: 'carroceria', mat: 'pintura' };
       return { part: 'carroceria', mat: 'textura' };
     },
-    true,
+    textured,
   );
-  const texDir = path.join(dir, 'OPEN_GAME/TEXTURES_UNITY');
-  const tm = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const scene = build(buckets, { textureMat: tm });
-  return write(scene, 'moto', async (doc) => {
-    // Texturas PBR: color, normal y ORM (oclusión, rugosidad, metal).
-    const R = doc.getRoot();
-    const mat = R.listMaterials().find((m) => m.getName() === 'textura');
-    // Las UV del FBX usan v hacia arriba (convención de three.js con flipY) y
-    // glTF v hacia abajo: se voltean las imágenes en vertical.
-    const img = async (f, size = 1024) => sharp(path.join(texDir, f)).flip().resize(size, size).png().toBuffer();
-    const tex = (name, buf) => doc.createTexture(name).setImage(buf).setMimeType('image/png');
-    const [ao, rough, metal] = await Promise.all(
-      ['FLH_1200_AO.jpg', 'FLH_1200_roughness.jpg', 'FLH_1200_metallic.jpg'].map((f) => sharp(path.join(texDir, f)).flip().resize(1024, 1024).greyscale().raw().toBuffer()),
-    );
-    const orm = Buffer.alloc(1024 * 1024 * 3);
-    for (let i = 0; i < 1024 * 1024; i++) {
-      orm[i * 3] = ao[i];
-      orm[i * 3 + 1] = rough[i];
-      orm[i * 3 + 2] = metal[i];
-    }
-    const ormPng = await sharp(orm, { raw: { width: 1024, height: 1024, channels: 3 } }).png().toBuffer();
-    mat.setBaseColorTexture(tex('color', await img('FLH_1200_albedo.jpg')));
-    mat.setNormalTexture(tex('normal', await img('FLH_1200_normal.jpg')));
-    const ormTex = tex('orm', ormPng);
-    mat.setMetallicRoughnessTexture(ormTex).setOcclusionTexture(ormTex).setMetallicFactor(1).setRoughnessFactor(1);
+  const atlas = { color: body.color, normal: body.normal, size: 1024 };
+  return write(build(buckets, { textured }), 'hatchback', { textura: atlas, pintura: atlas, faro: atlas, stop: atlas });
+}
+
+/**
+ * "Busscar Micruss" (microbús carrozado en Colombia/Brasil): buseta. La
+ * carrocería conserva su textura (blanca, con marcos de ventanas); lo demás
+ * pasa a colores planos para ahorrar texturas y llamadas de dibujo.
+ * Frente en +Z; ruedas separadas (traseras dobles).
+ */
+async function buseta() {
+  const { scene, tex } = await loadSource('micruss');
+  const pre = fit(scene, Math.PI, 7.8);
+  const map = { Body: 'pintura', Details: 'textura', Windows: 'vidrio' };
+  const px = new Map();
+  for (const [k, v] of tex) if (v.color) px.set(k, await sampler(v.color));
+  const textured = new Set(['pintura', 'textura', 'faro', 'stop']);
+  const buckets = collect(
+    scene,
+    pre,
+    (mesh, mat, tri) => {
+      const c = centroid(tri);
+      // Lo demás (bajos, interior, sillas, espejos, ruedas): color de vértice
+      // tomado de su textura en el centro de cada triángulo.
+      const color = px.get(mat)?.(triUV(tri));
+      if (/^Tire/.test(mesh.name)) return { part: quadWheel(c), mat: 'detalle', color };
+      if (mat === 'InteriorWindow') return null;
+      if (mat === 'Lights') return { part: 'carroceria', mat: c.z < 0 ? 'faro' : 'stop' };
+      if (map[mat]) return { part: 'carroceria', mat: map[mat] };
+      // Sillas: un solo color (así se pueden simplificar).
+      if (mat === 'Seats') return { part: 'carroceria', mat: 'asiento', color: [58, 60, 64] };
+      return { part: 'carroceria', mat: 'detalle', color };
+    },
+    textured,
+  );
+  // Sillas (muchos triángulos, apenas se ven por las ventanas): a la mitad y
+  // unidas al resto de detalles.
+  await simplify(buckets, 'asiento', 0.45);
+  const body = buckets.get('carroceria');
+  body.set('detalle', [...body.get('detalle'), ...body.get('asiento')]);
+  body.delete('asiento');
+  const t = (m, size = 1024, normal = false) => ({ color: tex.get(m).color, normal: normal ? tex.get(m).normal : null, size });
+  return write(build(buckets, { crease: 30, textured }), 'buseta', {
+    // La pintura del original es gris claro: se lleva casi a blanco para que
+    // el color del juego se vea limpio; los detalles (empaques) se oscurecen.
+    pintura: { ...t('Body', 1024), gain: 1.22 },
+    textura: { ...t('Details', 512), gain: 0.55 },
+    faro: t('Lights', 512),
+    stop: t('Lights', 512),
   });
+}
+
+/**
+ * "pulsar 135 ls" (Bajaj Pulsar 135 LS, la moto de calle típica de
+ * Medellín): el modelo es una sola malla con texturas de colores planos; se
+ * convierte a materiales planos muestreando la textura en cada triángulo
+ * (naranja = pintura, que el juego cambia de color). Las ruedas se separan
+ * por cilindros alrededor de cada llanta. Frente en -Z.
+ */
+async function moto() {
+  const { scene, tex } = await loadSource('pulsar');
+  const pre = fit(scene, 0, 2.0);
+  const px = new Map();
+  for (const [k, v] of tex) if (v.color) px.set(k, await sampler(v.color));
+  // Llantas: triángulos de caucho oscuro en el plano medio, lejos del motor
+  // (|z| > 0.28 m). Su extensión en Z es el diámetro de cada rueda.
+  const tires = { del: new THREE.Box3(), tras: new THREE.Box3() };
+  collect(scene, pre, (mesh, mat, tri) => {
+    if (mat !== 'caucho') return null;
+    const c = centroid(tri);
+    const [r, g, b] = px.get(mat)(triUV(tri));
+    if (Math.max(r, g, b) > 60 || Math.abs(c.x) > 0.08 || Math.abs(c.z) < 0.28) return null;
+    for (const p of tri.p) tires[c.z < 0 ? 'del' : 'tras'].expandByPoint(p);
+    return null;
+  });
+  const wheels = Object.entries(tires).map(([k, b]) => {
+    const r = (b.max.z - b.min.z) / 2;
+    const c = new THREE.Vector3(0, b.min.y + r, (b.min.z + b.max.z) / 2);
+    const hw = Math.max(Math.abs(b.min.x), Math.abs(b.max.x));
+    console.log('moto rueda', k, 'centro', c.toArray().map((v) => v.toFixed(3)).join(','), 'radio', r.toFixed(3), 'ancho', (hw * 2).toFixed(3));
+    return { part: `rueda_${k}`, c, r, hw };
+  });
+  const buckets = collect(scene, pre, (mesh, mat, tri) => {
+    if (mat === 'glass') return { part: 'carroceria', mat: 'vidrio' };
+    const color = px.get(mat)(triUV(tri));
+    const c = centroid(tri);
+    for (const w of wheels) {
+      const inside = tri.p.every((p) => Math.abs(p.x) < w.hw + 0.012 && Math.hypot(p.z - w.c.z, p.y - w.c.y) < w.r + 0.01);
+      if (inside) return { part: w.part, mat: 'detalle', color };
+    }
+    // Carenaje, tanque, colín y guardabarros: base oscura de "plastico_0"
+    // (las calcomanías blancas y naranjas se conservan).
+    if (mat === 'plastico_0' && Math.max(...color) < 80) return { part: 'carroceria', mat: 'pintura' };
+    // Faro: la zona clara de la textura de caucho, al frente.
+    if (mat === 'caucho' && Math.max(...color) > 120 && c.z < -0.4) return { part: 'carroceria', mat: 'faro' };
+    return { part: 'carroceria', mat: 'detalle', color };
+  });
+  return write(build(buckets, { crease: 40 }), 'moto');
+}
+
+function credits() {
+  const lines = [
+    'Modelos 3D de vehículos (public/models/vehiculos/*.glb)',
+    'Licencia de todos: Creative Commons Attribution 4.0 International (CC BY 4.0)',
+    'https://creativecommons.org/licenses/by/4.0/',
+    'Modificados para el juego: reorientados, escalados, materiales reagrupados,',
+    'ruedas separadas, texturas reducidas y comprimidas (scripts/assets/vehiculos.mjs).',
+    '',
+  ];
+  const uses = { ace: 'hatchback.glb (taxi)', kiri: 'sedan.glb (sedán)', urban: 'suv.glb (camioneta y patrulla)', micruss: 'buseta.glb (buseta)', pulsar: 'moto.glb (moto)' };
+  for (const [k, s] of Object.entries(SOURCES)) {
+    lines.push(`${uses[k]}: "${s.title}" por ${s.author}`, `  ${s.url}`, `  This work is based on "${s.title}" (${s.url}) by ${s.author} licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)`, '');
+  }
+  fs.writeFileSync(path.join(OUT, 'CREDITOS.txt'), lines.join('\n'));
 }
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  // Licencia del paquete de Quaternius (se guarda junto a la caché).
-  await download(QUATERNIUS['License.txt'], path.join(CACHE, 'quaternius-cars/License.txt'));
   const only = process.argv.slice(2);
   const jobs = {
-    hatchback,
-    sedan: () => quaternius('NormalCar1.fbx', 'sedan'),
-    suv: () => quaternius('SUV.fbx', 'suv'),
+    taxi: ace,
+    sedan: () => zhabotinsky('kiri', 'sedan', 4.45, 'solar'),
+    suv: () => zhabotinsky('urban', 'suv', 4.4, 'dust'),
     buseta,
     moto,
   };
   const res = [];
   for (const [k, fn] of Object.entries(jobs)) if (!only.length || only.includes(k)) res.push(await fn());
+  credits();
   const total = res.reduce((a, r) => a + r.bytes, 0);
   console.log('total', (total / 1e6).toFixed(2), 'MB');
 }

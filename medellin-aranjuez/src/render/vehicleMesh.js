@@ -1,7 +1,8 @@
 // Vehículos: taxi amarillo, sedán, camioneta, patrulla de la Policía, buseta
-// de barrio y moto. Usa modelos glTF externos (CC0, ver ASSETS-CREDITS.md y
-// scripts/assets/vehiculos.mjs) con materiales PBR propios; si un modelo no
-// cargó, construye la versión procedural (perfiles extruidos).
+// de barrio y moto. Usa modelos glTF externos (CC BY 4.0, ver
+// ASSETS-CREDITS.md y scripts/assets/vehiculos.mjs) con materiales PBR
+// propios (conservando las texturas del autor); si un modelo no cargó,
+// construye la versión procedural (perfiles extruidos).
 
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -40,13 +41,14 @@ registerAssets(
  * del ancho, z en fracción del largo desde el centro, y = techo - drop).
  */
 const MODEL_CFG = {
-  taxi: { model: 'hatchback', hBlend: 0.4, seat: { x: -0.2, z: 0.02, drop: 1.12 } },
-  sedan: { model: 'sedan', hBlend: 0.6, seat: { x: -0.21, z: 0.03, drop: 1.12 } },
-  policia: { model: 'sedan', hBlend: 0.6, seat: { x: -0.21, z: 0.03, drop: 1.12 } },
-  camioneta: { model: 'suv', hBlend: 0.5, seat: { x: -0.21, z: 0.0, drop: 1.18 } },
-  buseta: { model: 'buseta', hBlend: 1, seat: { x: -0.24, z: -0.39, drop: 1.75 } },
+  taxi: { model: 'hatchback', hBlend: 0.3, seat: { x: -0.2, z: 0.02, drop: 1.1 } },
+  sedan: { model: 'sedan', hBlend: 0.3, seat: { x: -0.21, z: 0.03, drop: 1.12 } },
+  // Patrulla: camioneta tipo Renault Duster, como las de la Policía Nacional.
+  policia: { model: 'suv', hBlend: 0.3, seat: { x: -0.21, z: 0.0, drop: 1.18 } },
+  camioneta: { model: 'suv', hBlend: 0.3, seat: { x: -0.21, z: 0.0, drop: 1.18 } },
+  buseta: { model: 'buseta', hBlend: 0.5, seat: { x: -0.24, z: -0.39, drop: 1.75 } },
   // Moto: el faro y el stop se añaden como mallas (medidas ya escaladas).
-  moto: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.2, z: 0.15 }, headY: 0.77, headZ: 0.4, tailY: 0.46, tailZ: 0.09 },
+  moto: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.2 }, headY: 0.9, headZ: 0.24, tailY: 0.72, tailZ: 0.08 },
 };
 
 // Materiales PBR compartidos por clave de material del modelo normalizado.
@@ -61,6 +63,40 @@ const MODEL_MATS = {
   caucho: () => shared('m-caucho', () => new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.92 })),
   rin: () => shared('m-rin', () => new THREE.MeshStandardMaterial({ color: 0xaeb2b6, metalness: 0.95, roughness: 0.22 })),
 };
+
+/**
+ * Material compartido de una clave con la textura del modelo (si la trae):
+ * mismo acabado PBR, color base blanco para que se vea la textura.
+ */
+function withMaps(base, src, key) {
+  if (!src?.map) return base;
+  return shared(`${key}-${src.map.uuid}`, () => {
+    const m = base.clone();
+    m.color.set(0xffffff);
+    m.map = src.map;
+    m.normalMap = src.normalMap ?? null;
+    return m;
+  });
+}
+
+/** Pintura con la textura del modelo (líneas de latas, sombreado). */
+function paintFor(color, src) {
+  if (!src?.map) return paint(color);
+  return shared(`paint${color}-${src.map.uuid}`, () => {
+    const m = paint(color).clone();
+    m.map = src.map;
+    m.normalMap = src.normalMap ?? null;
+    return m;
+  });
+}
+
+/** Faros/stops de una instancia: toman la textura del modelo (también como brillo). */
+function lampMaps(lamp, src) {
+  if (!src?.map || lamp.map) return;
+  lamp.map = src.map;
+  lamp.emissiveMap = src.map;
+  lamp.color.set(0xffffff);
+}
 
 const headMat = () => new THREE.MeshStandardMaterial({ color: 0xfff6e0, emissive: 0xfff1d0, emissiveIntensity: 0.2, roughness: 0.1, metalness: 0.2 });
 const tailMat = () => new THREE.MeshStandardMaterial({ color: 0x6a0000, emissive: 0xff1a1a, emissiveIntensity: 0.3, roughness: 0.3 });
@@ -103,28 +139,6 @@ function checkerTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   t.magFilter = THREE.NearestFilter;
   return t;
-}
-
-/** Moto: el rojo de la textura original se reemplaza por el color elegido. */
-function motoPaint(base, color) {
-  return shared(`moto-paint${color}`, () => {
-    const m = base.clone();
-    m.name = 'pintura';
-    const uPaint = { value: new THREE.Color(color) };
-    m.onBeforeCompile = (sh) => {
-      sh.uniforms.uPaint = uPaint;
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 uPaint;')
-        .replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-          float paintMask = smoothstep(0.25, 0.55, diffuseColor.r - max(diffuseColor.g, diffuseColor.b));
-          diffuseColor.rgb = mix(diffuseColor.rgb, uPaint, paintMask);`,
-        );
-    };
-    m.customProgramCacheKey = () => 'moto-paint';
-    return m;
-  });
 }
 
 const _ray = new THREE.Raycaster();
@@ -173,11 +187,9 @@ function modelTemplate(type) {
   body.traverse((o) => {
     if (!o.isMesh) return;
     const key = o.material.name;
-    if (MODEL_MATS[key]) o.material = MODEL_MATS[key]();
-    else if (key === 'textura') {
-      // Moto: material PBR con texturas del autor.
-      o.material.envMapIntensity = 1;
-    }
+    if (MODEL_MATS[key]) o.material = withMaps(MODEL_MATS[key](), o.material, key);
+    // "textura" (detalles con la textura del autor) y "detalle" (colores de
+    // vértice) se usan tal como vienen del modelo.
     o.castShadow = true;
     o.receiveShadow = true;
   });
@@ -193,7 +205,8 @@ function modelTemplate(type) {
     for (const c of w.children) content.add(c.clone(true));
     content.traverse((o) => {
       if (o.isMesh) {
-        o.material = MODEL_MATS[o.material.name]?.() ?? o.material;
+        const key = o.material.name;
+        if (MODEL_MATS[key]) o.material = withMaps(MODEL_MATS[key](), o.material, key);
         o.castShadow = true;
         o.receiveShadow = true;
       }
@@ -381,13 +394,21 @@ export class VehicleView {
     this.lights.head = head;
     this.lights.tail = tail;
     const body = tpl.body.clone(true);
+    let hasHead = false;
+    let hasTail = false;
     body.traverse((o) => {
       if (!o.isMesh) return;
       const key = o.material.name;
-      if (key === 'pintura') o.material = this.paint ??= paint(color);
-      else if (key === 'faro') o.material = head;
-      else if (key === 'stop') o.material = tail;
-      else if (key === 'textura' && type === 'moto') o.material = this.paint ??= motoPaint(o.material, color);
+      if (key === 'pintura') o.material = this.paint ??= paintFor(color, o.material);
+      else if (key === 'faro') {
+        lampMaps(head, o.material);
+        o.material = head;
+        hasHead = true;
+      } else if (key === 'stop') {
+        lampMaps(tail, o.material);
+        o.material = tail;
+        hasTail = true;
+      }
     });
     this.paint ??= paint(color);
     this.chassis.add(body);
@@ -425,12 +446,17 @@ export class VehicleView {
       this.lights.sign = destMat;
     }
     if (type === 'moto') {
-      // Faro y stop (el modelo no los trae como materiales separados).
-      const hl = new THREE.Mesh(shared('moto-hl', () => new THREE.CylinderGeometry(0.075, 0.075, 0.04, 16).rotateX(Math.PI / 2)), head);
-      hl.position.set(0, tpl.cfg.headY ?? 0.86, tpl.box.min.z + (tpl.cfg.headZ ?? 0.42));
-      const tl = new THREE.Mesh(shared('moto-tl', () => new THREE.BoxGeometry(0.12, 0.05, 0.03)), tail);
-      tl.position.set(0, tpl.cfg.tailY ?? 0.62, tpl.box.max.z - (tpl.cfg.tailZ ?? 0.06));
-      this.chassis.add(hl, tl);
+      // Faro y stop, si el modelo no los trae como materiales separados.
+      if (!hasHead) {
+        const hl = new THREE.Mesh(shared('moto-hl', () => new THREE.CylinderGeometry(0.07, 0.07, 0.04, 16).rotateX(Math.PI / 2)), head);
+        hl.position.set(0, tpl.cfg.headY ?? 0.86, tpl.box.min.z + (tpl.cfg.headZ ?? 0.42));
+        this.chassis.add(hl);
+      }
+      if (!hasTail) {
+        const tl = new THREE.Mesh(shared('moto-tl', () => new THREE.BoxGeometry(0.12, 0.05, 0.03)), tail);
+        tl.position.set(0, tpl.cfg.tailY ?? 0.62, tpl.box.max.z - (tpl.cfg.tailZ ?? 0.06));
+        this.chassis.add(tl);
+      }
     }
     this.seat = { ...tpl.seat };
   }
@@ -465,10 +491,10 @@ export class VehicleView {
 
   _buildCar(type, opts) {
     const dims = {
-      taxi: [3.7, 1.65],
-      sedan: [4.4, 1.8],
-      camioneta: [4.7, 1.95],
-      policia: [4.5, 1.85],
+      taxi: [4.0, 1.73],
+      sedan: [4.45, 1.77],
+      camioneta: [4.4, 1.85],
+      policia: [4.4, 1.85],
     }[type];
     const [L, W] = dims;
     const color = type === 'taxi' ? 0xf7c600 : type === 'policia' ? 0xf4f4f4 : this.color;
@@ -540,7 +566,7 @@ export class VehicleView {
     }
 
     const r = type === 'camioneta' || type === 'policia' ? 0.38 : 0.32;
-    const wb = { taxi: 2.4, sedan: 2.7, camioneta: 2.85, policia: 2.75 }[type];
+    const wb = { taxi: 2.5, sedan: 2.75, camioneta: 2.75, policia: 2.75 }[type];
     for (const s of [-1, 1]) {
       this._wheel(s * (W / 2 - 0.12), -wb / 2, r, 0.22, true);
       this._wheel(s * (W / 2 - 0.12), wb / 2, r, 0.22, false);
