@@ -4,12 +4,12 @@
 //   node scripts/assets/optimizar.mjs
 //
 //  - Personajes: quita primitivas duplicadas (el error de grupos de
-//    rocketbox.mjs ya está corregido, esto arregla los GLB existentes) y deja
-//    las texturas de los NPC en 512 px como máximo (el jugador conserva 1024).
+//    rocketbox.mjs ya está corregido, esto arregla los GLB existentes). Las
+//    texturas quedan en 1024 px como máximo (calidad de cerca).
 //  - Vehículos: simplifica las primitivas con demasiados triángulos (rines y
-//    la moto escaneada) y limita sus texturas a 512 px.
-//  - Texturas PBR de la ciudad: normal y rugosidad a 512 px (el color se
-//    queda en su tamaño; es lo que más se nota de cerca).
+//    la moto escaneada); texturas hasta 1024 px.
+//  (Las texturas PBR de la ciudad las genera texturas.mjs en 1024 px más un
+//  color HD de 2048 px para Alta/Ultra.)
 //
 // Presupuesto: un personaje <= ~7 k triángulos y 1 llamada por material; un
 // vehículo <= ~6 k triángulos.
@@ -107,7 +107,7 @@ const persDir = path.join(PUB, 'models/personajes');
 for (const f of fs.readdirSync(persDir).filter((f) => f.endsWith('.glb') && f !== 'animaciones.glb')) {
   await processGlb(path.join(persDir, f), async (doc) => {
     const dups = dropDuplicatePrimitives(doc);
-    const tex = f === 'jugador.glb' ? 0 : await capTextures(doc, 512);
+    const tex = await capTextures(doc, 1024);
     if (dups || tex) console.log(`  ${f}: ${dups} primitivas duplicadas, ${tex} texturas reducidas`);
     return dups || tex;
   });
@@ -119,24 +119,9 @@ const vehDir = path.join(PUB, 'models/vehiculos');
 for (const f of fs.readdirSync(vehDir).filter((f) => f.endsWith('.glb'))) {
   await processGlb(path.join(vehDir, f), async (doc) => {
     // Rines de la buseta (~2 k c/u) y la moto escaneada (~20 k en total).
-    const s = simplifyHeavy(doc, f === 'moto.glb' ? 1400 : 700, { ratioFor: (t) => (f === 'moto.glb' ? (t > 8000 ? 0.4 : 0.3) : 0.3) });
-    const tex = await capTextures(doc, 512);
+    const s = simplifyHeavy(doc, f === 'moto.glb' ? 1400 : 1500, { ratioFor: (t) => (f === 'moto.glb' ? (t > 8000 ? 0.5 : 0.4) : 0.3) });
+    const tex = await capTextures(doc, 1024);
     if (s.before || tex) console.log(`  ${f}: ${s.before} -> ${s.after} triángulos simplificados, ${tex} texturas reducidas`);
     return s.before || tex;
   });
-}
-
-// ------------------------------------------------------------------ texturas PBR
-console.log('Texturas de la ciudad (normal y rugosidad a 512 px)');
-const texDir = path.join(PUB, 'textures');
-for (const id of fs.readdirSync(texDir)) {
-  for (const map of ['normal', 'rough']) {
-    const file = path.join(texDir, id, `${map}.webp`);
-    if (!fs.existsSync(file)) continue;
-    const meta = await sharp(file).metadata();
-    if (meta.width <= 512) continue;
-    const buf = await sharp(file).resize(512, 512, { kernel: 'lanczos3' }).webp({ quality: 90 }).toBuffer();
-    fs.writeFileSync(file, buf);
-    console.log(`  ${id}/${map}.webp: ${meta.width} -> 512`);
-  }
 }

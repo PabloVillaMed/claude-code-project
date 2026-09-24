@@ -18,6 +18,14 @@ MIT, CC-BY (con atribución aquí y en el menú de créditos).
 | Concrete Floor 02 (Planchas de concreto en terrazas) | `public/textures/concrete_floor_02/` | [https://polyhaven.com/a/concrete_floor_02](https://polyhaven.com/a/concrete_floor_02) | Rob Tuytel | CC0 |
 | Concrete Wall 008 (Muros, cimientos y sardineles) | `public/textures/concrete_wall_008/` | [https://polyhaven.com/a/concrete_wall_008](https://polyhaven.com/a/concrete_wall_008) | Dario Barresi, Charlotte Baglioni | CC0 |
 | Corrugated Iron 02 (Zinc / lámina de talleres) | `public/textures/corrugated_iron_02/` | [https://polyhaven.com/a/corrugated_iron_02](https://polyhaven.com/a/corrugated_iron_02) | Jenelle van Heerden, Sergej Majboroda | CC0 |
+| Brick Wall 07 (Fachada de ladrillo farol, variante C) | `public/textures/brick_wall_07/` | [https://polyhaven.com/a/brick_wall_07](https://polyhaven.com/a/brick_wall_07) | Dimitrios Savva | CC0 |
+| Painted Brick (Ladrillo pintado, en gris para teñirlo por casa) | `public/textures/painted_brick/` | [https://polyhaven.com/a/painted_brick](https://polyhaven.com/a/painted_brick) | Amal Kumar | CC0 |
+| Peeling Painted Wall (Repello viejo descascarado, en gris para teñirlo) | `public/textures/peeling_painted_wall/` | [https://polyhaven.com/a/peeling_painted_wall](https://polyhaven.com/a/peeling_painted_wall) | Dimitrios Savva | CC0 |
+| Painted Metal Shutter (Cortina metálica enrollable de los locales) | `public/textures/painted_metal_shutter/` | [https://polyhaven.com/a/painted_metal_shutter](https://polyhaven.com/a/painted_metal_shutter) | Dario Barresi, Rico Cilliers, Charlotte Baglioni | CC0 |
+| Dirty Tiles (Zócalo enchapado en tableta de gres) | `public/textures/dirty_tiles/` | [https://polyhaven.com/a/dirty_tiles](https://polyhaven.com/a/dirty_tiles) | Matterfield, Jenelle van Heerden | CC0 |
+| Granite Tile (Zócalo enchapado en granito) | `public/textures/granite_tile/` | [https://polyhaven.com/a/granite_tile](https://polyhaven.com/a/granite_tile) | Charlotte Baglioni | CC0 |
+| Rusty Painted Metal (Tejas de zinc, Moravia) | `public/textures/rusty_painted_metal/` | [https://polyhaven.com/a/rusty_painted_metal](https://polyhaven.com/a/rusty_painted_metal) | Amal Kumar | CC0 |
+| Kloofendal 48d Partly Cloudy (Pure Sky) 2K (reflejos en Alta/Ultra) | `public/hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr` | [https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | Greg Zaal, Jarod Guest | CC0 |
 | Kloofendal 48d Partly Cloudy (Pure Sky) (Iluminación ambiental de día (IBL)) | `public/hdri/kloofendal_48d_partly_cloudy_puresky.hdr` | [https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | Greg Zaal, Jarod Guest | CC0 |
 | Microsoft Rocketbox — Jugador (Male_Adult_16, camiseta recoloreada a blanco) | `public/models/personajes/jugador.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Avatars/Adults/Male_Adult_16` | Microsoft (equipo original de Rocketbox Studios) | MIT (texto en `public/models/personajes/LICENSE-Rocketbox.md`) |
 | Microsoft Rocketbox — Civiles hombres (Male_Adult_01, 06, 12, 05) | `public/models/personajes/civil-m1.glb` … `civil-m4.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Avatars/Adults` | Microsoft (equipo original de Rocketbox Studios) | MIT |
@@ -57,3 +65,8 @@ derivados de ella.
 |---|---|---|---|
 | OpenStreetMap (consulta Overpass de la Comuna 4 - Aranjuez) | Ubicación relativa de lugares y nombres reales de vías | © colaboradores de OpenStreetMap, [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright) | ODbL 1.0 |
 | SRTM 30 m (vía OpenTopoData) | Perfil de pendiente oeste-este del terreno | NASA / USGS, [opentopodata.org](https://www.opentopodata.org/datasets/srtm/) | Dominio público |
+
+Las texturas con carpeta `hd/` son la misma foto en 2048 px (calidades Alta y
+Ultra). Las rejas, puertas, interiores de locales, avisos, toldos, placas de
+nomenclatura y carretas de venteros son procedurales (canvas), hechos para
+este juego. Los nombres de negocios son inventados.
