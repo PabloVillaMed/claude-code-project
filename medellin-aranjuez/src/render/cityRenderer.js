@@ -19,6 +19,7 @@ import {
   MAP_MIN_X,
   MAP_MIN_Z,
   backdropHeight,
+  roadLine,
   terrainHeight,
 } from '../sim/terrain.js';
 
@@ -149,16 +150,21 @@ export class CityRenderer {
     const z1 = MAP_MAX_Z + pad;
     // Rejilla por franjas para no crear un solo arreglo gigantesco.
     const col = [0.9, 0.95, 0.85];
-    g.heightGrid(x0, z0, x1, z1, step, terrainHeight, 8, col);
+    // Fuera del área jugable sigue el mismo suelo que el fondo (backdropHeight):
+    // así las casas lejanas no quedan enterradas bajo la ladera del mapa.
+    g.heightGrid(x0, z0, x1, z1, step, backdropHeight, 8, col);
     // Variación de color (tierra seca / pasto) por vértice.
     for (let i = 0; i < g.col.length; i += 3) {
       const x = g.pos[i];
       const z = g.pos[i + 2];
       const n = 0.5 + 0.5 * Math.sin(x * 0.05 + z * 0.03) * Math.cos(z * 0.07 - x * 0.02);
       const k = 0.75 + 0.3 * n + rng.range(-0.04, 0.04);
-      g.col[i] = k * (1 + (1 - n) * 0.25);
-      g.col[i + 1] = k;
-      g.col[i + 2] = k * 0.85;
+      // Fuera del área jugable el suelo es de ciudad (calles, patios), no potrero.
+      const out = Math.max(0, MAP_MIN_X - 25 - x, x - MAP_MAX_X - 25, MAP_MIN_Z - 25 - z, z - MAP_MAX_Z - 25);
+      const u = Math.min(1, out / 30);
+      g.col[i] = (k * (1 + (1 - n) * 0.25)) * (1 - u) + 0.3 * u;
+      g.col[i + 1] = k * (1 - u) + 0.28 * u;
+      g.col[i + 2] = k * 0.85 * (1 - u) + 0.28 * u;
     }
     this._mesh(g.build(), this.materials.terrain, { cast: false, name: 'terreno' });
   }
@@ -183,9 +189,11 @@ export class CityRenderer {
       const u = urban(x, z);
       // Misma paleta que el horizonte: ladrillo y teja en lo urbano, monte arriba.
       const c = albedoAt(x, z, y + GEO_REF, u, 0.25, () => 0.5);
-      colors[i * 3] = c[0];
-      colors[i * 3 + 1] = c[1];
-      colors[i * 3 + 2] = c[2];
+      // Entre las casas, lo urbano visto de lejos es calle, andén y techo gris.
+      const g = u * 0.55;
+      colors[i * 3] = c[0] * (1 - g) + 0.12 * g;
+      colors[i * 3 + 1] = c[1] * (1 - g) + 0.11 * g;
+      colors[i * 3 + 2] = c[2] * (1 - g) + 0.1 * g;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
@@ -209,20 +217,39 @@ export class CityRenderer {
     const lightCol = [];
     let n = 0;
     let tries = 0;
-    while (n < count && tries < count * 6) {
+    // Distancia al eje de vía más cercano de la cuadrícula del barrio (que
+    // sigue más allá del mapa): las casas cercanas dejan libres las calles.
+    const offGrid = (v) => Math.abs((((v - roadLine(0, GRID.nx)) % GRID.pitch) + GRID.pitch) % GRID.pitch - GRID.pitch / 2);
+    const nearShare = 0.55;
+    while (n < count && tries < count * 8) {
       tries++;
-      const x = rng.range(-2400, 2400);
-      const z = rng.range(-2400, 2400);
-      if (x > inner.minX - 60 && x < inner.maxX + 60 && z > inner.minZ - 60 && z < inner.maxZ + 60) continue;
+      // Más de la mitad de las casas, en un anillo denso alrededor del mapa:
+      // los barrios vecinos (Moravia, Berlín, Campo Valdés, Manrique) son
+      // ciudad continua, con la misma cuadrícula de calles.
+      const near = n < count * nearShare;
+      let x;
+      let z;
+      if (near) {
+        const a = rng.next() * Math.PI * 2;
+        const r = 380 + Math.sqrt(rng.next()) * 620;
+        x = Math.cos(a) * r;
+        z = Math.sin(a) * r;
+        if (GRID.pitch / 2 - offGrid(x) < 7 || GRID.pitch / 2 - offGrid(z) < 7) continue; // calle
+      } else {
+        x = rng.range(-2400, 2400);
+        z = rng.range(-2400, 2400);
+      }
+      // Desde 10 m más allá del límite jugable: el barrio no termina en un potrero.
+      if (x > inner.minX + 60 && x < inner.maxX - 60 && z > inner.minZ + 60 && z < inner.maxZ - 60) continue;
       // Río: franja sin casas.
       if (Math.abs(x - riverX(z)) < 70) continue;
       if (urban(x, z) < rng.next()) continue;
       const y = backdropHeight(x, z);
-      const w = rng.range(6, 12);
-      const h = rng.range(4, 12) * (rng.chance(0.06) ? 4 : 1);
+      const w = rng.range(7, 13);
+      const h = rng.range(5, 12) * (rng.chance(0.06) ? 3 : 1);
       p.set(x, y - 1, z);
-      q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rng.chance(0.5) ? 0 : 0.3);
-      s.set(w, h, rng.range(6, 12));
+      q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, near || rng.chance(0.5) ? 0 : 0.3);
+      s.set(w, h, rng.range(8, 14));
       m.compose(p, q, s);
       houses.setMatrixAt(n, m);
       const r = rng.next();

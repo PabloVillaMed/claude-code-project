@@ -140,7 +140,10 @@ export function urbanAmount(x, z, asl = valleyAsl(x, z)) {
   }
   const limit = 1960 + 90 * (valueNoise(x / 900, z / 900) - 0.5) * 2;
   const k = 1 - Math.min(1, Math.max(0, (asl - (limit - 120)) / 240));
-  // Parches verdes pequeños dentro de la ciudad (quebradas, parques).
+  // Parches verdes pequeños dentro de la ciudad (quebradas, parques); los
+  // barrios que rodean a Aranjuez (Berlín, Campo Valdés, Palermo, Moravia)
+  // son ciudad continua, así que cerca del mapa no hay.
+  if (Math.hypot(x, z) < 1600) return k;
   const patch = valueNoise(x / 260 + 31, z / 260 - 7);
   return patch < 0.1 ? k * 0.3 : k;
 }

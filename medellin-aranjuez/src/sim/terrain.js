@@ -111,11 +111,13 @@ export function groundHeight(x, z) {
  * horizonte lejano, para que el río y las laderas empaten sin escalones.
  */
 export function backdropHeight(x, z) {
-  const ox = Math.max(0, MAP_MIN_X - x, x - MAP_MAX_X);
-  const oz = Math.max(0, MAP_MIN_Z - z, z - MAP_MAX_Z);
+  // Dentro del área jugable (PLAY_BOUNDS) es exactamente el terreno del
+  // juego; la transición empieza después.
+  const ox = Math.max(0, PLAY_BOUNDS.minX - x, x - PLAY_BOUNDS.maxX);
+  const oz = Math.max(0, PLAY_BOUNDS.minZ - z, z - PLAY_BOUNDS.maxZ);
   const out = Math.hypot(ox, oz);
   if (out <= 0) return terrainHeight(x, z);
-  const t = Math.min(1, out / 380);
+  const t = Math.min(1, out / 350);
   const w = t * t * (3 - 2 * t);
   return terrainHeight(x, z) * (1 - w) + valleyHeight(x, z) * w;
 }

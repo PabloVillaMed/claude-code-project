@@ -213,7 +213,9 @@ test('policía: con estrellas aparecen patrullas', async () => {
     window.__game.teleport(0, 30.5);
     window.__game.addWanted(2);
   });
-  await frames(20);
+  // La primera patrulla llega en cuanto el despacho la asigna; con el render
+  // por software cada cuadro tarda distinto, así que se espera a que aparezca.
+  await page.waitForFunction(() => window.__game.state().police >= 1, null, { timeout: 180000 });
   const s = await st();
   expect(s.wanted).toBeGreaterThanOrEqual(2);
   expect(s.police).toBeGreaterThanOrEqual(1);
@@ -242,6 +244,9 @@ test('de noche: faros encendidos; el derrape deja marcas', async () => {
 });
 
 test('morir lleva al hospital y cobra la cuenta', async () => {
+  // El hospital ya "descubierto": si no, reaparecer allí paga $100 de
+  // descubrimiento y el saldo depende del orden de las pruebas.
+  await G(() => window.__gameInstance.discovered.add('hospital'));
   const m0 = (await st()).money;
   await G(() => window.__game.damage(500));
   await frames(2);

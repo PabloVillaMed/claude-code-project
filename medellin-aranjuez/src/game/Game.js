@@ -1207,6 +1207,13 @@ export class Game {
         if (g.player.vehicle) g.exitVehicle(true);
         g.player.state = createPlayerState(x, z, groundHeight, g.player.state.yaw);
       },
+      /** Depuración: qué objeto hay bajo un punto de la pantalla (coordenadas -1..1). */
+      pick(nx, ny) {
+        const rc = new THREE.Raycaster();
+        rc.setFromCamera(new THREE.Vector2(nx, ny), g.camera);
+        const hits = rc.intersectObjects(g.scene.children, true).filter((h) => h.object.visible && h.object.name !== 'horizonte');
+        return hits.slice(0, 4).map((h) => ({ name: h.object.name || h.object.parent?.name || h.object.type, dist: +h.distance.toFixed(1), point: h.point.toArray().map((v) => +v.toFixed(1)) }));
+      },
       look(yaw, pitch = -0.12) {
         g.camRig.yaw = yaw;
         g.camRig.pitch = pitch;

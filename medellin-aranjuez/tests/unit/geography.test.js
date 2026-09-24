@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GEO_REF, riverX, urbanAmount, valleyAsl, valleyHeight } from '../../src/sim/geography.js';
-import { MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, backdropHeight, terrainHeight } from '../../src/sim/terrain.js';
+import { MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, PLAY_BOUNDS, backdropHeight, terrainHeight } from '../../src/sim/terrain.js';
 
 const deg = (r) => (r * 180) / Math.PI;
 /** Ángulo máximo de elevación del horizonte en un rumbo (0 = norte, 90 = oriente), visto desde el centro. */
@@ -77,6 +77,10 @@ describe('geografía del valle de Aburrá', () => {
       expect(backdropHeight(MAP_MAX_X, z)).toBeCloseTo(terrainHeight(MAP_MAX_X, z), 6);
       // Lejos del mapa es exactamente la geografía del valle (la del horizonte).
       expect(backdropHeight(MAP_MIN_X - 500, z)).toBeCloseTo(valleyHeight(MAP_MIN_X - 500, z), 6);
+    }
+    // En toda el área jugable el suelo dibujado es el mismo de la física.
+    for (let x = PLAY_BOUNDS.minX; x <= PLAY_BOUNDS.maxX; x += 13) {
+      for (const z of [PLAY_BOUNDS.minZ, 0, PLAY_BOUNDS.maxZ]) expect(backdropHeight(x, z)).toBe(terrainHeight(x, z));
     }
     // Sin saltos: la pendiente del fondo es razonable en todo el borde.
     for (let x = MAP_MIN_X - 600; x < MAP_MIN_X; x += 5) {
