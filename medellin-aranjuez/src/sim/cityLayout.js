@@ -330,10 +330,16 @@ function addSidewalkProps(block, ctx) {
   // Motos parqueadas en el andén (muy de Medellín).
   if (block.type === 'residencial' && rng.chance(0.45)) {
     const s = rng.pick(sides);
-    const t = rng.range(0.2, 0.8);
-    const x = s.horiz ? s.x0 + (s.x1 - s.x0) * t : s.x;
-    const z = s.horiz ? s.z : s.z0 + (s.z1 - s.z0) * t;
-    ctx.city.parkedVehicles.push({ type: 'moto', x, z, heading: s.rot + Math.PI / 2 });
+    // Buscar un hueco libre entre faroles y árboles del andén.
+    for (let tries = 0; tries < 12; tries++) {
+      const t = rng.range(0.15, 0.85);
+      const x = s.horiz ? s.x0 + (s.x1 - s.x0) * t : s.x;
+      const z = s.horiz ? s.z : s.z0 + (s.z1 - s.z0) * t;
+      const clash = ctx.city.props.some((p) => p.collider && Math.abs(p.x - x) < 1.8 && Math.abs(p.z - z) < 1.8);
+      if (clash) continue;
+      ctx.city.parkedVehicles.push({ type: 'moto', x, z, heading: s.rot + Math.PI / 2 });
+      break;
+    }
   }
 }
 
@@ -510,6 +516,20 @@ const BLOCK_GENERATORS = {
   },
 };
 
+/** Muro que sigue la pendiente: se parte en tramos de ~6 m. */
+function addWall(ctx, minX, minZ, maxX, maxZ, h, color) {
+  const alongX = maxX - minX >= maxZ - minZ;
+  const len = alongX ? maxX - minX : maxZ - minZ;
+  const n = Math.max(1, Math.ceil(len / 6));
+  for (let k = 0; k < n; k++) {
+    const a0 = (len * k) / n;
+    const a1 = (len * (k + 1)) / n;
+    const seg = alongX ? { minX: minX + a0, maxX: minX + a1, minZ, maxZ } : { minX, maxX, minZ: minZ + a0, maxZ: minZ + a1 };
+    const fh = footprintHeights(seg.minX, seg.maxX, seg.minZ, seg.maxZ);
+    addBuilding(ctx, { ...seg, topY: fh.max + GRID.curb + h, style: 'muro', color });
+  }
+}
+
 function wallRing(ctx, block, h, color, gateSide) {
   const t = 0.35;
   const { minX, maxX, minZ, maxZ } = block.lot;
@@ -525,14 +545,14 @@ function wallRing(ctx, block, h, color, gateSide) {
     if (side === gateSide) {
       const mid = horiz ? (x0 + x1) / 2 : (z0 + z1) / 2;
       if (horiz) {
-        addBuilding(ctx, { minX: x0, maxX: mid - gate / 2, minZ: z0, maxZ: z1, height: h, style: 'muro', color });
-        addBuilding(ctx, { minX: mid + gate / 2, maxX: x1, minZ: z0, maxZ: z1, height: h, style: 'muro', color });
+        addWall(ctx, x0, z0, mid - gate / 2, z1, h, color);
+        addWall(ctx, mid + gate / 2, z0, x1, z1, h, color);
       } else {
-        addBuilding(ctx, { minX: x0, maxX: x1, minZ: z0, maxZ: mid - gate / 2, height: h, style: 'muro', color });
-        addBuilding(ctx, { minX: x0, maxX: x1, minZ: mid + gate / 2, maxZ: z1, height: h, style: 'muro', color });
+        addWall(ctx, x0, z0, x1, mid - gate / 2, h, color);
+        addWall(ctx, x0, mid + gate / 2, x1, z1, h, color);
       }
     } else {
-      addBuilding(ctx, { minX: x0, maxX: x1, minZ: z0, maxZ: z1, height: h, style: 'muro', color });
+      addWall(ctx, x0, z0, x1, z1, h, color);
     }
   }
 }

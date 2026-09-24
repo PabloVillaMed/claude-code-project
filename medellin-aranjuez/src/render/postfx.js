@@ -60,7 +60,7 @@ export class PostFX {
       composer.addPass(ao);
     }
     // Umbral alto: solo brillan luces y reflejos intensos, no el cielo.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.35, 2.2);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.2, 0.35, 5);
     composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
     this.grade = new ShaderPass(GradeShader);
@@ -79,8 +79,9 @@ export class PostFX {
 
   setNight(n) {
     if (this.bloom) {
-      this.bloom.strength = 0.18 + n * 0.5;
-      this.bloom.threshold = 2.2 - n * 1.4;
+      // De día solo destellos muy intensos; de noche brillan ventanas y postes.
+      this.bloom.strength = 0.15 + n * 0.5;
+      this.bloom.threshold = 5 - n * 4.2;
     }
   }
 

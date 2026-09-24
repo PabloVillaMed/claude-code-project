@@ -193,7 +193,8 @@ export function autopilot(graph, agent, v, opts) {
 
   // Velocidad deseada: más lenta en giros y cerca de intersecciones.
   let desired = opts.cruise;
-  if (turning && distToEnd < 22) desired = Math.min(desired, 6.5);
+  // Los vehículos largos (busetas) giran más despacio para no montarse al andén.
+  if (turning && distToEnd < 22) desired = Math.min(desired, wb > 3.5 ? 4.5 : 6.5);
   if (uTurn && distToEnd < 15) desired = Math.min(desired, 3);
   if (Math.abs(err) > 0.5) desired = Math.min(desired, 5);
   if (opts.blockedAhead < Infinity) {

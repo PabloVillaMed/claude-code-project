@@ -143,10 +143,19 @@ function substep(s, input, dt, env) {
   const bounds = env.bounds ?? PLAY_BOUNDS;
   nx = clamp(nx, bounds.minX, bounds.maxX);
   nz = clamp(nz, bounds.minZ, bounds.maxZ);
-  // Velocidad efectiva tras colisión (deslizar contra la pared).
+  // Velocidad efectiva tras colisión (deslizar contra la pared). Un empujón
+  // de resolución nunca debe acelerar al personaje.
   if (dt > 0) {
-    s.vel.x = (nx - prevX) / dt;
-    s.vel.z = (nz - prevZ) / dt;
+    const before = Math.hypot(s.vel.x, s.vel.z);
+    let vx = (nx - prevX) / dt;
+    let vz = (nz - prevZ) / dt;
+    const after = Math.hypot(vx, vz);
+    if (after > before && after > 1e-6) {
+      vx *= before / after;
+      vz *= before / after;
+    }
+    s.vel.x = vx;
+    s.vel.z = vz;
   }
   s.pos.x = nx;
   s.pos.z = nz;

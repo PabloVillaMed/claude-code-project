@@ -3,7 +3,7 @@
 // por software (SwiftShader).
 import { test, expect } from '@playwright/test';
 
-test.describe.configure({ mode: 'serial' });
+// Una sola página compartida; si una prueba falla, las demás igual se ejecutan.
 
 let page;
 const errors = [];
@@ -111,7 +111,9 @@ test('selección de armas con números y rueda del ratón, disparo y recarga', a
 test('vehículos: subirse, conducir, frenar y bajarse', async () => {
   await G(() => {
     window.__game.teleport(0, 30.5);
-    window.__game.spawnVehicle('taxi');
+    const v = window.__game.spawnVehicle('taxi');
+    // Pararse junto a la puerta (a la derecha del vehículo).
+    window.__game.teleport(v.x + Math.cos(v.heading) * 1.9, v.z - Math.sin(v.heading) * 1.9);
   });
   await frames(2);
   await page.keyboard.press('KeyF');

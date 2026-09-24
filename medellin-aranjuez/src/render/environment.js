@@ -5,6 +5,17 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { clamp, smoothstep } from '../sim/math.js';
 
+/**
+ * El disco solar del cielo físico llega a valores HDR enormes que desbordan
+ * los búferes de media precisión del postprocesado (pantalla blanca y NaN).
+ * Se limita su radiancia máxima.
+ */
+function clampSky(sky, max) {
+  const m = sky.material;
+  m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', `gl_FragColor = vec4( min( texColor, vec3( ${max.toFixed(1)} ) ), 1.0 );`);
+  m.needsUpdate = true;
+}
+
 export class Environment {
   constructor(renderer, scene, quality) {
     this.renderer = renderer;
@@ -16,6 +27,7 @@ export class Environment {
 
     this.sky = new Sky();
     this.sky.scale.setScalar(20000);
+    clampSky(this.sky, 8);
     const u = this.sky.material.uniforms;
     u.turbidity.value = 6;
     u.rayleigh.value = 1.6;
@@ -45,6 +57,7 @@ export class Environment {
     this.envScene = new THREE.Scene();
     this.envSky = new Sky();
     this.envSky.scale.setScalar(1000);
+    clampSky(this.envSky, 16);
     this.envScene.add(this.envSky);
     this.envTarget = null;
     this.envTimer = 0;

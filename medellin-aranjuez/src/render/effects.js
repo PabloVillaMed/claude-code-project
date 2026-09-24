@@ -110,8 +110,8 @@ export class Effects {
       this._spawn({ x: pos.x, y: pos.y, z: pos.z, vx: dir.x * (4 + Math.random() * 6) + (Math.random() - 0.5), vy: dir.y * 5 + (Math.random() - 0.5), vz: dir.z * (4 + Math.random() * 6) + (Math.random() - 0.5), life: 0.06, max: 0.06, r: 1, g: 0.75, b: 0.35, size: 0.5, grav: 0 });
     }
     this.flashLight.position.copy(pos);
-    this.flashLight.intensity = 30;
-    this.flashLight.distance = 10;
+    this.flashLight.intensity = 6;
+    this.flashLight.distance = 7;
     this.flashTime = 0.05;
   }
 
@@ -168,7 +168,7 @@ export class Effects {
     }
     for (let i = 0; i < 25; i++) this.puff({ x: pos.x + (Math.random() - 0.5) * 3, y: pos.y + 1, z: pos.z + (Math.random() - 0.5) * 3 }, 2.5, [0.08, 0.07, 0.07], 0.85, 2.5 + Math.random() * 2, 4);
     this.flashLight.position.set(pos.x, pos.y + 2, pos.z);
-    this.flashLight.intensity = 800;
+    this.flashLight.intensity = 300;
     this.flashLight.distance = 40;
     this.flashTime = 0.4;
   }

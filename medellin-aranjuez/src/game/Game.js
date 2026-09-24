@@ -170,6 +170,7 @@ export class Game {
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     await step(0.92);
     // Precalentar: pobla el barrio y compila shaders antes de mostrarlo.
+    this.world.populate(sp.x, sp.z);
     for (let i = 0; i < 30; i++) this.world.update(0.05, this.player);
     this.renderer.compile(this.scene, this.camera);
     await step(1);
@@ -217,6 +218,7 @@ export class Game {
     }
     this.wanted.clear();
     this.world.clearPolice();
+    this.world.populate(p.x, p.z);
     this.camRig.yaw = p.state.yaw;
     this.camRig.pitch = -0.12;
     this.camRig.first = true;
@@ -597,6 +599,7 @@ export class Game {
     this.world.clearPolice();
     this.camRig.yaw = Math.PI;
     this.camRig.first = true;
+    this.world.populate(h.x, h.z);
     this.hud.hideBig();
     this.hud.toast(`Cuenta del hospital: -$${fee.toLocaleString('es-CO')}`, 4);
     this.save();

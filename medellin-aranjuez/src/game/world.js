@@ -216,6 +216,14 @@ export class World {
     return ped;
   }
 
+  /** Llena de inmediato el barrio alrededor de (x, z) con peatones y tráfico. */
+  populate(x, z) {
+    let guard = 0;
+    while (this.peds.filter((p) => p.faction === 'civil').length < this.quality.peds && guard++ < this.quality.peds * 3) this.spawnPed(x, z, 12, 110);
+    guard = 0;
+    while (this.vehicles.filter((v) => v.kind === 'traffic').length < this.quality.traffic && guard++ < this.quality.traffic * 3) this.spawnTraffic(x, z, 30, 200);
+  }
+
   removeVehicle(v) {
     const i = this.vehicles.indexOf(v);
     if (i >= 0) this.vehicles.splice(i, 1);

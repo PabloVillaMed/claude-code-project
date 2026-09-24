@@ -47,17 +47,21 @@ if (want('street')) {
   await shot('03-calle-del-barrio');
 }
 if (want('aim')) {
-  await G(() => { window.__game.giveAll(); window.__game.look(Math.PI / 2, -0.05); });
+  await G(() => { window.__game.giveAll(); window.__game.teleport(-20, 12); window.__game.look(Math.PI / 4, -0.05); });
   await adv(0.5, { weaponSlot: 6 });
   await adv(1, { aim: true });
+  // Mantener la entrada durante el render de la captura.
+  await G(() => window.__game.setInput({ aim: true }));
   await shot('04-apuntando-fusil');
-  await adv(0.12, { aim: true, fire: true });
+  await G(() => window.__game.setInput({ aim: true, fire: true }));
   await shot('05-disparando', false);
+  await G(() => window.__game.setInput(null));
   await adv(0.5);
 }
 if (want('wheel')) {
-  await adv(0.2, { weaponWheel: true, lookX: 0.02 });
+  await G(() => window.__game.setInput({ weaponWheel: true }));
   await shot('06-rueda-de-armas', false);
+  await G(() => window.__game.setInput(null));
   await adv(0.2);
 }
 if (want('drive')) {
@@ -69,7 +73,7 @@ if (want('drive')) {
 if (want('moto')) {
   await G(() => { window.__game.exitVehicle(); window.__game.teleport(210, 40); window.__game.spawnVehicle('moto'); window.__game.enterNearest(20); });
   await adv(3, { throttle: 1 });
-  await adv(0.6, { throttle: 1, steer: 0.5 });
+  await adv(0.4, { throttle: 1, steer: 0.15 });
   await shot('08-moto');
 }
 if (want('mirador')) {
@@ -78,12 +82,12 @@ if (want('mirador')) {
   await shot('09-mirador-del-valle');
 }
 if (want('botanico')) {
-  await G(() => { const p = window.__game.pois().find((x) => x.id === 'botanico'); window.__game.teleport(p.x - 6, p.z - 2); window.__game.look(-Math.PI / 2 - 0.4, 0.25); });
+  await G(() => { const p = window.__game.pois().find((x) => x.id === 'botanico'); window.__game.teleport(p.x - 12, p.z + 10); window.__game.look(-0.9, 0.3); });
   await adv(1.5);
   await shot('10-jardin-botanico-orquideorama');
 }
 if (want('metro')) {
-  await G(() => { const p = window.__game.pois().find((x) => x.id === 'metro'); window.__game.teleport(p.x + 26, p.z + 40); window.__game.look(0.75, 0.2); });
+  await G(() => { const p = window.__game.pois().find((x) => x.id === 'metro'); window.__game.teleport(p.x + 16, p.z + 55); window.__game.look(0.35, 0.28); });
   await adv(1.5);
   await shot('11-metro-estacion-universidad');
 }
@@ -96,6 +100,13 @@ if (want('night')) {
   await G(() => { window.__game.setTime(20.2); window.__game.teleport(-35, 30.5); window.__game.look(-Math.PI / 2 + 0.3, -0.02); });
   await adv(2);
   await shot('13-aranjuez-de-noche');
+}
+if (want('menu')) {
+  await G(() => { window.__game.setTime(17.2); window.__gameInstance.hud.show(false); window.__gameInstance.setState('menu'); });
+  await frames(6);
+  await page.screenshot({ path: `${out}/00-menu-principal.png` });
+  console.log('captura 00-menu-principal');
+  await G(() => { window.__gameInstance.hud.show(true); window.__gameInstance.setState('playing'); });
 }
 if (want('map')) {
   await G(() => { window.__game.setTime(16.5); });
