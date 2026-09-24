@@ -127,10 +127,30 @@ export class Game {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.info.autoReset = false; // se reinicia por frame (incluye sombras y postproceso)
     this.renderer = renderer;
+    this._detectGpu(qKey, opts);
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, this.quality.drawDistance);
     this.scene.add(this.camera);
     window.addEventListener('resize', () => this.resize());
+  }
+
+  /**
+   * Nombre de la GPU (para diagnóstico) y, si WebGL corre por software
+   * (controlador en lista negra, escritorio remoto…), calidad Baja
+   * automáticamente: con render por software nada más es jugable.
+   */
+  _detectGpu(qKey, opts) {
+    const gl = this.renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    this.gpuName = String((ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || '?');
+    this.softwareGpu = /swiftshader|llvmpipe|softpipe|software|basic render/i.test(this.gpuName);
+    console.info(`GPU: ${this.gpuName}${this.softwareGpu ? ' (render por software)' : ''}`);
+    if (this.softwareGpu && !opts.autotest && !opts.quality && qKey !== 'baja') {
+      this.quality = { ...QUALITY_PRESETS.baja };
+      this.basePixelRatio = Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio);
+      this.renderer.setPixelRatio(this.basePixelRatio);
+      this.renderer.shadowMap.enabled = false;
+    }
   }
 
   resize() {

@@ -97,6 +97,32 @@ if (want('police')) {
   await adv(14);
   await shot('12-persecucion-policial');
 }
+if (want('busqueda')) {
+  // Delito en la calle y huida: la policía no sabe dónde estás, solo dónde
+  // te vieron. El minimapa muestra la zona de búsqueda.
+  await G(() => { window.__game.teleport(0, 30.5); window.__game.addWanted(3); });
+  await adv(2);
+  await G(() => { window.__game.teleport(-105, -60); window.__game.look(Math.PI * 0.8, -0.05); });
+  await adv(8);
+  await shot('15-busqueda-policial-zona');
+  await G(() => window.__gameInstance.wanted.clear());
+  await adv(1);
+}
+for (const [id, name, dx, dz, yaw, pitch] of [
+  ['moravia', '16-morro-de-moravia', 30, 30, -Math.PI * 0.75, 0.12],
+  ['explora', '17-parque-explora', 14, 0, -Math.PI / 2, 0.1],
+  ['cementerio', '18-cementerio-san-pedro', 0, -6, Math.PI, 0.05],
+  ['museo', '19-casa-museo-pedro-nel-gomez', 0, 8, 0, 0.02],
+]) {
+  if (!want(id)) continue;
+  await G(([id, dx, dz, yaw, pitch]) => {
+    const p = window.__game.pois().find((x) => x.id === id);
+    window.__game.teleport(p.x + dx, p.z + dz);
+    window.__game.look(yaw, pitch);
+  }, [id, dx, dz, yaw, pitch]);
+  await adv(1.5);
+  await shot(name);
+}
 if (want('night')) {
   await G(() => { window.__game.setTime(20.2); window.__game.teleport(-35, 30.5); window.__game.look(-Math.PI / 2 + 0.3, -0.02); });
   await adv(2);

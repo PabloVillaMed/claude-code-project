@@ -328,7 +328,9 @@ export class Hud {
       this.fps.value = Math.round((this.fps.frames * 1000) / (now - this.fps.start));
       this.fps.frames = 0;
       this.fps.start = now;
-      this._set('fps', 'text', `${this.fps.value} FPS`);
+      const g = this.game;
+      const res = g.resScale < 0.999 ? ` · res ${Math.round(g.resScale * 100)} %` : '';
+      this._set('fps', 'text', `${this.fps.value} FPS${res}`);
     }
     this._set('clock', 'text', st.clock);
     // Plata con conteo animado.

@@ -3,6 +3,7 @@
 import { Game, loadSave, saveSettings } from './game/Game.js';
 
 const $ = (id) => document.getElementById(id);
+const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const params = new URLSearchParams(location.search);
 const autotest = params.has('autotest');
 
@@ -29,7 +30,7 @@ game.onStateChange = (s) => {
   else if (s === 'paused') {
     showOverlay('pause');
     const st = game.stats;
-    $('stats').innerHTML = `Misiones completadas: <b>${game.missions.completed.size}/3</b><br>Lugares descubiertos: <b>${game.discovered.size}/${game.city.pois.length}</b><br>Bajas: <b>${st.kills}</b> · Distancia: <b>${(st.distance / 1000).toFixed(1)} km</b><br>Tiempo jugado: <b>${Math.floor(st.playTime / 60)} min</b>`;
+    $('stats').innerHTML = `Misiones completadas: <b>${game.missions.completed.size}/3</b><br>Lugares descubiertos: <b>${game.discovered.size}/${game.city.pois.length}</b><br>Bajas: <b>${st.kills}</b> · Distancia: <b>${(st.distance / 1000).toFixed(1)} km</b><br>Tiempo jugado: <b>${Math.floor(st.playTime / 60)} min</b><br><small style="opacity:.6">GPU: ${escapeHtml(game.gpuName ?? '?')}${game.softwareGpu ? ' (por software: revisa los controladores de video)' : ''}</small>`;
     $('pause').querySelector('button').focus();
   } else if (s === 'menu') {
     showOverlay('menu');
