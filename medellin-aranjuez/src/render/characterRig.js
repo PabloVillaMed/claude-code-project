@@ -452,13 +452,13 @@ export class SkinnedRig {
     if (moto) {
       // Inclinado sobre el manubrio.
       if (B.Bip01_Spine1) {
-        _q.setFromAxisAngle(right, -0.5 * w);
+        _q.setFromAxisAngle(right, -0.65 * w);
         B.Bip01_Spine1.getWorldQuaternion(_q2);
         setWorldQuat(B.Bip01_Spine1, _q.multiply(_q2), 1);
       }
     }
-    const reach = moto ? 0.72 : 0.42;
-    const height = moto ? 0.3 : 0.32;
+    const reach = moto ? 0.84 : 0.42;
+    const height = moto ? 0.2 : 0.32;
     const spread = moto ? 0.3 : 0.19;
     const c = hips.clone().addScaledVector(flat, reach).addScaledVector(up, height);
     ik2(B.Bip01_R_UpperArm, B.Bip01_R_Forearm, B.Bip01_R_Hand, c.clone().addScaledVector(right, spread), right.clone().addScaledVector(up, -1), w);
