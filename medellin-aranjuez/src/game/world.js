@@ -399,7 +399,12 @@ export class World {
           this.game.combat.explode({ x: s.x, y: s.y, z: s.z }, v);
         }
       }
-      v.view.sync(s, dt, night, v.siren);
+      // Vehículos lejanos no se dibujan (los parqueados, que son muchos y
+      // pequeños como las motos, desde más cerca).
+      const dv = dist2D(s.x, s.z, camPos.x, camPos.z);
+      const moving = v.driver || Math.abs(s.forwardSpeed) > 0.5 || v.burnTimer >= 0;
+      v.view.group.visible = dv < (moving ? q.vehicleDraw ?? 260 : q.parkedDraw ?? 120);
+      if (v.view.group.visible) v.view.sync(s, dt, night, v.siren);
       if (v.driverRig) {
         // Conductores: solo se dibujan (y animan) de cerca; en moto se ven desde más lejos.
         const dc = dist2D(s.x, s.z, camPos.x, camPos.z);

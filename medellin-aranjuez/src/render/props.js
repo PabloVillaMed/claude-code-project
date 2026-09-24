@@ -33,7 +33,10 @@ export const PROP_MODELS = [
 
 registerAssets(PROP_MODELS.map((k) => ({ key: `utileria/${k}`, type: 'gltf', url: `models/utileria/${k}.glb` })));
 
-const CHUNK = 140; // lado (m) de cada trozo de ciudad
+// Lado (m) de cada trozo de ciudad. El detalle se decide por instancia
+// (LodChunk), así que trozos grandes = muchas menos llamadas de dibujo sin
+// perder calidad de cerca.
+const CHUNK = 280;
 
 // Especies del barrio: modelo, altura base (m), factor de ancho de copa y
 // color del follaje (el atlas de hojas es casi gris y se tiñe por instancia).

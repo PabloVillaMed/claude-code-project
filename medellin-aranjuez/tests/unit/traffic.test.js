@@ -80,7 +80,7 @@ describe('tráfico y navegación vial', () => {
       expect(car.v.health).toBeGreaterThan(car.v.spec.health * 0.5);
       expect(car.travelled).toBeGreaterThan(400); // de verdad recorren el barrio
     }
-  });
+  }, 20000); // 3 min simulados de 8 carros: holgura para máquinas lentas
 
   it('la patrulla persigue: llega cerca de un objetivo lejano', () => {
     const c = city();

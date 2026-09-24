@@ -431,9 +431,9 @@ function addStreetLife(city, rng) {
   for (const e of city.edges) if (busRoute(e) && rng.chance(0.25)) spots.push({ x: (city.nodes[e.a].x + city.nodes[e.b].x) / 2, z: (city.nodes[e.a].z + city.nodes[e.b].z) / 2 });
   let vk = rng.int(0, VENDORS.length - 1);
   for (const sp of spots) {
-    for (let tries = 0; tries < 16; tries++) {
+    for (let tries = 0; tries < 40; tries++) {
       const ang = rng.range(0, Math.PI * 2);
-      const rr = rng.range(5, 14);
+      const rr = rng.range(4, 20);
       const x = sp.x + Math.cos(ang) * rr;
       const z = sp.z + Math.sin(ang) * rr;
       const block = blockAtPt(x, z);
@@ -635,7 +635,7 @@ function addSidewalkProps(block, ctx) {
     }
   }
   // Motos parqueadas en el andén (muy de Medellín): a veces varias.
-  const nMotos = block.type === 'residencial' ? (rng.chance(0.75) ? rng.int(1, 3) : 0) : 0;
+  const nMotos = block.type === 'residencial' ? (rng.chance(0.6) ? rng.int(1, 2) : 0) : 0;
   for (let mk = 0; mk < nMotos; mk++) {
     const s = rng.pick(sides);
     // Buscar un hueco libre entre faroles y árboles del andén.

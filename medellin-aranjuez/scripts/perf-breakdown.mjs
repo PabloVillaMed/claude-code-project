@@ -28,7 +28,7 @@ const rows = await page.evaluate(() => {
     r.tris += tris * inst;
     if (o.castShadow) r.shadowTris += tris * inst;
   });
-  return Object.entries(out).sort((a, b) => b[1].tris - a[1].tris).slice(0, 30);
+  return Object.entries(out).sort((a, b) => b[1].tris - a[1].tris).slice(0, 40);
 });
 for (const [k, r] of rows) console.log(k.slice(0, 40).padEnd(42), String(r.objs).padStart(5), (r.tris / 1e6).toFixed(3).padStart(8), 'M', (r.shadowTris / 1e6).toFixed(3).padStart(8), 'M sombra');
 await browser.close();

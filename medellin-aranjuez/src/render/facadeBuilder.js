@@ -35,9 +35,11 @@ import {
 
 const CHUNK = GRID.pitch * 3;
 // Materiales de detalle: se ocultan de lejos.
-const DETAIL = new Set(['frame', 'curtain', 'grille', 'trimDetail', 'counter']);
+const DETAIL = new Set(['detail', 'grille']);
 // Materiales que no proyectan sombra (planos finos o hundidos en el muro).
-const NO_SHADOW = new Set(['glass', 'glassLitW', 'glassLitC', 'curtain', 'grille', 'interior', 'shopBox', 'sign', 'frame', 'gres', 'granito', 'door']);
+const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopBox', 'sign', 'detail', 'gres', 'granito', 'door']);
+const LIT_WARM = [1, 0.77, 0.5];
+const LIT_COOL = [0.72, 0.82, 1];
 
 const WALLS = {
   brick0: 'red_brick',
@@ -100,6 +102,14 @@ export class FacadeBuilder {
       return m;
     };
     const std = (o) => new THREE.MeshStandardMaterial(o);
+    const litGlass = () => {
+      const g = std({ color: 0x3a4248, vertexColors: true, roughness: 0.08, metalness: 0.45, envMapIntensity: 2.2, emissive: 0xffffff, emissiveIntensity: 0 });
+      g.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= vColor.rgb;');
+      };
+      g.customProgramCacheKey = () => 'vidrio-encendido';
+      return g;
+    };
     const night = (m, max, base = 0) => {
       r.nightMaterials.push({ m, max, base });
       return m;
@@ -110,24 +120,23 @@ export class FacadeBuilder {
       trim: photoMaterial('concrete_wall_008', { uvMeters: 1, vertexColors: true }) ?? std({ vertexColors: true, roughness: 0.9 }),
       // Vidrio: bastante reflectivo (refleja el cielo) y teñido por casa.
       glass: std({ vertexColors: true, roughness: 0.06, metalness: 0.5, envMapIntensity: 2.4 }),
-      glassLitW: night(std({ vertexColors: true, roughness: 0.08, metalness: 0.45, envMapIntensity: 2.2, emissive: 0xffc27a, emissiveIntensity: 0 }), 1.25),
-      glassLitC: night(std({ vertexColors: true, roughness: 0.08, metalness: 0.45, envMapIntensity: 2.2, emissive: 0xbfd6ff, emissiveIntensity: 0 }), 0.85),
-      frame: std({ vertexColors: true, metalness: 0.55, roughness: 0.38 }),
-      curtain: std({ vertexColors: true, roughness: 0.95 }),
+      // Ventanas que se encienden de noche: la luz toma el color del vértice
+      // (cálida o fría de televisor), así ambas van en una sola llamada.
+      glassLit: night(litGlass(), 1.2),
+      // Marcos, cortinas, mostradores, contadores, ropa, antenas: un material.
+      detail: std({ vertexColors: true, metalness: 0.3, roughness: 0.6 }),
       grille: std({ vertexColors: true, alphaMap: grilleAtlas(), alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.35, roughness: 0.55 }),
       door: std({ map: doorAtlas(), vertexColors: true, metalness: 0.3, roughness: 0.5 }),
       shutter: photoMaterial('painted_metal_shutter', { uvMeters: 1, vertexColors: true, extra: { metalness: 0.35 } }) ?? std({ vertexColors: true, metalness: 0.4, roughness: 0.5 }),
       interior: night(std({ map: interiorTex, emissiveMap: interiorTex, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 0.85 }), 0.7, 0.3),
       shopBox: night(std({ vertexColors: true, roughness: 0.85, emissive: 0xfff4e0, emissiveIntensity: 0.12 }), 0.35, 0.12),
-      counter: std({ vertexColors: true, roughness: 0.6 }),
+
       sign: night(std({ map: signTex, emissiveMap: signTex, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.7 }), 0.45),
       awning: std({ map: awningAtlas(), side: THREE.DoubleSide, roughness: 0.92 }),
       gres: photoMaterial('dirty_tiles', { uvMeters: 1, roughness: 0.6 }) ?? std({ color: 0x8a3b22, roughness: 0.6 }),
       granito: photoMaterial('granite_tile', { uvMeters: 1, roughness: 0.5 }) ?? std({ color: 0x777777, roughness: 0.5 }),
       zinc: photoMaterial('corrugated_iron_02', { uvMeters: 1, vertexColors: true, extra: { metalness: 0.4, side: THREE.DoubleSide } }) ?? std({ vertexColors: true, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide }),
-      trimDetail: null,
     };
-    m.trimDetail = m.trim;
     for (const [k, id] of Object.entries(WALLS)) m[k] = wall(id);
     return m;
   }
@@ -235,13 +244,13 @@ export class FacadeBuilder {
       if (o.kind === 'window' || o.kind === 'balconyDoor') {
         const D = 0.14;
         reveal(o, D, trimColor, true);
-        const glassKey = o.lit ? (o.cool ? 'glassLitC' : 'glassLitW') : 'glass';
-        fq(G(glassKey), o.u0, o.u1, o.v0, o.v1, -D + 0.01, [[0, 0], [1, 0], [1, 1], [0, 1]], glassTint);
+        if (o.lit) fq(G('glassLit'), o.u0, o.u1, o.v0, o.v1, -D + 0.01, [[0, 0], [1, 0], [1, 1], [0, 1]], o.cool ? LIT_COOL : LIT_WARM);
+        else fq(G('glass'), o.u0, o.u1, o.v0, o.v1, -D + 0.01, [[0, 0], [1, 0], [1, 1], [0, 1]], glassTint);
         // Marco de aluminio con división central (corrediza).
         const fc = FRAME_COLORS[o.frame];
         const fw = 0.05;
         const fo = -D + 0.045;
-        const fr = G('frame');
+        const fr = G('detail');
         fq(fr, o.u0, o.u1, o.v0, o.v0 + fw, fo, null, fc);
         fq(fr, o.u0, o.u1, o.v1 - fw, o.v1, fo, null, fc);
         fq(fr, o.u0, o.u0 + fw, o.v0, o.v1, fo, null, fc);
@@ -252,7 +261,7 @@ export class FacadeBuilder {
         if (o.curtain) {
           const cw = (o.u1 - o.u0) * o.curtain.frac;
           const cu0 = o.curtain.left ? o.u0 + fw : o.u1 - fw - cw;
-          fq(G('curtain'), cu0, cu0 + cw, o.v0 + fw, o.v1 - fw, -D + 0.03, null, CURTAIN_COLORS[o.curtain.color]);
+          fq(G('detail'), cu0, cu0 + cw, o.v0 + fw, o.v1 - fw, -D + 0.03, null, CURTAIN_COLORS[o.curtain.color]);
         }
         if (o.kind === 'window') {
           // Alféizar de concreto.
@@ -268,7 +277,7 @@ export class FacadeBuilder {
         if (o.glass) {
           fq(G('glass'), o.u0, o.u1, o.v0, o.v1, -D + 0.01, [[0, 0], [1, 0], [1, 1], [0, 1]], glassTint);
           const fc = FRAME_COLORS[3];
-          fq(G('frame'), (o.u0 + o.u1) / 2 - 0.03, (o.u0 + o.u1) / 2 + 0.03, o.v0, o.v1, -D + 0.04, null, fc);
+          fq(G('detail'), (o.u0 + o.u1) / 2 - 0.03, (o.u0 + o.u1) / 2 + 0.03, o.v0, o.v1, -D + 0.04, null, fc);
         } else {
           const s = o.kind === 'garage' ? 5 : o.design % (DOOR_SLOTS - 1);
           fq(G('door'), o.u0, o.u1, o.v0, o.v1, -D + 0.01, atlasUv(slot(s, DOOR_SLOTS, 1)), METAL_COLORS[o.color]);
@@ -295,7 +304,7 @@ export class FacadeBuilder {
     // ---- tubería amarilla del gas: sube al contador y corre por la fachada
     if (L.gas) {
       const y = [0.93, 0.76, 0.08];
-      const gp = G('frame');
+      const gp = G('detail');
       fbox(gp, 0.35, len - 0.35, L.gas.v - 0.025, L.gas.v + 0.025, 0.03, 0.08, y);
       fbox(gp, L.gas.u - 0.025, L.gas.u + 0.025, 0.05, L.gas.v + 0.025, 0.03, 0.08, y);
     }
@@ -312,7 +321,7 @@ export class FacadeBuilder {
     if (L.dish) {
       const { u, v } = L.dish;
       const col = L.dish.red ? [0.78, 0.12, 0.1] : [0.82, 0.83, 0.84];
-      const g = G('counter');
+      const g = G('detail');
       fbox(g, u - 0.03, u + 0.03, v - 0.3, v + 0.05, 0, 0.3, [0.4, 0.4, 0.42]);
       // Plato: octágono inclinado hacia arriba y hacia la calle.
       const c = P(u, v + 0.15, 0.42);
@@ -353,9 +362,9 @@ export class FacadeBuilder {
       fbox(G('trim'), bal.u0, bal.u1, bal.v - 0.14, bal.v + 0.03, 0, depth, trimColor);
       const hr = 1.0;
       const dark = [0.14, 0.15, 0.16];
-      fbox(G('frame'), bal.u0, bal.u1, bal.v + hr - 0.05, bal.v + hr, depth - 0.05, depth, dark);
-      fbox(G('frame'), bal.u0, bal.u0 + 0.05, bal.v + hr - 0.05, bal.v + hr, 0, depth, dark);
-      fbox(G('frame'), bal.u1 - 0.05, bal.u1, bal.v + hr - 0.05, bal.v + hr, 0, depth, dark);
+      fbox(G('detail'), bal.u0, bal.u1, bal.v + hr - 0.05, bal.v + hr, depth - 0.05, depth, dark);
+      fbox(G('detail'), bal.u0, bal.u0 + 0.05, bal.v + hr - 0.05, bal.v + hr, 0, depth, dark);
+      fbox(G('detail'), bal.u1 - 0.05, bal.u1, bal.v + hr - 0.05, bal.v + hr, 0, depth, dark);
       const bars = G('railingBars');
       const nb = Math.round((bal.u1 - bal.u0) / 0.25);
       fq(bars, bal.u0, bal.u1, bal.v + 0.03, bal.v + hr, depth - 0.03, [[0, 0], [nb, 0], [nb, 1], [0, 1]]);
@@ -369,7 +378,7 @@ export class FacadeBuilder {
           const cw = rng.range(0.35, 0.8);
           if (cu + cw > bal.u1 - 0.1) break;
           const drop = rng.range(0.35, 0.7);
-          fq(G('curtain'), cu, cu + cw, bal.v + hr - drop, bal.v + hr + 0.02, depth + 0.015, null, CURTAIN_COLORS[rng.int(0, CURTAIN_COLORS.length - 1)]);
+          fq(G('detail'), cu, cu + cw, bal.v + hr - drop, bal.v + hr + 0.02, depth + 0.015, null, CURTAIN_COLORS[rng.int(0, CURTAIN_COLORS.length - 1)]);
           cu += cw + rng.range(0.15, 0.6);
         }
       }
@@ -378,7 +387,7 @@ export class FacadeBuilder {
     // ---- contador de energía junto a la puerta
     if (L.meter) {
       const { u, v } = L.meter;
-      fbox(G('trimDetail'), u - 0.16, u + 0.16, v - 0.21, v + 0.21, 0, 0.13, [0.62, 0.64, 0.66]);
+      fbox(G('detail'), u - 0.16, u + 0.16, v - 0.21, v + 0.21, 0, 0.13, [0.62, 0.64, 0.66]);
     }
   }
 
@@ -404,13 +413,13 @@ export class FacadeBuilder {
     if (shop.counter && w > 2.4) {
       const c0 = o.u0 + w * 0.3;
       const c1 = o.u1 - 0.3;
-      fbox(G('counter'), c0, c1, 0, 1.0, -1.9, -1.35, rng.pick([[0.45, 0.3, 0.2], [0.75, 0.75, 0.72], [0.35, 0.36, 0.38]]));
+      fbox(G('detail'), c0, c1, 0, 1.0, -1.9, -1.35, rng.pick([[0.45, 0.3, 0.2], [0.75, 0.75, 0.72], [0.35, 0.36, 0.38]]));
     }
     // Nevera de gaseosas junto a la entrada.
     if (w > 2.0) {
       const n0 = o.u0 + 0.12;
       const n1 = n0 + 0.75;
-      fbox(G('counter'), n0, n1, 0, 1.9, -1.15, -0.45, [0.92, 0.92, 0.94]);
+      fbox(G('detail'), n0, n1, 0, 1.9, -1.15, -0.45, [0.92, 0.92, 0.94]);
       const uvF = slot(INTERIOR_KINDS.indexOf('nevera'), INTERIOR_COLS, INTERIOR_ROWS);
       fq(G('interior'), n0 + 0.04, n1 - 0.04, 0.15, 1.8, -0.448, [[uvF[0], uvF[1]], [uvF[2], uvF[1]], [uvF[2], uvF[3]], [uvF[0], uvF[3]]]);
     }
@@ -419,8 +428,8 @@ export class FacadeBuilder {
     const shutterTop = o.v1;
     const shutterBottom = o.v1 - Math.max(0.25, shop.shutter * h);
     fq(G('shutter'), o.u0, o.u1, shutterBottom, shutterTop, -0.05, null, lighten(sc, 1, 0.25));
-    fbox(G('frame'), o.u0, o.u0 + 0.06, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
-    fbox(G('frame'), o.u1 - 0.06, o.u1, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
+    fbox(G('detail'), o.u0, o.u0 + 0.06, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
+    fbox(G('detail'), o.u1 - 0.06, o.u1, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
     // Aviso con el nombre del negocio.
     const si = Math.max(0, SHOPS.findIndex(([n]) => n === shop.name));
     const uvS = slot(si, SIGN_COLS, SIGN_ROWS);
@@ -430,7 +439,7 @@ export class FacadeBuilder {
     const sBot = o.v1 + 0.3;
     const sTop = Math.min(o.v1 + 1.05, L.floorH + 0.85);
     fq(G('sign'), s0, s1, sBot, sTop, 0.07, [[uvS[0], uvS[1]], [uvS[2], uvS[1]], [uvS[2], uvS[3]], [uvS[0], uvS[3]]]);
-    fbox(G('frame'), s0, s1, sBot - 0.04, sBot, 0, 0.09, [0.2, 0.2, 0.2]);
+    fbox(G('detail'), s0, s1, sBot - 0.04, sBot, 0, 0.09, [0.2, 0.2, 0.2]);
     // Toldo de rayas (inclinado hacia la calle, con faldón al frente).
     if (shop.awning >= 0) {
       const [a0, b0, a1, b1] = slot(shop.awning, AWNING_SLOTS, 1);
