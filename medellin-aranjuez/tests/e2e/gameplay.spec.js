@@ -268,3 +268,32 @@ test('pausa y reanudar', async () => {
   expect((await st()).state).toBe('playing');
   expect(errors).toEqual([]);
 });
+
+test('configuración: brillo y pantalla completa', async () => {
+  await page.keyboard.press('Escape');
+  await frames(2);
+  await page.locator('#pause [data-action="settings"]').click();
+  await expect(page.locator('#settings')).toBeVisible();
+  const exposure = () => G(() => window.__gameInstance.renderer.toneMappingExposure);
+  const before = await exposure();
+  // Subir el brillo al máximo sube la exposición en la misma proporción.
+  await page.locator('#set-bright').fill('1.8');
+  await frames(2);
+  await expect(page.locator('#set-bright-val')).toHaveText('180 %');
+  expect(await exposure()).toBeGreaterThan(before * 1.5);
+  // Queda guardado para la próxima sesión.
+  expect(await G(() => JSON.parse(localStorage.getItem('aranjuez.settings.v1')).brightness)).toBe(1.8);
+  await page.locator('#set-bright').fill('1');
+  await frames(2);
+  // La casilla de pantalla completa pide el modo al navegador.
+  await page.locator('#set-full').check();
+  await page.waitForFunction(() => !!document.fullscreenElement, null, { timeout: 10000 });
+  await page.keyboard.press('F11');
+  await page.waitForFunction(() => !document.fullscreenElement, null, { timeout: 10000 });
+  await expect(page.locator('#set-full')).not.toBeChecked();
+  await page.locator('#settings [data-action="back"]').click();
+  await page.locator('#pause [data-action="resume"]').click();
+  await frames(2);
+  expect((await st()).state).toBe('playing');
+  expect(errors).toEqual([]);
+});

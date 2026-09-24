@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="96" viewBox="0 0 256 96">
+  <defs>
+    <mask id="m">
+      <rect width="256" height="96" fill="#fff"/>
+      <g stroke="#000" stroke-width="3.2" stroke-linecap="round" fill="none">
+        <path d="M163 33.5 H 183"/>
+        <path d="M165 48.5 H 186"/>
+        <path d="M163 63 H 182"/>
+        <path d="M120 58 C 134 51, 156 50, 172 55"/>
+      </g>
+    </mask>
+  </defs>
+  <g fill="#eceff1" mask="url(#m)">
+    <path d="M52 40 C 70 36, 90 33, 108 31 L 110 71 C 90 70, 70 69, 53 68 C 49 58, 49 48, 52 40 Z"/>
+    <path d="M104 30 C 116 17, 140 14, 162 17 L 168 79 C 144 84, 118 83, 106 72 C 99 58, 99 42, 104 30 Z"/>
+    <rect x="150" y="18" width="36" height="16" rx="8"/>
+    <rect x="152" y="33" width="38" height="16" rx="8"/>
+    <rect x="152" y="48" width="37" height="15.5" rx="7.8"/>
+    <rect x="148" y="62.5" width="34" height="15.5" rx="7.8"/>
+    <path d="M118 60 C 132 53, 156 52, 172 57 C 180 60, 179 70, 170 70 L 136 71 C 124 71, 114 67, 118 60 Z"/>
+  </g>
+</svg>

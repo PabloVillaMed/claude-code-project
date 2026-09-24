@@ -2,6 +2,7 @@
 // tiempo se ralentiza mientras está abierta.
 
 import { WEAPONS } from '../sim/weapons.js';
+import { weaponIconHtml } from './icons.js';
 
 export class WeaponWheel {
   constructor(game) {
@@ -32,7 +33,7 @@ export class WeaponWheel {
       const y = 230 + Math.sin(a) * R;
       const owned = inventory.has(w.id);
       const ammo = owned && w.kind === 'gun' ? `${inventory.owned.get(w.id).mag + inventory.owned.get(w.id).reserve}` : '';
-      html += `<div class="wheel-slot ${owned ? 'owned' : ''} ${w.id === this.selected ? 'sel' : ''}" style="left:${x}px;top:${y}px"><div class="ico">${w.icon}</div>${w.name}<br><small>${ammo}</small></div>`;
+      html += `<div class="wheel-slot ${owned ? 'owned' : ''} ${w.id === this.selected ? 'sel' : ''}" style="left:${x}px;top:${y}px"><div class="ico">${weaponIconHtml(w.id)}</div><div class="nm">${w.name}</div><small>${ammo}</small></div>`;
     });
     const cur = WEAPONS.find((w) => w.id === this.selected);
     html += `<div class="wheel-center">${cur ? cur.name : ''}</div>`;

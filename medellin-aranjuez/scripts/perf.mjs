@@ -4,10 +4,11 @@ import { chromium } from '@playwright/test';
 import { serveDist } from './serve.mjs';
 
 const quality = process.argv[2] ?? 'alta';
-const server = await serveDist(4183);
+const PORT = +(process.env.PERF_PORT ?? 4183);
+const server = await serveDist(PORT, process.env.DIST_DIR ? (await import('node:path')).resolve(process.env.DIST_DIR) : undefined);
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-await page.goto(`http://localhost:4183/?autotest=1&quality=${quality}`);
+await page.goto(`http://localhost:${PORT}/?autotest=1&quality=${quality}`, { timeout: 600000 });
 await page.waitForFunction(() => window.__game?.ready && window.__game.state().state === 'playing', null, { timeout: 600000 });
 const G = (fn, arg) => page.evaluate(fn, arg);
 const frames = async (n) => {

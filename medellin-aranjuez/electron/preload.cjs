@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld('desktop', {
   platform: process.platform,
   quit: () => ipcRenderer.send('app:quit'),
   toggleFullscreen: () => ipcRenderer.send('app:toggle-fullscreen'),
+  setFullscreen: (on) => ipcRenderer.send('app:set-fullscreen', !!on),
+  onFullscreenChange: (cb) => ipcRenderer.on('app:fullscreen', (_e, on) => cb(!!on)),
 });

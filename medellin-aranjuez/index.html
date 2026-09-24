@@ -13,34 +13,45 @@
     <!-- HUD -->
     <div id="hud" class="hidden">
       <div id="top-right">
-        <div id="clock">16:30</div>
+        <div id="status-line"><span id="clock">16:30</span></div>
         <div id="money">$0</div>
+        <div id="wanted"></div>
         <div id="weapon-box">
           <div id="weapon-icon"></div>
-          <div id="weapon-name">Puños</div>
-          <div id="weapon-ammo"></div>
+          <div id="weapon-info">
+            <div id="weapon-name">Puños</div>
+            <div id="weapon-ammo"></div>
+            <div id="reload-bar"><div id="reload-fill"></div></div>
+          </div>
         </div>
-        <div id="wanted"></div>
+        <div id="mission-timer" class="hidden"></div>
       </div>
       <div id="bottom-left">
-        <canvas id="minimap" width="260" height="170"></canvas>
-        <div id="bars">
-          <div class="bar"><div id="health-bar"></div></div>
-          <div class="bar"><div id="armor-bar"></div></div>
-          <div class="bar small"><div id="stamina-bar"></div></div>
+        <div id="minimap-frame">
+          <canvas id="minimap" width="520" height="340"></canvas>
+          <div id="compass-n">N</div>
         </div>
-        <div id="street-name"></div>
+        <div id="bars">
+          <div class="bar health"><div id="health-bar"></div></div>
+          <div class="bar armor"><div id="armor-bar"></div></div>
+          <div class="bar stamina" id="stamina-wrap"><div id="stamina-bar"></div></div>
+        </div>
       </div>
-      <div id="crosshair"><span></span></div>
+      <div id="street-name"></div>
+      <div id="crosshair"><i class="t"></i><i class="r"></i><i class="b"></i><i class="l"></i><span></span></div>
       <div id="hitmarker"></div>
-      <div id="speedometer" class="hidden"><span id="speed-value">0</span><small>km/h</small><div id="vehicle-name"></div><div class="bar"><div id="vehicle-health"></div></div></div>
+      <div id="speedometer" class="hidden">
+        <div class="speed-row"><span id="speed-value">0</span><small>km/h</small></div>
+        <div id="vehicle-name"></div>
+        <div class="bar vehicle"><div id="vehicle-health"></div></div>
+      </div>
       <div id="objective"></div>
-      <div id="mission-timer" class="hidden"></div>
       <div id="help-box" class="hidden"></div>
       <div id="toasts"></div>
-      <div id="poi-banner" class="hidden"><div class="poi-title"></div><div class="poi-desc"></div></div>
-      <div id="big-message" class="hidden"><div class="title"></div><div class="sub"></div></div>
+      <div id="poi-banner" class="hidden"><div class="poi-kicker">Lugar descubierto</div><div class="poi-title"></div><div class="poi-desc"></div></div>
+      <div id="big-message" class="hidden"><div class="band"><div class="title"></div><div class="sub"></div></div></div>
       <div id="damage-indicator"></div>
+      <div id="low-health"></div>
       <div id="fps" class="hidden"></div>
     </div>
 
@@ -67,6 +78,7 @@
           <button data-action="continue" class="hidden">Continuar partida</button>
           <button data-action="play">Nueva partida</button>
           <button data-action="controls">Controles</button>
+          <button data-action="credits">Créditos</button>
           <button data-action="settings">Configuración</button>
           <button data-action="quit">Salir</button>
         </div>
@@ -81,6 +93,7 @@
           <button data-action="resume">Continuar</button>
           <button data-action="map">Mapa</button>
           <button data-action="controls">Controles</button>
+          <button data-action="credits">Créditos</button>
           <button data-action="settings">Configuración</button>
           <button data-action="save">Guardar partida</button>
           <button data-action="mainmenu">Salir al menú</button>
@@ -144,10 +157,21 @@
         <label>Sensibilidad del ratón <input id="set-sens" type="range" min="0.2" max="3" step="0.1" /></label>
         <label>Volumen <input id="set-vol" type="range" min="0" max="1" step="0.05" /></label>
         <label>Campo de visión <input id="set-fov" type="range" min="55" max="90" step="1" /></label>
+        <label>Brillo <span id="set-bright-val" class="val"></span> <input id="set-bright" type="range" min="0.5" max="1.8" step="0.05" /></label>
+        <label class="check"><input id="set-full" type="checkbox" /> Pantalla completa <span class="hint">(F11)</span></label>
         <label class="check"><input id="set-invert" type="checkbox" /> Invertir eje Y</label>
         <label class="check"><input id="set-fps" type="checkbox" /> Mostrar FPS</label>
         <label class="check"><input id="set-dynres" type="checkbox" /> Resolución dinámica (baja la resolución si no alcanza 60 FPS)</label>
         <p class="note">La calidad se aplica al reiniciar la partida.</p>
+        <div class="menu-buttons"><button data-action="back">Volver</button></div>
+      </div>
+    </div>
+
+    <div id="credits" class="overlay hidden">
+      <div class="menu-panel wide">
+        <h1>Créditos</h1>
+        <p class="note">Juego hecho con three.js. Modelos, texturas y datos de terceros con licencias libres; gracias a sus autores.</p>
+        <div id="credits-body"></div>
         <div class="menu-buttons"><button data-action="back">Volver</button></div>
       </div>
     </div>

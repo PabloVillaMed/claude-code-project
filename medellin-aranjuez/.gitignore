@@ -6,3 +6,5 @@ playwright-report/
 *.log
 scripts/assets/.cache/
 release-ci/
+.cache/
+dist-*/

@@ -2,12 +2,12 @@
 // automática, cargador, reserva, recarga, tiempo de cambio y dispersión.
 
 export const WEAPONS = [
-  { id: 'fists', name: 'Puños', slot: 1, kind: 'melee', damage: 18, range: 1.9, interval: 0.42, auto: false, price: 0, icon: '✊' },
-  { id: 'machete', name: 'Machete', slot: 2, kind: 'melee', damage: 55, range: 2.3, interval: 0.62, auto: false, price: 250, icon: '🔪' },
-  { id: 'pistol', name: 'Pistola 9 mm', slot: 3, kind: 'gun', damage: 30, range: 120, interval: 0.2, auto: false, mag: 15, reload: 1.3, spread: 0.012, pellets: 1, maxReserve: 180, ammoPrice: 60, price: 800, icon: '🔫', loud: 1 },
-  { id: 'smg', name: 'Subametralladora', slot: 4, kind: 'gun', damage: 19, range: 90, interval: 0.075, auto: true, mag: 30, reload: 1.8, spread: 0.03, pellets: 1, maxReserve: 300, ammoPrice: 90, price: 2200, icon: '🔫', loud: 1 },
-  { id: 'shotgun', name: 'Escopeta', slot: 5, kind: 'gun', damage: 15, range: 40, interval: 0.85, auto: false, mag: 6, reload: 2.4, spread: 0.075, pellets: 9, maxReserve: 60, ammoPrice: 80, price: 3000, icon: '💥', loud: 1.4 },
-  { id: 'rifle', name: 'Fusil de asalto', slot: 6, kind: 'gun', damage: 34, range: 220, interval: 0.105, auto: true, mag: 30, reload: 2.1, spread: 0.016, pellets: 1, maxReserve: 270, ammoPrice: 120, price: 5000, icon: '🎯', loud: 1.3 },
+  { id: 'fists', name: 'Puños', slot: 1, kind: 'melee', damage: 18, range: 1.9, interval: 0.42, auto: false, price: 0 },
+  { id: 'machete', name: 'Machete', slot: 2, kind: 'melee', damage: 55, range: 2.3, interval: 0.62, auto: false, price: 250 },
+  { id: 'pistol', name: 'Pistola 9 mm', slot: 3, kind: 'gun', damage: 30, range: 120, interval: 0.2, auto: false, mag: 15, reload: 1.3, spread: 0.012, pellets: 1, maxReserve: 180, ammoPrice: 60, price: 800, loud: 1 },
+  { id: 'smg', name: 'Subametralladora', slot: 4, kind: 'gun', damage: 19, range: 90, interval: 0.075, auto: true, mag: 30, reload: 1.8, spread: 0.03, pellets: 1, maxReserve: 300, ammoPrice: 90, price: 2200, loud: 1 },
+  { id: 'shotgun', name: 'Escopeta', slot: 5, kind: 'gun', damage: 15, range: 40, interval: 0.85, auto: false, mag: 6, reload: 2.4, spread: 0.075, pellets: 9, maxReserve: 60, ammoPrice: 80, price: 3000, loud: 1.4 },
+  { id: 'rifle', name: 'Fusil de asalto', slot: 6, kind: 'gun', damage: 34, range: 220, interval: 0.105, auto: true, mag: 30, reload: 2.1, spread: 0.016, pellets: 1, maxReserve: 270, ammoPrice: 120, price: 5000, loud: 1.3 },
 ];
 
 export const WEAPON_BY_ID = Object.fromEntries(WEAPONS.map((w) => [w.id, w]));

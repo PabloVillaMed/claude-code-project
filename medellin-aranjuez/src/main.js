@@ -1,6 +1,15 @@
 // Punto de entrada: carga el juego y conecta menús, configuración, tienda y mapa.
 
+import '@fontsource/barlow/latin-400.css';
+import '@fontsource/barlow/latin-500.css';
+import '@fontsource/barlow/latin-600.css';
+import '@fontsource/barlow-condensed/latin-400.css';
+import '@fontsource/barlow-condensed/latin-500.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
 import { Game, loadSave, saveSettings } from './game/Game.js';
+import { LINE_ICONS, weaponIconHtml } from './ui/icons.js';
+import { creditsHtml } from './ui/credits.js';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -14,7 +23,7 @@ window.__gameInstance = game;
 let returnTo = 'menu'; // a dónde vuelven Controles/Configuración
 
 function showOverlay(id) {
-  for (const o of ['menu', 'pause', 'controls', 'settings', 'shop', 'map-screen']) $(o).classList.toggle('hidden', o !== id);
+  for (const o of ['menu', 'pause', 'controls', 'settings', 'credits', 'shop', 'map-screen']) $(o).classList.toggle('hidden', o !== id);
 }
 
 function hideOverlays() {
@@ -47,7 +56,7 @@ function renderShop() {
   $('shop-money').textContent = `Tu plata: $${game.player.money.toLocaleString('es-CO')}`;
   const items = game.shopItems();
   $('shop-items').innerHTML = items
-    .map((it, i) => `<div class="shop-item"><div class="ico">${it.icon}</div><div class="info"><div class="name">${it.name}</div><div class="desc">${it.desc}</div></div><button data-i="${i}" ${game.player.money < it.price ? 'disabled' : ''}>$${it.price.toLocaleString('es-CO')}</button></div>`)
+    .map((it, i) => `<div class="shop-item"><div class="ico">${LINE_ICONS[it.icon] ?? weaponIconHtml(it.icon)}</div><div class="info"><div class="name">${it.name}</div><div class="desc">${it.desc}</div></div><button data-i="${i}" ${game.player.money < it.price ? 'disabled' : ''}>$${it.price.toLocaleString('es-CO')}</button></div>`)
     .join('');
   $('shop-items').querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => {
@@ -71,10 +80,12 @@ document.body.addEventListener('click', (e) => {
   switch (action) {
     case 'play':
       game.newGame();
+      resumeFullscreen();
       if (!autotest) game.input.requestLock();
       break;
     case 'continue':
       game.newGame(loadSave());
+      resumeFullscreen();
       if (!autotest) game.input.requestLock();
       break;
     case 'resume':
@@ -86,7 +97,7 @@ document.body.addEventListener('click', (e) => {
     case 'save':
       game.save();
       game.hud.toast('Partida guardada');
-      btn.textContent = 'Guardado ✔';
+      btn.textContent = 'Guardado';
       setTimeout(() => (btn.textContent = 'Guardar partida'), 1200);
       break;
     case 'mainmenu':
@@ -99,6 +110,11 @@ document.body.addEventListener('click', (e) => {
     case 'controls':
       returnTo = game.state === 'menu' ? 'menu' : 'pause';
       showOverlay('controls');
+      break;
+    case 'credits':
+      returnTo = game.state === 'menu' ? 'menu' : 'pause';
+      if (!$('credits-body').innerHTML) $('credits-body').innerHTML = creditsHtml();
+      showOverlay('credits');
       break;
     case 'settings':
       returnTo = game.state === 'menu' ? 'menu' : 'pause';
@@ -125,10 +141,11 @@ window.addEventListener('keydown', (e) => {
     if (game.state === 'shop') closeShop();
     else if (game.state === 'paused' && !$('controls').classList.contains('hidden')) showOverlay('pause');
     else if (game.state === 'paused' && !$('settings').classList.contains('hidden')) showOverlay('pause');
+    else if (game.state === 'paused' && !$('credits').classList.contains('hidden')) showOverlay('pause');
   }
-  if (e.code === 'F11' && window.desktop?.toggleFullscreen) {
+  if (e.code === 'F11') {
     e.preventDefault();
-    window.desktop.toggleFullscreen();
+    setFullscreen(!isFullscreen());
   }
 });
 
@@ -166,7 +183,40 @@ function loadSettingsUi() {
   $('set-invert').checked = s.invertY;
   $('set-fps').checked = s.showFps;
   $('set-dynres').checked = s.dynamicRes !== false;
+  $('set-bright').value = s.brightness ?? 1;
+  $('set-bright-val').textContent = `${Math.round((s.brightness ?? 1) * 100)} %`;
+  $('set-full').checked = isFullscreen();
 }
+
+// ---------------------------------------------------------------- pantalla completa
+// En la app de escritorio la ventana entra en pantalla completa desde Electron
+// (sin pedir gesto del usuario, así se recuerda entre sesiones); en el
+// navegador se usa la API estándar, que exige un clic o una tecla.
+let desktopFull = false;
+function isFullscreen() {
+  return window.desktop?.setFullscreen ? desktopFull : !!document.fullscreenElement;
+}
+function setFullscreen(on) {
+  if (window.desktop?.setFullscreen) window.desktop.setFullscreen(on);
+  else if (on && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+  else if (!on && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+}
+function onFullscreenChanged(on) {
+  if (window.desktop?.setFullscreen) desktopFull = on;
+  $('set-full').checked = on;
+  if (game.settings.fullscreen !== on) {
+    game.settings.fullscreen = on;
+    saveSettings(game.settings);
+  }
+}
+/** En el navegador, la pantalla completa guardada se retoma con el clic de Jugar. */
+function resumeFullscreen() {
+  if (!autotest && game.settings.fullscreen && !window.desktop?.setFullscreen && !document.fullscreenElement) setFullscreen(true);
+}
+window.desktop?.onFullscreenChange?.(onFullscreenChanged);
+document.addEventListener('fullscreenchange', () => onFullscreenChanged(!!document.fullscreenElement));
+if (game.settings.fullscreen && window.desktop?.setFullscreen) setFullscreen(true);
+$('set-full').addEventListener('change', () => setFullscreen($('set-full').checked));
 
 function applySettings() {
   const s = game.settings;
@@ -177,6 +227,9 @@ function applySettings() {
   s.invertY = $('set-invert').checked;
   s.showFps = $('set-fps').checked;
   s.dynamicRes = $('set-dynres').checked;
+  s.brightness = +$('set-bright').value;
+  $('set-bright-val').textContent = `${Math.round(s.brightness * 100)} %`;
+  if (game.env) game.env.brightness = s.brightness;
   game.setDynamicResolution(s.dynamicRes);
   game.input.sensitivity = s.sensitivity;
   game.input.invertY = s.invertY;
@@ -185,7 +238,7 @@ function applySettings() {
   game.hud.showFps(s.showFps);
   saveSettings(s);
 }
-for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-dynres']) $(id).addEventListener('input', applySettings);
+for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
 
 // ---------------------------------------------------------------- carga
 $('menu-main').classList.add('hidden');

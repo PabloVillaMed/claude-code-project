@@ -17,6 +17,7 @@ import { damp, lerp, clamp } from '../sim/math.js';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_PLAYER, buildWeaponMesh } from './proceduralRig.js';
+import { weaponModel } from './weaponModels.js';
 
 export { ProceduralRig, buildWeaponMesh };
 
@@ -69,6 +70,8 @@ export const PLAYER_LOOK = { ...PROCEDURAL_PLAYER, avatar: 'jugador' };
 // ------------------------------------------------------------------ plantillas
 const templates = new Map();
 const _v = new THREE.Vector3();
+const _qt = new THREE.Quaternion();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
@@ -250,16 +253,12 @@ export class SkinnedRig {
     if (id === this.weaponId) return;
     this.weaponId = id;
     if (this.weaponMesh) this.weaponMount.remove(this.weaponMesh);
-    this.weaponMesh = id && id !== 'fists' ? buildWeaponMesh(id) : null;
+    // Modelo real (o procedural de respaldo) con el cañón en -Z y la
+    // empuñadura en el origen: el mismo marco del soporte de la mano.
+    this.weaponMesh = weaponModel(id);
     this._shadowMeshes = null; // la lista de mallas con sombra cambió
     this._shadowOn = undefined;
-    if (this.weaponMesh) {
-      // buildWeaponMesh orienta el cañón para el muñeco; aquí el agarre ya
-      // está calculado: cañón en -Z y empuñadura en el origen.
-      this.weaponMesh.rotation.set(0, 0, 0);
-      this.weaponMesh.position.set(0, -0.04, 0.02);
-      this.weaponMount.add(this.weaponMesh);
-    }
+    if (this.weaponMesh) this.weaponMount.add(this.weaponMesh);
   }
 
   muzzleWorld(out) {
@@ -393,22 +392,41 @@ export class SkinnedRig {
     if (!B.Bip01_R_UpperArm) return;
     const { fwd, right } = this._frame(pitch);
     const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
-    // Torso y cabeza acompañan la mira arriba/abajo.
+    const twoHanded = this.weaponId && !['pistol', 'machete', 'fists'].includes(this.weaponId);
+    // Torso y cabeza acompañan la mira arriba/abajo. Con arma larga el torso
+    // además gira a la derecha (hombro izquierdo adelante) para que la mano
+    // izquierda alcance el guardamanos; la cabeza compensa el giro.
+    const twist = twoHanded ? (this.weaponId === 'smg' ? 0.3 : 0.45) * w : 0;
     if (B.Bip01_Spine1) {
       _q.setFromAxisAngle(right, pitch * 0.35 * w);
+      if (twist) _q.premultiply(_qt.setFromAxisAngle(Y_AXIS, -twist));
       B.Bip01_Spine1.getWorldQuaternion(_q2);
       setWorldQuat(B.Bip01_Spine1, _q.multiply(_q2), 1);
+      if (twist && B.Bip01_Head) {
+        B.Bip01_Head.getWorldQuaternion(_q2);
+        setWorldQuat(B.Bip01_Head, _qt.setFromAxisAngle(Y_AXIS, twist * 0.7).multiply(_q2), 1);
+      }
     }
     const shR = B.Bip01_R_UpperArm.getWorldPosition(new THREE.Vector3());
     const shL = B.Bip01_L_UpperArm.getWorldPosition(new THREE.Vector3());
     const mid = shR.clone().add(shL).multiplyScalar(0.5);
-    const twoHanded = this.weaponId && !['pistol', 'machete', 'fists'].includes(this.weaponId);
     let gripR;
     let gripL;
     if (twoHanded) {
       // Culata al hombro derecho, mano izquierda en el guardamanos.
-      gripR = shR.clone().addScaledVector(fwd, 0.26).addScaledVector(up, -0.01).addScaledVector(right, 0.01);
-      gripL = gripR.clone().addScaledVector(fwd, this.weaponId === 'smg' ? 0.2 : 0.32).addScaledVector(up, 0.02).addScaledVector(right, -0.02);
+      gripR = shR.clone().addScaledVector(fwd, this.weaponId === 'smg' ? 0.26 : 0.21).addScaledVector(up, -0.01).addScaledVector(right, 0.01);
+      const lh = this.weaponMesh?.userData.leftHand;
+      if (lh && this.tpl.grip) {
+        // Mano izquierda donde la pide el modelo ("mano_izq"): origen del arma
+        // (palma derecha) + el punto en el marco del arma; la muñeca queda un
+        // poco por debajo y a la izquierda de la palma.
+        const wq = weaponQuat(fwd, up, new THREE.Quaternion());
+        const hq = wq.clone().multiply(this.tpl.grip.q.clone().invert());
+        gripL = gripR.clone().add(_v.copy(this.tpl.grip.p).applyQuaternion(hq)).add(_v.copy(lh).applyQuaternion(wq));
+        gripL.addScaledVector(up, -0.03).addScaledVector(right, -0.03);
+      } else {
+        gripL = gripR.clone().addScaledVector(fwd, this.weaponId === 'smg' ? 0.2 : 0.32).addScaledVector(up, 0.02).addScaledVector(right, -0.02);
+      }
     } else {
       // Pistola a dos manos, brazos extendidos al frente.
       gripR = mid.clone().addScaledVector(fwd, 0.48).addScaledVector(up, -0.03).addScaledVector(right, 0.03);

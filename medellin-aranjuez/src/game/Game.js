@@ -17,6 +17,7 @@ import '../render/assetManifest.js';
 import { CityRenderer } from '../render/cityRenderer.js';
 import { NightLights } from '../render/nightLights.js';
 import { Environment } from '../render/environment.js';
+import { Horizon } from '../render/horizon.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
@@ -32,7 +33,7 @@ import { WeaponWheel } from '../ui/weaponWheel.js';
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -179,6 +180,8 @@ export class Game {
     this.assetReport = await assets.loadAll(this.renderer, (p) => progress(0.3 + p * 0.15));
     await step(0.45);
     this.env = new Environment(this.renderer, this.scene, this.quality);
+    this.env.brightness = this.settings.brightness ?? 1;
+    this.horizon = new Horizon(this.scene, this.quality);
     await step(0.55);
     this.cityRenderer = new CityRenderer(this.scene, this.city, this.textures, this.quality);
     this.nightLights = new NightLights(this.scene, this.quality, this.cityRenderer.lampHeads ?? []);
@@ -254,6 +257,7 @@ export class Game {
       cam.rotation.set(-0.1, (i / 4) * Math.PI * 2, 0, 'YXZ');
       cam.updateMatrixWorld();
       this.env.update(0, cam.position);
+      this.horizon.update(0, cam, this.env, 1);
       this.cityRenderer.updateLod(cam.position);
       this.postfx.render(this.scene, cam);
       await new Promise((res) => setTimeout(res, 0));
@@ -351,7 +355,7 @@ export class Game {
     this.hud.big('ARANJUEZ', 'Comuna 4 · Medellín', 'gold', 3);
     setTimeout(() => {
       if (this.state === 'playing') {
-        this.hud.help('Explora el barrio: los <b style="color:#ffd200">★</b> del minimapa son lugares por descubrir. Las misiones <b style="color:#f4a261">!</b> dan plata. <kbd>F</kbd> para subirte a un carro o moto, <kbd>M</kbd> mapa, <kbd>F1</kbd> controles.', 9);
+        this.hud.help('Explora el barrio: los <b class="hl">puntos dorados</b> del minimapa son lugares por descubrir y las misiones <b class="hl">!</b> dan plata. <kbd>F</kbd> para subirte a un carro o moto, <kbd>M</kbd> mapa, <kbd>F1</kbd> controles.', 9);
       }
     }, 3200);
   }
@@ -413,6 +417,8 @@ export class Game {
     else focus.copy(this.camRig.pos).setY(0);
     const running = this.state !== 'paused' && this.state !== 'shop';
     this.env.update(running ? dt : 0, focus);
+    this.env.followCamera(this.camera.position);
+    this.horizon.update(running ? dt : 0, this.camera, this.env, this.renderer.getPixelRatio());
     this.cityRenderer.update(running ? dt : 0, this.env.night);
     this.cityRenderer.updateLod(this.camera.position);
     this.nightLights.update(running ? dt : 0, this.camera.position, this.env.night, this.world.vehicles, this.player.vehicle);
@@ -987,7 +993,7 @@ export class Game {
     const a = g.nearestNode(p.x, p.z);
     const b = g.nearestNode(dest.x, dest.z);
     const route = g.route(a.id, b.id);
-    this.hud.routeColor = this.target ? '#ffd200' : '#b04dff';
+    this.hud.routeColor = this.target ? '#e8b64c' : '#b98ae8';
     this.hud.route = route ? [{ x: p.x, z: p.z }, ...route.map((id) => g.node(id)), { x: dest.x, z: dest.z }] : null;
   }
 
@@ -1022,6 +1028,7 @@ export class Game {
       weapon: inv.current,
       ammo: inv.ammo ?? { mag: 0, reserve: 0 },
       reloading: inv.reloading > 0,
+      reloadFrac: inv.reloading > 0 ? 1 - inv.reloading / (inv.current.reload ?? 1) : 0,
       wanted: this.wanted.level,
       // Zona donde busca la policía (solo cuando te perdió de vista).
       searchZone: this.wanted.level > 0 && this.wanted.sinceSeen > 1.5 ? { ...this.wanted.zoneCenter(), r: this.wanted.zoneRadius() } : null,
@@ -1120,11 +1127,11 @@ export class Game {
     const items = [];
     for (const w of WEAPONS) {
       if (w.kind === 'melee' && w.price === 0) continue;
-      if (!inv.has(w.id)) items.push({ kind: 'weapon', id: w.id, name: w.name, icon: w.icon, price: w.price, desc: w.kind === 'gun' ? `Daño ${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ''} · Cargador ${w.mag} · ${w.auto ? 'Automática' : 'Semiautomática'}` : `Cuerpo a cuerpo · Daño ${w.damage}` });
-      else if (w.kind === 'gun') items.push({ kind: 'ammo', id: w.id, name: `Munición: ${w.name}`, icon: '📦', price: w.ammoPrice, desc: `+${w.mag * 2} balas (tienes ${inv.owned.get(w.id).reserve}/${w.maxReserve})` });
+      if (!inv.has(w.id)) items.push({ kind: 'weapon', id: w.id, name: w.name, icon: w.id, price: w.price, desc: w.kind === 'gun' ? `Daño ${w.damage}${w.pellets > 1 ? `×${w.pellets}` : ''} · Cargador ${w.mag} · ${w.auto ? 'Automática' : 'Semiautomática'}` : `Cuerpo a cuerpo · Daño ${w.damage}` });
+      else if (w.kind === 'gun') items.push({ kind: 'ammo', id: w.id, name: `Munición: ${w.name}`, icon: 'ammo', price: w.ammoPrice, desc: `+${w.mag * 2} balas (tienes ${inv.owned.get(w.id).reserve}/${w.maxReserve})` });
     }
-    items.push({ kind: 'armor', id: 'armor', name: 'Chaleco antibalas', icon: '🦺', price: 400, desc: 'Absorbe 2/3 del daño recibido' });
-    items.push({ kind: 'health', id: 'health', name: 'Botiquín', icon: '🩹', price: 150, desc: 'Salud al 100 %' });
+    items.push({ kind: 'armor', id: 'armor', name: 'Chaleco antibalas', icon: 'armor', price: 400, desc: 'Absorbe 2/3 del daño recibido' });
+    items.push({ kind: 'health', id: 'health', name: 'Botiquín', icon: 'health', price: 150, desc: 'Salud al 100 %' });
     return items;
   }
 

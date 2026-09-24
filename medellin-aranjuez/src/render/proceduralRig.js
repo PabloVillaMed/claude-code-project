@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { damp, lerp } from '../sim/math.js';
+import { weaponModel } from './weaponModels.js';
 
 const geoCache = new Map();
 const matCache = new Map();
@@ -218,8 +219,19 @@ export class ProceduralRig {
     if (id === this.weaponId) return;
     this.weaponId = id;
     if (this.weaponMesh) this.weaponMount.remove(this.weaponMesh);
-    this.weaponMesh = id && id !== 'fists' ? buildWeaponMesh(id) : null;
-    if (this.weaponMesh) this.weaponMount.add(this.weaponMesh);
+    this.weaponMesh = null;
+    const model = weaponModel(id);
+    if (model) {
+      // El modelo trae el cañón en -Z; en este muñeco la mano apunta hacia -Y.
+      const g = new THREE.Group();
+      g.add(model);
+      g.rotation.x = -Math.PI / 2;
+      g.position.y = -0.05;
+      g.userData.muzzle = model.userData.muzzle;
+      this.weaponMesh = g;
+      this.weaponMount.add(g);
+    }
+    this._shadowMeshes = null; // la lista de mallas con sombra cambió
   }
 
   /** Posición del cañón en coordenadas del mundo. */
@@ -335,7 +347,10 @@ export class ProceduralRig {
   }
 }
 
-/** Modelos de armas sencillos; el cañón apunta hacia -Y local (dirección de la mano). */
+/**
+ * Armas procedurales de respaldo (si faltan los GLB de weaponModels.js); el
+ * cañón apunta hacia -Y local (dirección de la mano).
+ */
 export function buildWeaponMesh(id) {
   const g = new THREE.Group();
   const metal = mat(0x1d1f22, 0.35, { metalness: 0.8 });

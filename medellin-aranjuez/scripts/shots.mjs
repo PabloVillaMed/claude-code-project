@@ -13,13 +13,14 @@ const steps = (process.argv[6] ?? 'all').split(',');
 const want = (k) => steps.includes('all') || steps.includes(k);
 
 const PORT = +(process.env.SHOTS_PORT ?? 4181);
-const server = await serveDist(PORT);
+// DIST_DIR permite capturar otra compilación (p. ej. mientras otro proceso reconstruye dist/).
+const server = await serveDist(PORT, process.env.DIST_DIR ? (await import('node:path')).resolve(process.env.DIST_DIR) : undefined);
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && !m.text().includes('404') && errors.push(m.text()));
-await page.goto(`http://localhost:${PORT}/?autotest=1&quality=${quality}`);
+await page.goto(`http://localhost:${PORT}/?autotest=1&quality=${quality}`, { timeout: 600000 });
 await page.waitForFunction(() => window.__game?.ready && window.__game.state().state === 'playing', null, { timeout: 600000 });
 const G = (fn, arg) => page.evaluate(fn, arg);
 const frames = async (n) => {
@@ -30,7 +31,7 @@ const adv = (sec, input) => G(([s, i]) => window.__game.advance(s, i), [sec, inp
 const shot = async (name, clear = true) => {
   if (clear) await G(() => window.__game.clearMessages());
   await frames(3);
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await page.screenshot({ path: `${out}/${name}.png`, timeout: 600000 });
   const s = await G(() => window.__game.state());
   console.log('captura', name, JSON.stringify({ x: +s.x.toFixed(1), z: +s.z.toFixed(1), vehiculo: s.vehicleType, kmh: +s.speedKmh.toFixed(0), arma: s.weapon, estrellas: s.wanted, peatones: s.peds, vehiculos: s.vehicles }));
 };
@@ -51,7 +52,7 @@ if (want('street')) {
   await shot('03-calle-del-barrio');
 }
 if (want('aim')) {
-  await G(() => { window.__game.giveAll(); window.__game.teleport(-20, 12); window.__game.look(Math.PI / 4, -0.05); });
+  await G(() => { window.__game.giveAll(); window.__game.teleport(-33, 12); window.__game.look(0.35, -0.05); });
   await adv(0.5, { weaponSlot: 6 });
   await adv(1, { aim: true });
   // Mantener la entrada durante el render de la captura.
@@ -84,6 +85,22 @@ if (want('mirador')) {
   await G(() => { window.__game.exitVehicle(); const p = window.__game.pois().find((x) => x.id === 'mirador'); window.__game.teleport(p.x - 16, p.z + 2); window.__game.look(Math.PI / 2, 0.02); });
   await adv(1.5);
   await shot('09-mirador-del-valle');
+}
+if (want('horizonte')) {
+  // Por las calles (oriente-occidente) se ven las montañas del valle al fondo.
+  await G(() => { window.__game.exitVehicle(); window.__game.setTime(10); window.__game.teleport(245, -35); window.__game.look(Math.PI / 2, 0.03); });
+  await adv(1.2);
+  await shot('25-valle-hacia-occidente');
+  await G(() => { window.__game.setTime(15); window.__game.teleport(-245, 35); window.__game.look(-Math.PI / 2, 0.06); });
+  await adv(1.2);
+  await shot('26-laderas-orientales');
+  await G(() => { window.__game.setTime(11); window.__game.teleport(105, 175); window.__game.look(Math.PI * 0.72, 0.04); });
+  await adv(1.2);
+  await shot('27-valle-hacia-el-sur');
+  await G(() => { window.__game.setTime(19.6); window.__game.teleport(245, -35); window.__game.look(Math.PI / 2, 0.02); });
+  await adv(1.2);
+  await shot('28-valle-de-noche');
+  await G(() => window.__game.setTime(16.5));
 }
 if (want('botanico')) {
   await G(() => { const p = window.__game.pois().find((x) => x.id === 'botanico'); window.__game.teleport(p.x - 12, p.z + 10); window.__game.look(-0.9, 0.3); });
@@ -199,7 +216,7 @@ if (want('vehiculos')) {
 if (want('menu')) {
   await G(() => { window.__game.setTime(17.2); window.__gameInstance.hud.show(false); window.__gameInstance.setState('menu'); });
   await frames(6);
-  await page.screenshot({ path: `${out}/00-menu-principal.png` });
+  await page.screenshot({ path: `${out}/00-menu-principal.png`, timeout: 600000 });
   console.log('captura 00-menu-principal');
   await G(() => { window.__gameInstance.hud.show(true); window.__gameInstance.setState('playing'); });
 }

@@ -25,15 +25,19 @@ export class Environment {
     this.timeOfDay = 16.5; // 4:30 p. m. — luz dorada
     this.timeScale = 60; // 1 minuto real = 1 hora de juego
     this.paused = false;
+    this.brightness = 1; // ajuste del jugador (multiplica la exposición)
 
     this.sky = new Sky();
     this.sky.scale.setScalar(20000);
-    clampSky(this.sky, 8);
+    // Por debajo del umbral del bloom (5): el halo del sol ya no lava la imagen
+    // cuando se mira hacia él (antes todo el occidente quedaba blanco en la tarde).
+    clampSky(this.sky, 4.2);
     const u = this.sky.material.uniforms;
-    u.turbidity.value = 6;
+    u.turbidity.value = 5;
     u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.005;
-    u.mieDirectionalG.value = 0.82;
+    u.mieCoefficient.value = 0.004;
+    u.mieDirectionalG.value = 0.76;
+    this.sky.renderOrder = -20; // primero el cielo, luego el horizonte (render/horizon.js)
     scene.add(this.sky);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
@@ -52,7 +56,7 @@ export class Environment {
     this.moon = new THREE.DirectionalLight(0x8fa8ff, 0);
     scene.add(this.moon);
 
-    scene.fog = new THREE.FogExp2(0xc9d6df, 0.0011);
+    scene.fog = new THREE.FogExp2(0xc9d6df, 0.0003);
 
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.envScene = new THREE.Scene();
@@ -82,8 +86,21 @@ export class Environment {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+    // Estrellas pegadas al plano lejano (como el cielo) y dibujadas antes que
+    // las montañas del horizonte, que las tapan.
+    const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, sizeAttenuation: false, transparent: false, blending: THREE.AdditiveBlending, opacity: 0, depthWrite: false, fog: false });
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  gl_Position.z = gl_Position.w;');
+    };
+    this.stars = new THREE.Points(g, mat);
+    this.stars.frustumCulled = false;
+    this.stars.renderOrder = -15;
     this.scene.add(this.stars);
+  }
+
+  /** El cielo estrellado acompaña a la cámara (está "en el infinito"). */
+  followCamera(pos) {
+    this.stars.position.copy(pos);
   }
 
   get hours() {
@@ -160,9 +177,12 @@ export class Environment {
     const nightFog = new THREE.Color(0x121a2a);
     const c = dayFog.clone().lerp(duskFog, golden * dayF).lerp(nightFog, this.night);
     fog.color.copy(c);
-    fog.density = 0.0009 + 0.0005 * golden;
-    this.stars.material.opacity = clamp(this.night * 1.2, 0, 1);
-    this.renderer.toneMappingExposure = 0.62 + 0.28 * dayF + 0.45 * this.night;
+    // Aire del valle: la misma bruma que usa el horizonte lejano (render/horizon.js),
+    // así las laderas cercanas y las montañas se ven con la misma distancia.
+    fog.density = 0.00018 + 0.0002 * golden;
+    // Con la luz de la ciudad apenas se ven unas pocas estrellas.
+    this.stars.material.opacity = clamp(this.night * 0.5, 0, 0.5);
+    this.renderer.toneMappingExposure = (0.62 + 0.28 * dayF + 0.45 * this.night) * this.brightness;
 
     this.envTimer += dt;
     if (this.envTimer > 8) {

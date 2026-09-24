@@ -86,6 +86,9 @@ function createWindow() {
   });
   win.loadURL(SMOKE ? 'app://juego/index.html?quality=baja' : 'app://juego/index.html');
   if (SMOKE) runSmokeTest(win);
+  // El juego mantiene su casilla de pantalla completa al día (también con F11).
+  win.on('enter-full-screen', () => win.webContents.send('app:fullscreen', true));
+  win.on('leave-full-screen', () => win.webContents.send('app:fullscreen', false));
   win.on('closed', () => {
     win = null;
   });
@@ -170,6 +173,10 @@ app.whenReady().then(() => {
   ipcMain.on('app:toggle-fullscreen', (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
     if (w) w.setFullScreen(!w.isFullScreen());
+  });
+  ipcMain.on('app:set-fullscreen', (e, on) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (w && w.isFullScreen() !== !!on) w.setFullScreen(!!on);
   });
   createWindow();
 });

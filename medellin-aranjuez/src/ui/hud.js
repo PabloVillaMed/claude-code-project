@@ -1,20 +1,25 @@
 // HUD al estilo de los mundos abiertos: plata, estrellas de búsqueda, arma y
 // munición, salud/chaleco, minimapa giratorio con GPS, avisos y objetivos.
+// Estética sobria: mapa oscuro, íconos de silueta y tipografía condensada.
 
 import { GRID, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, terrainHeight } from '../sim/terrain.js';
 import { yawFromDir } from '../sim/math.js';
+import { WEAPONS } from '../sim/weapons.js';
+import { STAR_SVG, preloadWeaponIcons, weaponIconHtml } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 
 const MAP_PAD = 60;
 const MAP_SCALE = 1.5; // px por metro en el mapa pre-renderizado
 const POI_STYLE = {
-  landmark: { color: '#ffd200', letter: '★' },
-  shop: { color: '#e63946', letter: '$' },
-  service: { color: '#3a86ff', letter: '+' },
-  mission: { color: '#f4a261', letter: '!' },
+  landmark: { color: '#e8b64c', letter: '•' },
+  shop: { color: '#d9534f', letter: '$' },
+  service: { color: '#4f8fd9', letter: '+' },
+  mission: { color: '#e8b64c', letter: '!' },
 };
-const POI_LETTER = { parque: 'P', iglesia: '✝', museo: 'M', botanico: '❀', explora: 'E', metro: 'Ⓜ', hospital: 'H', cementerio: '†', moravia: '▲', armeria: '$', taller: '🔧', cancha: '⚽', mirador: '👁' };
+// Letras sencillas (sin emojis) dentro de cada punto del mapa.
+const POI_LETTER = { parque: 'P', iglesia: 'I', museo: 'M', botanico: 'J', explora: 'E', metro: 'M', hospital: 'H', cementerio: 'C', moravia: 'V', armeria: '$', taller: 'T', cancha: 'F', mirador: 'O' };
+const MM_RES = 2; // el minimapa se dibuja al doble de resolución (nítido en 1440p/4K)
 
 export class Hud {
   constructor(game) {
@@ -34,6 +39,7 @@ export class Hud {
     this.fctx = this.fullmap.getContext('2d');
     this.route = null;
     this.fps = { frames: 0, t: 0, value: 0 };
+    preloadWeaponIcons(WEAPONS.map((w) => w.id));
   }
 
   show(on) {
@@ -61,12 +67,12 @@ export class Hud {
         const z = py / MAP_SCALE + minZ;
         const t = terrainHeight(x, z);
         const k = Math.max(0, Math.min(1, (t + 30) / 70));
-        ctx.fillStyle = `rgb(${30 + k * 25},${44 + k * 22},${34 + k * 12})`;
+        ctx.fillStyle = `rgb(${24 + k * 12},${30 + k * 12},${28 + k * 10})`;
         ctx.fillRect(px, py, 6, 6);
       }
     }
     // Vías.
-    ctx.strokeStyle = '#6f7479';
+    ctx.strokeStyle = '#7d858c';
     ctx.lineWidth = GRID.asphaltHalf * 2 * MAP_SCALE;
     ctx.lineCap = 'square';
     ctx.beginPath();
@@ -78,22 +84,23 @@ export class Hud {
     }
     ctx.stroke();
     // Manzanas.
-    const blockColor = { parque: '#5f8f4a', botanico: '#3f7a3a', moravia: '#4f8a3f', cancha: '#4c9a45', cementerio: '#6b8f5e', mirador: '#8a8f7a' };
+    const blockColor = { parque: '#35523a', botanico: '#2f4d33', moravia: '#34503a', cancha: '#36573a', cementerio: '#3a5040', mirador: '#40463f' };
     for (const b of city.blocks) {
-      ctx.fillStyle = blockColor[b.type] ?? '#9c9a92';
+      ctx.fillStyle = blockColor[b.type] ?? '#2c3236';
       ctx.fillRect(X(b.minX), Z(b.minZ), (b.maxX - b.minX) * MAP_SCALE, (b.maxZ - b.minZ) * MAP_SCALE);
     }
     // Edificios.
     for (const b of city.buildings) {
       const floors = (b.topY - b.groundY) / 3;
       const k = Math.min(1, floors / 8);
-      ctx.fillStyle = b.style === 'explora' ? '#b3261e' : `rgb(${150 - k * 60},${138 - k * 55},${128 - k * 50})`;
+      const c = 58 + k * 22;
+      ctx.fillStyle = b.style === 'explora' ? '#8a3a33' : `rgb(${c},${c + 4},${c + 9})`;
       ctx.fillRect(X(b.minX), Z(b.minZ), (b.maxX - b.minX) * MAP_SCALE, (b.maxZ - b.minZ) * MAP_SCALE);
     }
     // Metro (línea A).
     const mt = city.metro;
-    ctx.strokeStyle = '#2d9a5a';
-    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#3f9a67';
+    ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(X(mt.x), Z(mt.z0));
     ctx.lineTo(X(mt.x), Z(mt.z1));
@@ -108,12 +115,13 @@ export class Hud {
   // --------------------------------------------------------- minimapa
   drawMinimap(state) {
     const ctx = this.mctx;
-    const W = this.minimap.width;
-    const H = this.minimap.height;
+    const W = this.minimap.width / MM_RES;
+    const H = this.minimap.height / MM_RES;
     const p = this.worldToMap(state.x, state.z);
     const zoom = state.inVehicle ? 0.55 + 0.35 * Math.max(0, 1 - state.speed / 30) : 0.95;
+    ctx.setTransform(MM_RES, 0, 0, MM_RES, 0, 0);
     ctx.save();
-    ctx.fillStyle = '#1a2620';
+    ctx.fillStyle = '#15191c';
     ctx.fillRect(0, 0, W, H);
     ctx.translate(W / 2, H * 0.62);
     ctx.scale(zoom, zoom);
@@ -121,8 +129,8 @@ export class Hud {
     ctx.drawImage(this.mapCanvas, -p.u, -p.v);
     // Ruta GPS.
     if (this.route && this.route.length > 1) {
-      ctx.strokeStyle = this.routeColor ?? '#b04dff';
-      ctx.lineWidth = 7;
+      ctx.strokeStyle = this.routeColor ?? '#b98ae8';
+      ctx.lineWidth = 5;
       ctx.lineJoin = 'round';
       ctx.beginPath();
       this.route.forEach((pt, i) => {
@@ -162,15 +170,15 @@ export class Hud {
       ctx.translate(du, dv);
       ctx.rotate(-state.camYaw);
       ctx.fillStyle = color;
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1.2 / zoom;
       ctx.beginPath();
       ctx.arc(0, 0, size / zoom, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       if (letter) {
-        ctx.fillStyle = '#111';
-        ctx.font = `bold ${Math.round((size * 1.4) / zoom)}px Arial`;
+        ctx.fillStyle = '#101214';
+        ctx.font = `700 ${Math.round((size * 1.45) / zoom)}px 'Barlow Condensed', Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(letter, 0, 1);
@@ -183,12 +191,12 @@ export class Hud {
     }
     for (const e of state.enemies) blip(e.x, e.z, e.police ? (Math.floor(performance.now() / 250) % 2 ? '#ff2d2d' : '#2d6bff') : '#ff3b3b', 4);
     for (const v of state.policeCars) blip(v.x, v.z, Math.floor(performance.now() / 250) % 2 ? '#2d6bff' : '#ff2d2d', 5);
-    if (state.target) blip(state.target.x, state.target.z, '#ffd200', 8, true, '●');
-    if (state.waypoint) blip(state.waypoint.x, state.waypoint.z, '#b04dff', 7, true, '⚑');
+    if (state.target) blip(state.target.x, state.target.z, '#e8b64c', 7, true, null);
+    if (state.waypoint) blip(state.waypoint.x, state.waypoint.z, '#b98ae8', 6, true, null);
     // Jugador.
     ctx.rotate(-state.playerYaw);
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#000';
+    ctx.fillStyle = '#f2f2f2';
+    ctx.strokeStyle = '#101214';
     ctx.lineWidth = 2 / zoom;
     ctx.beginPath();
     ctx.moveTo(0, -9 / zoom);
@@ -199,20 +207,21 @@ export class Hud {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-    // Borde de búsqueda policial.
-    if (state.wanted > 0) {
-      const on = Math.floor(performance.now() / 300) % 2;
-      ctx.strokeStyle = on ? '#ff2d2d' : '#2d6bff';
-      ctx.lineWidth = 5;
-      ctx.strokeRect(2, 2, W - 4, H - 4);
-    }
+    // Brújula: la N se mueve por el borde del minimapa según la cámara.
+    const nx = Math.sin(state.camYaw);
+    const ny = -Math.cos(state.camYaw);
+    const cx = W / 2;
+    const cy = H * 0.62;
+    const t = Math.min(nx ? (nx > 0 ? W - 8 - cx : 8 - cx) / nx : Infinity, ny ? (ny > 0 ? H - 8 - cy : 8 - cy) / ny : Infinity);
+    this._set('compass-n', 'left', `${(((cx + nx * t) / W) * 100).toFixed(1)}%`);
+    this._set('compass-n', 'top', `${(((cy + ny * t) / H) * 100).toFixed(1)}%`);
   }
 
   // --------------------------------------------------------- mapa completo
   drawFullMap(state) {
     const ctx = this.fctx;
     const S = this.fullmap.width;
-    ctx.fillStyle = '#0b1210';
+    ctx.fillStyle = '#101315';
     ctx.fillRect(0, 0, S, S);
     const k = S / this.mapCanvas.width;
     ctx.drawImage(this.mapCanvas, 0, 0, S, (this.mapCanvas.height * S) / this.mapCanvas.width);
@@ -221,7 +230,7 @@ export class Hud {
       return { x: m.u * k, y: m.v * k };
     };
     if (this.route) {
-      ctx.strokeStyle = '#b04dff';
+      ctx.strokeStyle = '#b98ae8';
       ctx.lineWidth = 4;
       ctx.beginPath();
       this.route.forEach((pt, i) => {
@@ -231,13 +240,13 @@ export class Hud {
       });
       ctx.stroke();
     }
-    ctx.font = 'bold 13px Bahnschrift, Arial';
+    ctx.font = "600 14px 'Barlow Condensed', Arial";
     for (const poi of this.game.city.pois) {
       const s = toS(poi.x, poi.z);
       const st = POI_STYLE[poi.type] ?? POI_STYLE.landmark;
       ctx.fillStyle = st.color;
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
       ctx.fill();
@@ -247,7 +256,8 @@ export class Hud {
       ctx.textBaseline = 'middle';
       ctx.fillText(POI_LETTER[poi.id] ?? st.letter, s.x, s.y + 1);
       const discovered = this.game.discovered.has(poi.id);
-      ctx.fillStyle = discovered ? '#fff' : 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = discovered ? '#f2f2f2' : 'rgba(255,255,255,0.5)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
       ctx.textAlign = 'left';
       ctx.lineWidth = 3;
       ctx.strokeText(poi.name, s.x + 12, s.y);
@@ -255,14 +265,14 @@ export class Hud {
     }
     if (state.waypoint) {
       const s = toS(state.waypoint.x, state.waypoint.z);
-      ctx.fillStyle = '#b04dff';
+      ctx.fillStyle = '#b98ae8';
       ctx.beginPath();
       ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
       ctx.fill();
     }
     if (state.target) {
       const s = toS(state.target.x, state.target.z);
-      ctx.fillStyle = '#ffd200';
+      ctx.fillStyle = '#e8b64c';
       ctx.beginPath();
       ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
       ctx.fill();
@@ -282,7 +292,8 @@ export class Hud {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-    $('map-legend').innerHTML = `Lugares descubiertos: <b>${this.game.discovered.size}/${this.game.city.pois.length}</b> · <span style="color:#ffd200">★ Lugares</span> · <span style="color:#e63946">$ Tienda</span> · <span style="color:#3a86ff">+ Servicios</span> · <span style="color:#f4a261">! Misiones</span>`;
+    const dot = (c) => `<i class="dot" style="background:${c}"></i>`;
+    $('map-legend').innerHTML = `Lugares descubiertos <b>${this.game.discovered.size}/${this.game.city.pois.length}</b><span>${dot(POI_STYLE.landmark.color)}Lugares</span><span>${dot(POI_STYLE.shop.color)}Tienda</span><span>${dot(POI_STYLE.service.color)}Servicios</span><span>${dot(POI_STYLE.mission.color)}Misiones</span>`;
   }
 
   /** Convierte un clic en el mapa completo a coordenadas del mundo. */
@@ -341,17 +352,26 @@ export class Hud {
       this._set('money', 'text', `$${Math.round(this.moneyShown).toLocaleString('es-CO')}`);
     }
     const w = st.weapon;
-    this._set('weapon-icon', 'text', w.icon);
+    this._set('weapon-icon', 'html', weaponIconHtml(w.id));
     this._set('weapon-name', 'text', w.name);
-    this._set('weapon-ammo', 'html', w.kind === 'gun' ? `${st.ammo.mag}<small> / ${st.ammo.reserve}</small>${st.reloading ? ' <small>recargando…</small>' : ''}` : '');
+    const gun = w.kind === 'gun';
+    this._set('weapon-ammo', 'html', gun ? (st.reloading ? '<small>Recargando</small>' : `${st.ammo.mag}<small>/ ${st.ammo.reserve}</small>`) : '');
+    this._toggle('weapon-ammo', 'empty', gun && st.ammo.mag === 0 && !st.reloading);
+    this._toggle('reload-bar', 'on', gun && st.reloading);
+    if (st.reloading) this._set('reload-fill', 'width', `${Math.round((st.reloadFrac ?? 0) * 100)}%`);
     if (st.wanted !== this.lastWanted) {
-      this._set('wanted', 'html', st.wanted > 0 ? Array.from({ length: 5 }, (_, i) => `<span class="star ${i < st.wanted ? 'on' : ''}">★</span>`).join('') : '');
+      this._set('wanted', 'html', st.wanted > 0 ? Array.from({ length: 5 }, (_, i) => STAR_SVG(i < st.wanted)).join('') : '');
       this.lastWanted = st.wanted;
     }
     this._toggle('wanted', 'flash', st.wantedFlash);
-    this._set('health-bar', 'width', `${Math.round(Math.max(0, st.health))}%`);
+    this._toggle('minimap-frame', 'wanted', st.wanted > 0);
+    const hp = Math.max(0, st.health);
+    this._set('health-bar', 'width', `${Math.round(hp)}%`);
+    this._toggle('health-bar', 'low', hp < 25 && !st.dead);
+    this._set('low-health', 'opacity', st.dead ? '0' : String(Math.max(0, Math.min(1, (35 - hp) / 25)).toFixed(2)));
     this._set('armor-bar', 'width', `${Math.round(Math.max(0, st.armor))}%`);
     this._set('stamina-bar', 'width', `${Math.round(st.stamina)}%`);
+    this._toggle('stamina-wrap', 'full', st.stamina >= 99.5);
     this._set('street-name', 'html', st.street);
     this._toggle('crosshair', 'hidden', !(st.aiming || (st.weapon.kind === 'gun' && !st.inVehicle)) || st.dead);
     this._toggle('crosshair', 'aim', st.aiming && st.weapon.kind === 'gun');
@@ -431,7 +451,7 @@ export class Hud {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     el.textContent = `${m}:${String(s).padStart(2, '0')}`;
-    el.style.color = sec < 15 ? '#ff4d4d' : '#fff';
+    el.classList.toggle('urgent', sec < 15);
   }
 
   poi(poi) {

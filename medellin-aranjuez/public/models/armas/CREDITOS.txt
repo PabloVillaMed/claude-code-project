@@ -1,0 +1,29 @@
+Modelos 3D de armas (public/models/armas/*.glb) e íconos (public/models/armas/iconos/)
+Modificados para el juego: reorientados, escalados a tamaño real, origen en la
+empuñadura, nodos "boca" y "mano_izq" añadidos, texturas reducidas y
+comprimidas, geometría optimizada (scripts/assets/armas.mjs). Los íconos son
+siluetas renderizadas a partir de estos modelos.
+
+pistol.glb (pistola 9 mm): "Beretta 92 Fs" por Ecler (ecler)
+  https://sketchfab.com/3d-models/beretta-92-fs-e529e0dc704f4f7fb47d632ac9aa7f1e
+  This work is based on "Beretta 92 Fs" (https://sketchfab.com/3d-models/beretta-92-fs-e529e0dc704f4f7fb47d632ac9aa7f1e) by Ecler licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+smg.glb (subametralladora): "HK MP5 (9mm submachine gun)" por quick_loop (so_O)
+  https://sketchfab.com/3d-models/hk-mp5-9mm-submachine-gun-c503d96157614fb78b5953d49e643b78
+  This work is based on "HK MP5 (9mm submachine gun)" (https://sketchfab.com/3d-models/hk-mp5-9mm-submachine-gun-c503d96157614fb78b5953d49e643b78) by quick_loop licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+shotgun.glb (escopeta): "Remington 870 Shotgun" por Andrei Milin (milinam2002)
+  https://sketchfab.com/3d-models/remington-870-shotgun-6db0ad4764d14eee8f063eea3600071b
+  This work is based on "Remington 870 Shotgun" (https://sketchfab.com/3d-models/remington-870-shotgun-6db0ad4764d14eee8f063eea3600071b) by Andrei Milin licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Licencia de los tres anteriores: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+rifle.glb (fusil de asalto): "M4A1 Assault Rifle", publicado en OpenGameArt por nisu
+  (origen: 3dmodelscc0.com). Dominio público (CC0 1.0).
+  https://opengameart.org/content/m4a1-assault-rifle
+
+machete.glb (machete): "Machete" por Ulan Cabanilla, Poly Haven. Dominio público (CC0 1.0).
+  https://polyhaven.com/a/machete
+
+iconos/fists.svg, iconos/fists.png: dibujados para el juego.

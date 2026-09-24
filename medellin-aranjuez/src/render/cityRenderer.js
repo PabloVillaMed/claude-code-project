@@ -9,6 +9,8 @@ import { facadeLayout } from '../sim/facades.js';
 import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
+import { GEO_REF, riverX, urbanAmount } from '../sim/geography.js';
+import { albedoAt } from './horizon.js';
 import { makeRng } from '../sim/rng.js';
 import {
   GRID,
@@ -170,11 +172,8 @@ export class CityRenderer {
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const inner = { minX: MAP_MIN_X - 100, maxX: MAP_MAX_X + 100, minZ: MAP_MIN_Z - 100, maxZ: MAP_MAX_Z + 100 };
-    // Zona urbana en la parte baja de las laderas, verde arriba.
-    const urban = (x, z) => {
-      const h = backdropHeight(x, z);
-      return h < 180 ? 1 : h < 260 ? 1 - (h - 180) / 80 : 0;
-    };
+    // Zona urbana en la parte baja de las laderas, verde arriba (misma regla que el horizonte).
+    const urban = (x, z) => urbanAmount(x, z, backdropHeight(x, z) + GEO_REF);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
@@ -182,10 +181,11 @@ export class CityRenderer {
       if (x > inner.minX && x < inner.maxX && z > inner.minZ && z < inner.maxZ) y -= 8;
       pos.setY(i, y);
       const u = urban(x, z);
-      // Ladrillo/teja (urbano) mezclado con verde de montaña.
-      colors[i * 3] = 0.3 + u * 0.28;
-      colors[i * 3 + 1] = 0.36 - u * 0.1;
-      colors[i * 3 + 2] = 0.2 - u * 0.02;
+      // Misma paleta que el horizonte: ladrillo y teja en lo urbano, monte arriba.
+      const c = albedoAt(x, z, y + GEO_REF, u, 0.25, () => 0.5);
+      colors[i * 3] = c[0];
+      colors[i * 3 + 1] = c[1];
+      colors[i * 3 + 2] = c[2];
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
@@ -215,7 +215,7 @@ export class CityRenderer {
       const z = rng.range(-2400, 2400);
       if (x > inner.minX - 60 && x < inner.maxX + 60 && z > inner.minZ - 60 && z < inner.maxZ + 60) continue;
       // Río: franja sin casas.
-      if (Math.abs(x - (MAP_MIN_X - 620)) < 70) continue;
+      if (Math.abs(x - riverX(z)) < 70) continue;
       if (urban(x, z) < rng.next()) continue;
       const y = backdropHeight(x, z);
       const w = rng.range(6, 12);
@@ -226,9 +226,10 @@ export class CityRenderer {
       m.compose(p, q, s);
       houses.setMatrixAt(n, m);
       const r = rng.next();
-      if (r < 0.6) c.setRGB(0.55 + rng.range(-0.08, 0.08), 0.28, 0.18);
-      else if (r < 0.85) c.setRGB(0.8, 0.78, 0.72);
-      else c.setHSL(rng.next(), 0.4, 0.6);
+      // Ladrillo a la vista (la mayoría), repello claro y algo de pintura gastada.
+      if (r < 0.66) c.setRGB(0.5 + rng.range(-0.08, 0.06), 0.27 + rng.range(-0.03, 0.03), 0.18);
+      else if (r < 0.9) c.setRGB(0.72, 0.7, 0.66);
+      else c.setHSL(rng.next(), 0.18, 0.5);
       houses.setColorAt(n, c);
       if (rng.chance(0.7)) {
         lightPos.push(x, y + h * 0.6, z);
@@ -250,10 +251,19 @@ export class CityRenderer {
     this.cityLights.frustumCulled = false;
     this.root.add(this.cityLights);
 
-    // Río Medellín.
-    const rx = MAP_MIN_X - 620;
-    const river = new THREE.Mesh(new THREE.PlaneGeometry(46, 5200, 1, 1).rotateX(-Math.PI / 2), this.materials.water);
-    river.position.set(rx, backdropHeight(rx, 0) + 1.2, 0);
+    // Río Medellín: sigue su cauce real (gira un poco al norte).
+    const rg = new GeoBuilder();
+    for (let z = -2600; z < 2600; z += 40) {
+      const a0 = riverX(z);
+      const a1 = riverX(z + 40);
+      const y0 = backdropHeight(a0, z) + 1.2;
+      const y1 = backdropHeight(a1, z + 40) + 1.2;
+      const v0 = z / 46;
+      const v1 = (z + 40) / 46;
+      rg.quad([a0 - 23, y0, z], [a1 - 23, y1, z + 40], [a1 + 23, y1, z + 40], [a0 + 23, y0, z], [0, 1, 0], [[0, v0], [0, v1], [1, v1], [1, v0]]);
+    }
+    const river = new THREE.Mesh(rg.build(), this.materials.water);
+    river.name = 'rio';
     river.receiveShadow = false;
     this.root.add(river);
   }

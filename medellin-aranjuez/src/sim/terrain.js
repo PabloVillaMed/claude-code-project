@@ -2,6 +2,8 @@
 // hacia la montaña (este). Todo es analítico para que la física y el render
 // coincidan exactamente.
 
+import { valleyHeight } from './geography.js';
+
 export const GRID = {
   nx: 9, // manzanas en X
   nz: 9, // manzanas en Z
@@ -104,18 +106,16 @@ export function groundHeight(x, z) {
 }
 
 /**
- * Terreno de fondo (solo render): el valle de Medellín con el río al oeste
- * y laderas llenas de casas a ambos lados.
+ * Terreno de fondo (solo render): junto al mapa sigue la ladera del barrio y
+ * se funde con la geografía del valle (sim/geography.js), la misma que usa el
+ * horizonte lejano, para que el río y las laderas empaten sin escalones.
  */
 export function backdropHeight(x, z) {
-  const base = terrainHeight(x, z);
-  // Hacia el oeste bajamos al río y luego sube la ladera occidental.
-  const westT = Math.max(0, MAP_MIN_X - 60 - x);
-  const riverDrop = -Math.min(westT, 500) * 0.06;
-  const westRise = Math.max(0, westT - 700) * 0.22;
-  // Hacia el este la montaña se empina (Santo Domingo, Popular…).
-  const eastT = Math.max(0, x - MAP_MAX_X - 40);
-  const eastRise = eastT * 0.16 + Math.max(0, eastT - 500) * 0.25;
-  const ridges = 18 * Math.sin(z * 0.004 + x * 0.002) * Math.min(1, (westT + eastT) / 400);
-  return base + riverDrop + westRise + eastRise + ridges;
+  const ox = Math.max(0, MAP_MIN_X - x, x - MAP_MAX_X);
+  const oz = Math.max(0, MAP_MIN_Z - z, z - MAP_MAX_Z);
+  const out = Math.hypot(ox, oz);
+  if (out <= 0) return terrainHeight(x, z);
+  const t = Math.min(1, out / 380);
+  const w = t * t * (3 - 2 * t);
+  return terrainHeight(x, z) * (1 - w) + valleyHeight(x, z) * w;
 }
