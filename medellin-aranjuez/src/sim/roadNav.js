@@ -153,9 +153,7 @@ export function autopilot(graph, agent, v, opts) {
   const distToEnd = (1 - t) * elen;
 
   // Al acercarse al final, elegir el siguiente tramo.
-  if (agent.next === undefined || agent.next === null) {
-    agent.next = opts.target ? graph.pickToward(agent.from, agent.to, opts.target.x, opts.target.z) : graph.pickNext(agent.from, agent.to, opts.rand);
-  }
+  if (agent.next === undefined || agent.next === null) agent.next = chooseNext(graph, agent, opts);
   const turning = agent.next !== agent.from && isTurn(graph, agent.from, agent.to, agent.next);
   const uTurn = agent.next === agent.from;
 
@@ -217,6 +215,20 @@ export function autopilot(graph, agent, v, opts) {
     agent.reverseTimer = 1.6;
   }
   return { throttle, brake, steer, handbrake: false };
+}
+
+/**
+ * Siguiente nodo del agente: el de su ruta (agent.path, calculada con
+ * Dijkstra) si la tiene y va por ella; si no, hacia el objetivo o al azar.
+ */
+function chooseNext(graph, agent, opts) {
+  const path = agent.path;
+  if (path) {
+    const i = path.indexOf(agent.to);
+    if (i >= 0 && i + 1 < path.length) return path[i + 1];
+  }
+  if (opts.target) return graph.pickToward(agent.from, agent.to, opts.target.x, opts.target.z);
+  return graph.pickNext(agent.from, agent.to, opts.rand);
 }
 
 function isTurn(graph, from, at, next) {

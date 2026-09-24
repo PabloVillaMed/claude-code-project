@@ -476,7 +476,7 @@ export class Game {
     // Mundo vivo.
     this.world.update(dt, p);
     const police = this.world.updatePolice(dt, p, this.wanted);
-    this.wanted.update(dt, police.seen);
+    this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
     this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
     this.pickups.update(dt, p);
     this._updateMissions(dt);
@@ -653,10 +653,10 @@ export class Game {
       // Robo del vehículo: el conductor sale corriendo.
       this.world.ejectDriver(v, { x: p.x, z: p.z });
       const policeNear = this.world.policeUnits.some((u) => dist2D(u.vehicle.state.x, u.vehicle.state.z, p.x, p.z) < 60) || this.world.peds.some((q) => q.faction === 'police' && q.alive && dist2D(q.x, q.z, p.x, p.z) < 40);
-      if (policeNear || v.type === 'policia') this.wanted.report('carjack');
+      if (policeNear || v.type === 'policia') this.wanted.report('carjack', p);
       this.hud.toast(`Robaste: ${v.state.spec.name}`);
     }
-    if (v.type === 'policia' && this.wanted.level < 1) this.wanted.report('carjack');
+    if (v.type === 'policia' && this.wanted.level < 1) this.wanted.report('carjack', p);
     v.driver = 'player';
     v.kind = 'player';
     v.agent = null;
@@ -937,6 +937,8 @@ export class Game {
       ammo: inv.ammo ?? { mag: 0, reserve: 0 },
       reloading: inv.reloading > 0,
       wanted: this.wanted.level,
+      // Zona donde busca la policía (solo cuando te perdió de vista).
+      searchZone: this.wanted.level > 0 && this.wanted.sinceSeen > 1.5 ? { ...this.wanted.zoneCenter(), r: this.wanted.zoneRadius() } : null,
       wantedFlash: this.wanted.flash > 0 || (this.wanted.level > 0 && this.wanted.unseenTimer > 2),
       health: p.health,
       armor: p.armor,
@@ -1134,7 +1136,7 @@ export class Game {
         g.combat.damagePlayer(n, null);
       },
       addWanted(level) {
-        for (let i = 0; i < level; i++) g.wanted.report('copKill');
+        for (let i = 0; i < level; i++) g.wanted.report('copKill', g.player);
       },
       /** Simula `seconds` de juego (con entrada virtual) sin esperar al render. */
       advance(seconds, input = null, step = 1 / 30) {

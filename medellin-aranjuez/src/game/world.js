@@ -7,6 +7,7 @@ import { groundHeight, onRoad } from '../sim/terrain.js';
 import { createVehicleState, stepVehicle, vehicleObb, exitPoint, emptyDriveInput } from '../sim/vehiclePhysics.js';
 import { RoadGraph, autopilot, lanePoint, obstacleAhead } from '../sim/roadNav.js';
 import { createPed, stepPed, PED } from '../sim/pedAI.js';
+import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
 
@@ -326,11 +327,13 @@ export class World {
           if (p.alive && Math.abs(p.x - s.x) < 18 && Math.abs(p.z - s.z) < 18 && onRoad(p.x, p.z)) aheadList.push({ x: p.x, z: p.z, r: 0.5 });
         }
         if (!player.inVehicle) aheadList.push({ x: player.x, z: player.z, r: 0.5 });
-        const blocked = v.kind === 'police' && v.chasing ? Infinity : obstacleAhead(s, aheadList, 14, s.spec.width / 2 + 0.2);
+        // Patrullas: siguen el plan de la IA policial (en persecución embisten).
+        const nav = v.kind === 'police' && v.chasing ? v.nav : null;
+        const blocked = nav?.mode === 'pursue' ? Infinity : obstacleAhead(s, aheadList, 14, s.spec.width / 2 + 0.2);
         const opts = { cruise: v.panic > 0 ? 17 : v.cruise, blockedAhead: blocked, rand: this.rng.next, dt };
-        if (v.kind === 'police' && v.chasing) {
-          opts.target = { x: player.x, z: player.z };
-          opts.cruise = 21;
+        if (nav) {
+          opts.target = nav.target;
+          opts.cruise = nav.cruise;
         }
         v.input = autopilot(this.graph, v.agent, s, opts);
         if (v.panic > 0) v.panic -= dt;
@@ -381,7 +384,7 @@ export class World {
       const d = dist2D(s.x, s.z, player.x, player.z);
       if (p.alive) {
         // Hostiles: detectar y atacar al jugador.
-        if (p.faction !== 'civil') {
+        if (p.faction !== 'civil' && !p.police) {
           const hostileNow = p.faction === 'gang' ? p.alerted || d < p.aggroRange : this.game.wanted.level > 0;
           if (hostileNow && !player.dead) {
             p.alerted = true;
@@ -438,20 +441,55 @@ export class World {
   }
 
   // ------------------------------------------------------------- policía
+  /**
+   * Policía que busca de verdad: solo sabe dónde estás si alguien te ve (o
+   * reporta un delito). Con eso (WantedSystem: última posición conocida y
+   * zona de búsqueda) las patrullas persiguen por la ruta más corta, acuden a
+   * la última posición, se reparten la zona y bajan a buscar a pie.
+   * Devuelve {seen, nearest}.
+   */
   updatePolice(dt, player, wanted) {
-    const want = wanted.desiredUnits();
-    // Crear patrullas hasta la cantidad deseada.
-    if (this.policeUnits.filter((u) => !u.leaving).length < want) {
-      this._spawnPolice(player);
+    const graph = this.graph;
+    // Velocidad del jugador (para adelantar la zona hacia donde iba).
+    const lp = (this._lastPlayerPos ??= { x: player.x, z: player.z });
+    const pvx = (player.x - lp.x) / Math.max(dt, 1e-3);
+    const pvz = (player.z - lp.z) / Math.max(dt, 1e-3);
+    lp.x = player.x;
+    lp.z = player.z;
+
+    // Refuerzos hasta la cantidad deseada (de a uno, cada 2 s).
+    this.policeSpawnTimer = Math.max(0, (this.policeSpawnTimer ?? 0) - dt);
+    if (this.policeUnits.filter((u) => !u.leaving).length < wanted.desiredUnits() && this.policeSpawnTimer <= 0) {
+      if (this._spawnPolice(player, wanted)) this.policeSpawnTimer = 2;
     }
+
+    // ¿Quién ve al jugador? (rayos cada 0.25 s por unidad).
+    const target = { x: player.x, y: player.y + 1.2, z: player.z };
+    const los = (e, t) => this.game.combat.lineOfSight(e, t);
     let seen = false;
+    for (const u of this.policeUnits) {
+      u.lookT = (u.lookT ?? this.rng.next() * 0.25) - dt;
+      if (u.lookT <= 0) {
+        u.lookT = 0.25;
+        const s = u.vehicle.state;
+        u.sees = !u.leaving && u.state === 'pursuit' && !s.destroyed && canSee({ x: s.x, y: s.y + 1.4, z: s.z }, target, POLICE_AI.carSight, los);
+        for (const o of u.officers) {
+          o.sees = o.alive && canSee({ x: o.x, y: o.y + 1.6, z: o.z }, target, POLICE_AI.footSight, los);
+          if (o.sees) u.sees = true;
+        }
+      }
+      if (u.sees && !u.leaving && wanted.level > 0) seen = true;
+    }
+    if (seen) wanted.spot(player.x, player.z, pvx, pvz);
+
     let nearest = Infinity;
+    const ctx = { graph, wanted, seen, player, rand: this.rng.next, dt, taken: [] };
     for (const u of [...this.policeUnits]) {
       const v = u.vehicle;
       const s = v.state;
-      // El jugador se robó la patrulla: la unidad se disuelve (los agentes
-      // siguen a pie) y el carro ya no es de la IA.
+      // El jugador se robó la patrulla: la unidad se disuelve.
       if (v.driver === 'player') {
+        for (const o of u.officers) o.police = null;
         this.policeUnits.splice(this.policeUnits.indexOf(u), 1);
         continue;
       }
@@ -459,91 +497,173 @@ export class World {
       nearest = Math.min(nearest, d);
       if (wanted.level === 0 && !u.leaving) {
         u.leaving = true;
-        v.chasing = false;
         v.siren = false;
-        // Los agentes vuelven a la patrulla.
-        for (const o of u.officers) this.removePed(o);
-        u.officers = [];
-        if (!v.driver) {
-          v.driver = 'npc';
-          v.setDriverRig(randomLook(this.rng, 'police'));
-        }
-        v.kind = 'police';
-        const n = this.graph.nearestNode(s.x, s.z);
-        v.agent = { from: n.id, to: n.links[0].node, next: null };
+        if (u.state === 'deployed') this._recall(u);
+      }
+      if (u.state === 'returning') {
+        this._updateReturning(u, dt);
+        continue;
       }
       if (u.leaving) {
+        if (u.state === 'pursuit' && !v.driver && s.health > 0 && !s.destroyed) this._remount(u);
+        v.chasing = false;
+        v.nav = null;
         if (d > 200) this._removeUnit(u);
         continue;
       }
-      // Muy lejos (el jugador escapó en carro): reubicar.
-      if (d > 320) {
+      // Muy lejos del jugador y de la zona: se reubica (vuelve como refuerzo).
+      const c = wanted.zoneCenter();
+      if (d > 320 && (!c || dist2D(s.x, s.z, c.x, c.z) > 250)) {
         this._removeUnit(u);
         continue;
       }
+      ctx.taken = this.policeUnits.filter((o) => o !== u && o.ai.goalNode != null).map((o) => graph.node(o.ai.goalNode));
+
       if (u.state === 'pursuit') {
+        if (s.destroyed || s.health <= 0 || !v.agent) {
+          u.leaving = true; // patrulla inservible: la unidad se retira
+          continue;
+        }
+        const prevMode = u.ai.mode;
+        const plan = planPatrol(u.ai, s, v.agent, ctx);
         v.chasing = true;
         v.siren = true;
+        v.nav = plan;
         const playerSlow = !player.inVehicle || player.speed < 6;
-        if (d < 22 && playerSlow && Math.abs(s.forwardSpeed) < 6) {
-          // Detenerse y desplegar agentes.
-          u.state = 'deployed';
-          v.kind = 'parked';
-          v.agent = null;
-          v.clearDriverRig();
-          v.driver = null;
-          for (let k = 0; k < 2; k++) {
-            const side = k === 0 ? -1 : 1;
-            const ox = s.x + Math.cos(s.heading) * side * 1.6;
-            const oz = s.z - Math.sin(s.heading) * side * 1.6;
-            const off = this.city.collision.resolveCircle(ox, oz, PED.radius);
-            const o = this.spawnPedAt(off.x, off.z, { outfit: 'police', faction: 'police', weapon: 'pistol', police: u, health: 120, sim: { hostile: true } });
-            o.sim.mode = 'attack';
-            u.officers.push(o);
-          }
+        // Contacto: frenar y bajar a los agentes.
+        if (seen && d < 22 && playerSlow) u.pendingDeploy = 'contact';
+        // Llegaron a la zona sin encontrarte: la mitad baja a buscar a pie.
+        else if (plan.mode === 'search' && prevMode === 'respond' && wanted.level >= 2 && u.id % 2 === 0) u.pendingDeploy = 'search';
+        if (u.pendingDeploy) {
+          v.nav = { ...plan, cruise: 0 };
+          if (Math.abs(s.forwardSpeed) < 1.2) this._deploy(u, u.pendingDeploy);
         }
       } else if (u.state === 'deployed') {
+        u.deployT += dt;
         u.officers = u.officers.filter((o) => this.peds.includes(o));
         const alive = u.officers.filter((o) => o.alive);
-        const farFromCar = d > 55 || (player.inVehicle && player.speed > 8 && d > 25);
-        if (alive.length === 0 || farFromCar) {
-          // Recoger agentes y volver a perseguir.
-          for (const o of alive) this.removePed(o);
-          u.officers = u.officers.filter((o) => !o.alive);
-          if (!v.state.destroyed) {
-            u.state = 'pursuit';
-            v.kind = 'police';
-            v.driver = 'npc';
-            v.setDriverRig(randomLook(this.rng, 'police'));
-            const n = this.graph.nearestNode(s.x, s.z);
-            v.agent = { from: n.id, to: n.links[0].node, next: null };
-          } else {
-            u.leaving = true;
-          }
+        for (const o of alive) this._officerBrain(o, ctx);
+        if (u.deployReason === 'contact' && !seen && wanted.sinceSeen > 3) {
+          // Se les perdió: pasan a buscar a pie alrededor de donde te vieron.
+          u.deployReason = 'search';
+          u.deployT = 0;
         }
-      }
-      // ¿Nos ven?
-      const eyes = [{ x: s.x, y: s.y + 1.4, z: s.z }, ...u.officers.filter((o) => o.alive).map((o) => ({ x: o.x, y: o.y + 1.6, z: o.z }))];
-      for (const e of eyes) {
-        const de = Math.hypot(e.x - player.x, e.z - player.z);
-        if (de < 25 || (de < 80 && this.game.combat.lineOfSight(e, { x: player.x, y: player.y + 1.2, z: player.z }))) {
-          seen = true;
-          break;
-        }
+        const escapingByCar = seen && player.inVehicle && player.speed > 8 && d > 25;
+        const tooFar = seen && d > 60;
+        const doneSearching = u.deployReason === 'search' && !seen && u.deployT > POLICE_AI.footSearchTime;
+        if (alive.length === 0 || escapingByCar || tooFar || doneSearching) this._recall(u, alive.length === 0 || escapingByCar);
       }
     }
     return { seen, nearest };
   }
 
-  _spawnPolice(player) {
-    // Nodo vial a 90-170 m del jugador.
+  /** Cerebro de un agente a pie: si te ve, ataca; si no, busca por las calles. */
+  _officerBrain(o, ctx) {
+    const s = o.sim;
+    s.hostile = true;
+    if (o.sees) {
+      s.mode = 'attack';
+      s.attackRange = o.weapon ? 12 : 1.4;
+      o.search = null;
+      return;
+    }
+    o.search ??= {};
+    const wps = planOfficerSearch(o.search, o, ctx);
+    if (wps) {
+      s.waypoints = wps;
+      s.lastWpD = Infinity;
+    }
+    if (s.mode !== 'move') s.mode = 'move';
+    // Corren si te acaban de perder de vista; después revisan caminando rápido.
+    s.moveSpeed = PED.run * (ctx.wanted.sinceSeen < 8 ? 0.8 : 0.5);
+  }
+
+  /** Detenerse y bajar a los dos agentes de la patrulla. */
+  _deploy(u, reason) {
+    const v = u.vehicle;
+    const s = v.state;
+    u.pendingDeploy = null;
+    u.state = 'deployed';
+    u.deployReason = reason;
+    u.deployT = 0;
+    v.kind = 'parked';
+    v.agent = null;
+    v.nav = null;
+    v.clearDriverRig();
+    v.driver = null;
+    for (let k = 0; k < 2; k++) {
+      const side = k === 0 ? -1 : 1;
+      const ox = s.x + Math.cos(s.heading) * side * 1.6;
+      const oz = s.z - Math.sin(s.heading) * side * 1.6;
+      const off = this.city.collision.resolveCircle(ox, oz, PED.radius);
+      const o = this.spawnPedAt(off.x, off.z, { outfit: 'police', faction: 'police', weapon: 'pistol', police: u, health: 120, sim: { hostile: true } });
+      o.sim.mode = reason === 'contact' ? 'attack' : 'move';
+      o.sim.waypoints = [];
+      u.officers.push(o);
+    }
+  }
+
+  /** Los agentes vuelven caminando a la patrulla (o de una, si hay afán). */
+  _recall(u, now = false) {
+    const car = u.vehicle.state;
+    u.state = 'returning';
+    u.returnT = 0;
+    for (const o of u.officers) {
+      if (!o.alive) continue;
+      if (now) {
+        this.removePed(o);
+        continue;
+      }
+      o.sim.mode = 'move';
+      o.sim.waypoints = [{ x: car.x, z: car.z }];
+      o.sim.lastWpD = Infinity;
+      o.sim.moveSpeed = PED.run * 0.7;
+    }
+    u.officers = u.officers.filter((o) => o.alive && this.peds.includes(o));
+    if (!u.officers.length) this._remount(u);
+  }
+
+  _updateReturning(u, dt) {
+    const car = u.vehicle.state;
+    u.returnT += dt;
+    for (const o of [...u.officers]) {
+      if (!o.alive || !this.peds.includes(o) || dist2D(o.x, o.z, car.x, car.z) < 2.6 || u.returnT > 12) {
+        if (o.alive && this.peds.includes(o)) this.removePed(o);
+        u.officers.splice(u.officers.indexOf(o), 1);
+      }
+    }
+    if (!u.officers.length) this._remount(u);
+  }
+
+  /** La patrulla vuelve a rodar (buscando, o yéndose si ya no hay estrellas). */
+  _remount(u) {
+    const v = u.vehicle;
+    u.officers = [];
+    if (v.state.destroyed) {
+      u.leaving = true;
+      u.state = 'pursuit';
+      return;
+    }
+    u.state = 'pursuit';
+    u.ai = {};
+    v.kind = 'police';
+    v.driver = 'npc';
+    v.setDriverRig(randomLook(this.rng, 'police'));
+    const n = this.graph.nearestNode(v.state.x, v.state.z);
+    v.agent = { from: n.id, to: n.links[0].node, next: null };
+  }
+
+  _spawnPolice(player, wanted) {
+    // Llegan hacia la zona de búsqueda (no hacia la posición real), desde un
+    // nodo vial a 80-170 m de ella y fuera de la vista inmediata del jugador.
+    const c = wanted.zoneCenter() ?? { x: player.x, z: player.z };
     const cands = this.graph.active.filter((n) => {
-      const d = dist2D(n.x, n.z, player.x, player.z);
-      return d > 90 && d < 170;
+      const d = dist2D(n.x, n.z, c.x, c.z);
+      return d > 80 && d < 170 && dist2D(n.x, n.z, player.x, player.z) > 70;
     });
     if (!cands.length) return null;
     const n = cands[Math.floor(this.rng.next() * cands.length)];
-    const to = this.graph.pickToward(-1, n.id, player.x, player.z);
+    const to = this.graph.pickToward(-1, n.id, c.x, c.z);
     const p = lanePoint(this.graph, n.id, to, 0.1);
     const v = new VehicleEntity(this, 'policia', p.x, p.z, p.yaw, { kind: 'police', agent: { from: n.id, to, next: null }, cruise: 20 });
     v.driver = 'npc';
@@ -551,7 +671,7 @@ export class World {
     v.chasing = true;
     v.siren = true;
     this.vehicles.push(v);
-    const unit = { vehicle: v, officers: [], state: 'pursuit', leaving: false };
+    const unit = { id: this._unitId = (this._unitId ?? 0) + 1, vehicle: v, officers: [], state: 'pursuit', leaving: false, ai: {}, sees: false };
     this.policeUnits.push(unit);
     return unit;
   }

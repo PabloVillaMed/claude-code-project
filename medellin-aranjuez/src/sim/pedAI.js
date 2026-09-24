@@ -131,6 +131,27 @@ export function stepPed(p, dt, world) {
       if (p.timer <= 0) rejoinSidewalk(p, world);
       break;
     }
+    case 'move': {
+      // Recorrer waypoints (agentes buscando a pie). Si no avanza, salta el punto.
+      const wp = p.waypoints?.[0];
+      if (!wp) {
+        p.speed = 0;
+        p.arrived = true;
+        break;
+      }
+      // Distancia medida tras la colisión del cuadro anterior: si no baja, está trabado.
+      const d = Math.hypot(wp.x - p.x, wp.z - p.z);
+      p.stuck = d < (p.lastWpD ?? Infinity) - 0.01 ? 0 : (p.stuck ?? 0) + dt;
+      p.lastWpD = d;
+      if (d < 1.2 || p.stuck > 1.5) {
+        p.waypoints.shift();
+        p.stuck = 0;
+        p.lastWpD = Infinity;
+        break;
+      }
+      goToward(p, wp.x, wp.z, p.moveSpeed ?? PED.run * 0.6, dt);
+      break;
+    }
     case 'attack': {
       const pl = world.player;
       const d = dist2D(p.x, p.z, pl.x, pl.z);

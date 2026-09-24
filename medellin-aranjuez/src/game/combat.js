@@ -77,7 +77,7 @@ export class Combat {
     const g = this.game;
     const witness = g.world.peds.some((q) => q.alive && q.faction !== 'gang' && dist2D(q.x, q.z, x, z) < (q.faction === 'police' ? 70 : 30));
     const copCar = g.world.policeUnits.some((u) => dist2D(u.vehicle.state.x, u.vehicle.state.z, x, z) < 70);
-    if (witness || copCar) g.wanted.report('shotsFired');
+    if (witness || copCar) g.wanted.report('shotsFired', g.player);
   }
 
   _applyHit(hit, w, attacker, from) {
@@ -99,7 +99,7 @@ export class Combat {
       g.audio.hit(pos);
       if (attacker === 'player' && v.driver && v.driver !== 'player') {
         v.panic = 15;
-        if (v.kind === 'police') g.wanted.report('copAssault');
+        if (v.kind === 'police') g.wanted.report('copAssault', g.player);
       }
     } else {
       g.effects.impact(pos, hit.normal, hit.kind === 'ground' ? 'dust' : 'spark');
@@ -150,8 +150,8 @@ export class Combat {
       p.sim.mode = 'dead';
       p.sim.speed = 0;
       if (attacker === 'player') {
-        if (p.faction === 'police') g.wanted.report('copKill');
-        else if (p.faction === 'civil') g.wanted.report(g.wanted.level >= 2 ? 'murderRepeat' : 'murder');
+        if (p.faction === 'police') g.wanted.report('copKill', g.player);
+        else if (p.faction === 'civil') g.wanted.report(g.wanted.level >= 2 ? 'murderRepeat' : 'murder', g.player);
         g.stats.kills++;
         if (headshot) g.hud.toast('¡Tiro a la cabeza!', 1.2);
         // Botín: plata y munición.
@@ -165,10 +165,10 @@ export class Combat {
         p.sim.mode = 'flee';
         p.sim.fleeFrom = { x: from.x, z: from.z };
         p.sim.timer = 12;
-        if (how !== 'impact') g.wanted.report('assault');
+        if (how !== 'impact') g.wanted.report('assault', g.player);
       } else {
         p.alerted = true;
-        if (p.faction === 'police') g.wanted.report('copAssault');
+        if (p.faction === 'police') g.wanted.report('copAssault', g.player);
       }
     }
   }

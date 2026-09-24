@@ -132,6 +132,19 @@ export class Hud {
       });
       ctx.stroke();
     }
+    // Zona de búsqueda policial: círculo rojo/azul donde te están buscando.
+    if (state.searchZone) {
+      const z = state.searchZone;
+      const m = this.worldToMap(z.x, z.z);
+      const on = Math.floor(performance.now() / 400) % 2;
+      ctx.beginPath();
+      ctx.arc(m.u - p.u, m.v - p.v, z.r * MAP_SCALE, 0, Math.PI * 2);
+      ctx.fillStyle = on ? 'rgba(255,45,45,0.16)' : 'rgba(45,107,255,0.16)';
+      ctx.fill();
+      ctx.strokeStyle = on ? 'rgba(255,45,45,0.8)' : 'rgba(45,107,255,0.8)';
+      ctx.lineWidth = 2.5 / zoom;
+      ctx.stroke();
+    }
     const R = Math.hypot(W, H) / zoom;
     const blip = (x, z, color, size = 5, clampEdge = false, letter = null) => {
       const m = this.worldToMap(x, z);
