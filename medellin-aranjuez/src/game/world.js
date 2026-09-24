@@ -383,7 +383,7 @@ export class World {
           }
         }
         if (d < 150) stepPed(s, dt, this.pedWorld);
-        if (s.mode === 'attack' && !player.dead) this.game.combat.npcAttack(p, dt, player, d);
+        if (s.mode === 'attack' && !player.dead && this.game.state === 'playing') this.game.combat.npcAttack(p, dt, player, d);
         // Atropellos.
         for (const v of this.vehicles) {
           const vs = v.state;
@@ -436,6 +436,12 @@ export class World {
     for (const u of [...this.policeUnits]) {
       const v = u.vehicle;
       const s = v.state;
+      // El jugador se robó la patrulla: la unidad se disuelve (los agentes
+      // siguen a pie) y el carro ya no es de la IA.
+      if (v.driver === 'player') {
+        this.policeUnits.splice(this.policeUnits.indexOf(u), 1);
+        continue;
+      }
       const d = dist2D(s.x, s.z, player.x, player.z);
       nearest = Math.min(nearest, d);
       if (wanted.level === 0 && !u.leaving) {

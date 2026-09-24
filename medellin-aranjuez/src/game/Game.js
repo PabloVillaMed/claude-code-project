@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { generateCity } from '../sim/cityLayout.js';
 import { groundHeight } from '../sim/terrain.js';
 import { dist2D } from '../sim/math.js';
+import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
 import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
@@ -412,6 +413,7 @@ export class Game {
       { groundHeight, collision: this.city.collision, obstacles },
     );
     this.stats.distance += p.state.speed * dt;
+    this._checkRunOver(dt);
     if (p.state.landedImpact > 13) {
       this.combat.damagePlayer((p.state.landedImpact - 13) * 6, null);
     }
@@ -442,6 +444,28 @@ export class Game {
     if (a.enterVehicle) {
       const v = this.world.nearestVehicle(p.state.pos.x, p.state.pos.z, 2.5);
       if (v) this.enterVehicle(v);
+    }
+  }
+
+  /** Un vehículo en marcha que golpea al jugador a pie le hace daño y lo empuja. */
+  _checkRunOver(dt) {
+    const p = this.player;
+    this.hitCooldown = Math.max(0, (this.hitCooldown ?? 0) - dt);
+    if (this.hitCooldown > 0) return;
+    for (const v of this.world.vehicles) {
+      const s = v.state;
+      const speed = Math.hypot(s.vx, s.vz);
+      if (speed < 4 || Math.abs(s.x - p.x) > 6 || Math.abs(s.z - p.z) > 6) continue;
+      const hit = circleVsObb(p.state.pos.x, p.state.pos.z, 0.45, v.obb(0.1));
+      if (!hit) continue;
+      this.hitCooldown = 1;
+      this.combat.damagePlayer(speed * 4, { x: s.x, y: s.y, z: s.z });
+      p.state.vel.x = s.vx * 0.8 + hit.nx * 3;
+      p.state.vel.z = s.vz * 0.8 + hit.nz * 3;
+      p.state.vel.y = 3;
+      p.state.onGround = false;
+      this.audio.crash({ x: p.x, y: p.y, z: p.z }, speed);
+      break;
     }
   }
 

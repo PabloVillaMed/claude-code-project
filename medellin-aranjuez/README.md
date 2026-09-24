@@ -4,6 +4,17 @@ Juego de mundo abierto en tercera persona inspirado en el barrio **Aranjuez (Com
 
 > El barrio es una recreación libre, no un plano exacto. Todo el contenido (texturas, modelos, sonido) se genera por código al arrancar: el juego no usa assets externos.
 
+## Capturas (del juego corriendo)
+
+| | |
+|---|---|
+| ![Menú](docs/capturas/00-menu-principal.png) | ![Disparando](docs/capturas/05-disparando.png) |
+| ![Taxi](docs/capturas/07-taxi-amarillo.png) | ![Moto](docs/capturas/08-moto.png) |
+| ![Persecución](docs/capturas/12-persecucion-policial.png) | ![Noche](docs/capturas/13-aranjuez-de-noche.png) |
+| ![Rueda de armas](docs/capturas/06-rueda-de-armas.png) | ![Mapa](docs/capturas/14-mapa.png) |
+
+Generadas con `npm run shots` (render por software en calidad Media; en una GPU real se ve igual pero a 60 FPS).
+
 ## Qué incluye el MVP
 
 | Área | Contenido |

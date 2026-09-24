@@ -90,6 +90,8 @@ document.body.addEventListener('click', (e) => {
       break;
     case 'mainmenu':
       game.save();
+      game.wanted.clear();
+      game.world.clearPolice();
       game.hud.show(false);
       game.setState('menu');
       break;
