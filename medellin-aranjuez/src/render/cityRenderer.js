@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
 import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
 import { makeRng } from '../sim/rng.js';
 import {
   GRID,
@@ -59,7 +60,34 @@ export class CityRenderer {
       m.normalScale.set(0.6, 0.6);
       return m;
     };
-    const towerMat = facade([t.tower], 0.6)[0];
+    // Texturas fotográficas (Poly Haven, CC0) si están disponibles.
+    this.photo = hasPhotoTextures();
+    const photoFacade = (id, layers) => {
+      const m = facadeMaterial(id, layers);
+      this.nightMaterials.push({ m, max: 1.4 });
+      return m;
+    };
+    const P = (id, opts) => (this.photo ? photoMaterial(id, opts) : null);
+    const roadOpts = { extra: { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } };
+    const towerMat = this.photo ? photoFacade('painted_plaster_wall', t.facadeTower) : facade([t.tower], 0.6)[0];
+    const photoMats = this.photo
+      ? {
+          brick: [photoFacade('red_brick', t.facadeBrick[0]), photoFacade('large_red_bricks', t.facadeBrick[1])],
+          stucco: [photoFacade('painted_plaster_wall', t.facadeStucco[0]), photoFacade('beige_wall_001', t.facadeStucco[1])],
+          concrete: P('concrete_wall_008', { uvMeters: 3, vertexColors: true }),
+          roof: P('concrete_floor_02', { uvMeters: 6 }),
+          tiles: P('clay_roof_tiles_02', { uvMeters: 3, normalScale: 1.4 }),
+          metal: P('corrugated_iron_02', { uvMeters: 3, extra: { metalness: 0.45 } }),
+          plain: P('painted_plaster_wall', { uvMeters: 4, vertexColors: true }),
+          asphalt: P('asphalt_02', { uvMeters: 9, ...roadOpts }),
+          asphaltPlain: P('asphalt_02', { uvMeters: 9, ...roadOpts }),
+          sidewalk: P('grey_tiles', { uvMeters: 4 }),
+          pavers: P('herringbone_brick', { uvMeters: 4 }),
+          grass: P('leafy_grass', { uvMeters: 10 }),
+          dryGrass: P('leafy_grass', { uvMeters: 10, color: 0xd6c48e }),
+          terrain: P('leafy_grass', { uvMeters: 8, vertexColors: true }),
+        }
+      : {};
     return {
       brick: facade(t.brick),
       stucco: facade(t.stucco),
@@ -83,6 +111,7 @@ export class CityRenderer {
       wood: std({ color: 0x7a5534, roughness: 0.7 }),
       darkMetal: std({ color: 0x23262a, roughness: 0.5, metalness: 0.7 }),
       white: std({ color: 0xf2f2ee, roughness: 0.4 }),
+      ...photoMats,
     };
   }
 
@@ -267,7 +296,63 @@ export class CityRenderer {
     const geo = g.build();
     geo.computeVertexNormals();
     this._mesh(geo, this.materials.asphalt, { cast: false, name: 'vias' });
+    if (this.photo) this._roadMarkings();
     this._mesh(gi.build(), this.materials.asphaltPlain, { cast: false, name: 'intersecciones' });
+  }
+
+  /** Línea central amarilla discontinua, bordes blancos y cebras peatonales. */
+  _roadMarkings() {
+    const yellow = new GeoBuilder();
+    const white = new GeoBuilder();
+    const H = GRID.asphaltHalf;
+    const lift = 0.045;
+    const hf = (x, z) => terrainHeight(x, z) + lift;
+    // Franja plana que sigue el terreno a lo largo de una arista.
+    const strip = (gb, a, dx, dz, t0, t1, off, w) => {
+      const rx = -dz;
+      const rz = dx;
+      const n = Math.max(1, Math.ceil((t1 - t0) / 3));
+      for (let k = 0; k < n; k++) {
+        const s0 = t0 + ((t1 - t0) * k) / n;
+        const s1 = t0 + ((t1 - t0) * (k + 1)) / n;
+        const p = (s, o) => {
+          const x = a.x + dx * s + rx * o;
+          const z = a.z + dz * s + rz * o;
+          return [x, hf(x, z), z];
+        };
+        const A = p(s0, off - w / 2);
+        const B = p(s0, off + w / 2);
+        const C = p(s1, off + w / 2);
+        const D = p(s1, off - w / 2);
+        // Normal hacia arriba independientemente del sentido.
+        const up = (B[0] - A[0]) * (D[2] - A[2]) - (B[2] - A[2]) * (D[0] - A[0]) < 0;
+        if (up) gb.quad(A, B, C, D, [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+        else gb.quad(A, D, C, B, [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+      }
+    };
+    for (const e of this.city.edges) {
+      const a = this.city.nodes[e.a];
+      const b = this.city.nodes[e.b];
+      const dx = (b.x - a.x) / e.length;
+      const dz = (b.z - a.z) / e.length;
+      const start = H + 1.5;
+      const end = e.length - H - 1.5;
+      // Línea central discontinua (3 m pintado, 3 m libre).
+      for (let t = start + 3.5; t < end - 3.5; t += 6) strip(yellow, a, dx, dz, t, Math.min(t + 3, end - 3.5), 0, 0.14);
+      // Bordes continuos.
+      for (const off of [-H + 0.35, H - 0.35]) strip(white, a, dx, dz, start, end, off, 0.12);
+      // Cebras en ambos extremos.
+      for (const [c0, dir] of [[H + 0.6, 1], [e.length - H - 0.6, -1]]) {
+        for (let k = -3; k <= 3; k++) {
+          const off = k * 1.15;
+          strip(white, a, dx, dz, c0, c0 + dir * 2.6, off, 0.55);
+        }
+      }
+    }
+    const paint = (color) =>
+      new THREE.MeshStandardMaterial({ color, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    this._mesh(yellow.build(), paint(0xe0b12a), { cast: false, name: 'linea-central' });
+    this._mesh(white.build(), paint(0xe8e8e2), { cast: false, name: 'demarcacion' });
   }
 
   // ---------------------------------------------------------------- manzanas

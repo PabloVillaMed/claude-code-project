@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { clamp, smoothstep } from '../sim/math.js';
+import { dayEnvironment } from './photoMaterials.js';
 
 /**
  * El disco solar del cielo físico llega a valores HDR enormes que desbordan
@@ -61,6 +62,8 @@ export class Environment {
     this.envScene.add(this.envSky);
     this.envTarget = null;
     this.envTimer = 0;
+    // HDRI real (Poly Haven, CC0) para la luz ambiental y reflejos de día.
+    this.dayEnv = dayEnvironment(this.pmrem);
     this.sunDir = new THREE.Vector3();
     this.night = 0;
     this._stars();
@@ -103,6 +106,13 @@ export class Environment {
     const su = this.sky.material.uniforms;
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) u[k].value = su[k].value;
     u.sunPosition.value.copy(this.sunDir);
+    // De día: HDRI fotográfico. Al atardecer y de noche: el cielo físico
+    // (sigue la hora y el color del sol).
+    if (this.dayEnv && this.night < 0.2 && this.sunDir.y > 0.18) {
+      this.scene.environment = this.dayEnv;
+      this.scene.environmentIntensity = 0.5;
+      return;
+    }
     if (this.envTarget) this.envTarget.dispose();
     this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 2000);
     this.scene.environment = this.envTarget.texture;

@@ -537,6 +537,154 @@ export function textTexture(text, { w = 1024, h = 256, bg = '#0f5132', fg = '#ff
   return toTexture(c, { repeat: false });
 }
 
+/**
+ * Capas de fachada para los materiales fotográficos: `overlay` (RGBA,
+ * transparente donde se ve la pared real), `mask` (R = vidrio, G = metal) y
+ * `emissiveMap` (ventanas encendidas de noche). Misma retícula de 4 ventanas
+ * x 4 pisos (12 m x 12 m) que las fachadas procedurales.
+ */
+function facadeLayers(seed, style) {
+  const rng = makeRng(seed);
+  const c = canvas(FACADE_PX);
+  const m = canvas(FACADE_PX);
+  const ctx = c.getContext('2d');
+  const mctx = m.getContext('2d');
+  mctx.fillStyle = '#000';
+  mctx.fillRect(0, 0, FACADE_PX, FACADE_PX);
+  // Humedad y suciedad sobre la pared (semitransparente).
+  stains(ctx, FACADE_PX, FACADE_PX, rng, 26, '35,28,20', 0.22);
+  for (let i = 0; i < 16; i++) {
+    const x = rng.next() * FACADE_PX;
+    const y = rng.next() * FACADE_PX;
+    const g = ctx.createLinearGradient(x, y, x, y + 140);
+    g.addColorStop(0, 'rgba(40,34,26,0.28)');
+    g.addColorStop(1, 'rgba(40,34,26,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, 5 + rng.next() * 12, 140);
+  }
+  for (let fy = 0; fy < 4; fy++) {
+    // Viga/placa de concreto entre pisos (típica de las casas de ladrillo).
+    if (style === 'ladrillo') {
+      const g = ctx.createLinearGradient(0, fy * TILE, 0, fy * TILE + 16);
+      g.addColorStop(0, 'rgba(150,146,138,1)');
+      g.addColorStop(1, 'rgba(120,116,108,1)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, fy * TILE, FACADE_PX, 16);
+    }
+    for (let fx = 0; fx < 4; fx++) {
+      const x0 = fx * TILE;
+      const y0 = fy * TILE;
+      const isGround = fy === 3;
+      if (isGround && style !== 'torre' && rng.chance(0.5)) {
+        const dx = x0 + TILE * 0.1;
+        const dw = TILE * 0.8;
+        const dy = y0 + TILE * 0.18;
+        const dh = TILE * 0.82;
+        const shutter = rng.chance(0.55);
+        if (shutter) {
+          // Persiana metálica enrollable de local comercial.
+          const base = rng.pick(['#8e9398', '#6f7a84', '#9aa0a4', '#5d6d5f', '#7b3b32']);
+          ctx.fillStyle = base;
+          ctx.fillRect(dx, dy, dw, dh);
+          for (let k = 0; k < dh; k += 7) {
+            ctx.fillStyle = k % 14 ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.14)';
+            ctx.fillRect(dx, dy + k, dw, 3);
+          }
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillRect(dx - 4, dy - 12, dw + 8, 12);
+          mctx.fillStyle = '#00ff00';
+          mctx.fillRect(dx, dy, dw, dh);
+        } else {
+          // Puerta de madera o reja de garaje.
+          ctx.fillStyle = rng.pick(['#4a3223', '#2f2a26', '#5b3b24', '#3a4a3f']);
+          ctx.fillRect(dx, dy, dw, dh);
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(dx + 8, dy + 8, dw / 2 - 12, dh - 16);
+          ctx.strokeRect(dx + dw / 2 + 4, dy + 8, dw / 2 - 12, dh - 16);
+          ctx.fillStyle = '#c9b27a';
+          ctx.fillRect(dx + dw / 2 - 10, dy + dh / 2, 6, 14);
+        }
+        // Marco de concreto de la puerta.
+        ctx.fillStyle = 'rgba(200,196,188,1)';
+        ctx.fillRect(dx - 8, dy - 8, dw + 16, 8);
+        ctx.fillRect(dx - 8, dy - 8, 8, dh + 8);
+        ctx.fillRect(dx + dw, dy - 8, 8, dh + 8);
+        continue;
+      }
+      const ww = TILE * (style === 'torre' ? 0.62 : 0.5);
+      const wh = TILE * 0.46;
+      const wx = x0 + (TILE - ww) / 2;
+      const wy = y0 + TILE * 0.24;
+      // Dintel y alféizar de concreto.
+      ctx.fillStyle = style === 'ladrillo' ? 'rgba(196,190,178,1)' : 'rgba(236,232,224,1)';
+      ctx.fillRect(wx - 9, wy - 9, ww + 18, wh + 18);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(wx - 9, wy + wh + 9, ww + 18, 7);
+      // Vidrio: oscuro; el reflejo lo pone el entorno (máscara R).
+      const g = ctx.createLinearGradient(wx, wy, wx + ww, wy + wh);
+      g.addColorStop(0, '#2e3b45');
+      g.addColorStop(0.6, '#141b21');
+      g.addColorStop(1, '#23303a');
+      ctx.fillStyle = g;
+      ctx.fillRect(wx, wy, ww, wh);
+      mctx.fillStyle = '#ff0000';
+      mctx.fillRect(wx, wy, ww, wh);
+      // Cortinas.
+      if (rng.chance(0.5)) {
+        const cols = ['#e8dcc0', '#c0564b', '#6a8caf', '#e2c35a', '#f3f0ea', '#8a6f9e'];
+        ctx.fillStyle = rng.pick(cols);
+        const cw = ww * rng.range(0.22, 0.5);
+        const cx = rng.chance(0.5) ? wx + 4 : wx + ww - cw - 4;
+        ctx.fillRect(cx, wy + 4, cw, wh - 8);
+        mctx.fillStyle = '#000000';
+        mctx.fillRect(cx, wy + 4, cw, wh - 8);
+      }
+      // Marco de aluminio con divisiones.
+      ctx.strokeStyle = style === 'torre' ? '#2a2f33' : rng.pick(['#b8bcbf', '#d7d9db', '#3a3a3a', '#8a6a3f']);
+      ctx.lineWidth = 5;
+      ctx.strokeRect(wx, wy, ww, wh);
+      ctx.beginPath();
+      ctx.moveTo(wx + ww / 2, wy);
+      ctx.lineTo(wx + ww / 2, wy + wh);
+      ctx.stroke();
+      // Reja (muy típica en Medellín).
+      if (style !== 'torre' && rng.chance(0.6)) {
+        ctx.strokeStyle = '#1b1b1b';
+        mctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = mctx.lineWidth = 3;
+        const bars = 7;
+        for (let k = 1; k < bars; k++) {
+          const bx = wx + (ww * k) / bars;
+          for (const c2 of [ctx, mctx]) {
+            c2.beginPath();
+            c2.moveTo(bx, wy - 2);
+            c2.lineTo(bx, wy + wh + 2);
+            c2.stroke();
+          }
+        }
+        for (const c2 of [ctx, mctx]) {
+          c2.beginPath();
+          c2.moveTo(wx, wy + wh * 0.5);
+          c2.lineTo(wx + ww, wy + wh * 0.5);
+          c2.stroke();
+        }
+      }
+    }
+  }
+  if (style !== 'torre') {
+    // Zócalo sucio en el primer piso.
+    const g = ctx.createLinearGradient(0, FACADE_PX - 60, 0, FACADE_PX);
+    g.addColorStop(0, 'rgba(40,32,24,0)');
+    g.addColorStop(1, 'rgba(40,32,24,0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, FACADE_PX - 60, FACADE_PX, 60);
+  }
+  const overlay = toTexture(c);
+  const mask = toTexture(m, { srgb: false });
+  return { overlay, mask, emissiveMap: emissiveWindows(makeRng(seed + 7), style) };
+}
+
 /** Crea (una sola vez) todas las texturas del juego. */
 export function createTextureLibrary() {
   return {
@@ -555,5 +703,9 @@ export function createTextureLibrary() {
     field: grassTexture(93, [52, 110, 45]),
     tiles: tilesTexture(101),
     metal: metalTexture(111),
+    // Capas para fachadas con texturas fotográficas.
+    facadeBrick: [facadeLayers(211, 'ladrillo'), facadeLayers(212, 'ladrillo')],
+    facadeStucco: [facadeLayers(221, 'pintada'), facadeLayers(222, 'pintada')],
+    facadeTower: facadeLayers(231, 'torre'),
   };
 }
