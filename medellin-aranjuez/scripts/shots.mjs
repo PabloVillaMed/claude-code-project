@@ -108,18 +108,19 @@ if (want('busqueda')) {
   await G(() => window.__gameInstance.wanted.clear());
   await adv(1);
 }
-for (const [id, name, dx, dz, yaw, pitch] of [
-  ['moravia', '16-morro-de-moravia', 30, 30, -Math.PI * 0.75, 0.12],
-  ['explora', '17-parque-explora', 14, 0, -Math.PI / 2, 0.1],
+for (const [id, name, dx, dz, yaw, pitch, hour] of [
+  ['moravia', '16-morro-de-moravia', 30, 30, Math.PI / 4, 0.12],
+  ['explora', '17-parque-explora', 5.5, 0, Math.PI / 2, 0.1, 10.5],
   ['cementerio', '18-cementerio-san-pedro', 0, -6, Math.PI, 0.05],
   ['museo', '19-casa-museo-pedro-nel-gomez', 0, 8, 0, 0.02],
 ]) {
   if (!want(id)) continue;
-  await G(([id, dx, dz, yaw, pitch]) => {
+  await G(([id, dx, dz, yaw, pitch, hour]) => {
+    if (hour) window.__game.setTime(hour);
     const p = window.__game.pois().find((x) => x.id === id);
     window.__game.teleport(p.x + dx, p.z + dz);
     window.__game.look(yaw, pitch);
-  }, [id, dx, dz, yaw, pitch]);
+  }, [id, dx, dz, yaw, pitch, hour]);
   await adv(1.5);
   await shot(name);
 }
