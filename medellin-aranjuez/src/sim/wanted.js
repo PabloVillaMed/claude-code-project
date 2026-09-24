@@ -83,7 +83,8 @@ export class WantedSystem {
     if (this.level === 0) return 0;
     if (seenByPolice) {
       this.unseenTimer = 0;
-      if (pos) this.spot(pos.x, pos.z, pos.vx ?? 0, pos.vz ?? 0);
+      // Sin velocidad en `pos`, se conserva la última que se midió al verlo.
+      if (pos) this.spot(pos.x, pos.z, pos.vx ?? this.lastVel.x, pos.vz ?? this.lastVel.z);
       return this.level;
     }
     this.sinceSeen += dt;

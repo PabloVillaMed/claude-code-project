@@ -75,6 +75,7 @@ describe('lo que sabe la policía (nivel de búsqueda)', () => {
     const w = new WantedSystem();
     w.report('shotsFired', { x: 0, z: 0 });
     w.spot(0, 0, 10, 0); // iba hacia el este a 10 m/s
+    w.update(0.1, true, { x: 0, z: 0 }); // (el juego confirma la posición sin velocidad)
     for (let t = 0; t < 3; t += 0.1) w.update(0.1, false, { x: 300, z: 0 });
     expect(w.zoneCenter().x).toBeGreaterThan(10);
     expect(w.zoneCenter().z).toBeCloseTo(0);

@@ -452,8 +452,14 @@ export class World {
     const graph = this.graph;
     // Velocidad del jugador (para adelantar la zona hacia donde iba).
     const lp = (this._lastPlayerPos ??= { x: player.x, z: player.z });
-    const pvx = (player.x - lp.x) / Math.max(dt, 1e-3);
-    const pvz = (player.z - lp.z) / Math.max(dt, 1e-3);
+    let pvx = (player.x - lp.x) / Math.max(dt, 1e-3);
+    let pvz = (player.z - lp.z) / Math.max(dt, 1e-3);
+    const pv = Math.hypot(pvx, pvz);
+    if (pv > 35) {
+      // Teletransporte o reaparición: no es una velocidad real.
+      pvx = 0;
+      pvz = 0;
+    }
     lp.x = player.x;
     lp.z = player.z;
 
