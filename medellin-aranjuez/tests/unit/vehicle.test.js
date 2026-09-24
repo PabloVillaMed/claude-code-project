@@ -98,6 +98,58 @@ describe('vehículos', () => {
     expect(maxLat).toBeGreaterThan(maxLatNoHb * 1.5);
   });
 
+  it('a alta velocidad el agarre limita el giro (subviraje) y a baja no', () => {
+    const env = flatEnv();
+    const run = (speed) => {
+      const v = createVehicleState('sedan', 0, 0, 0, env.groundHeight);
+      v.vz = -speed;
+      v.forwardSpeed = speed;
+      let maxAy = 0;
+      for (let t = 0; t < 1.5; t += 1 / 60) {
+        stepVehicle(v, drive({ throttle: 0.5, steer: 1 }), 1 / 60, env);
+        maxAy = Math.max(maxAy, Math.abs(v.forwardSpeed * v.yawRate));
+      }
+      return maxAy;
+    };
+    const g = 9.8 * VEHICLE_TYPES.sedan.mu;
+    expect(run(32)).toBeLessThan(g * 1.25);
+    expect(run(32)).toBeGreaterThan(g * 0.6);
+  });
+
+  it('con freno de mano la cola se suelta y el contravolante frena el giro', () => {
+    const env = flatEnv();
+    const spin = (steerLater) => {
+      const v = createVehicleState('sedan', 0, 0, 0, env.groundHeight);
+      v.vz = -18;
+      v.forwardSpeed = 18;
+      for (let t = 0; t < 0.5; t += 1 / 60) stepVehicle(v, drive({ steer: 1, handbrake: true }), 1 / 60, env);
+      for (let t = 0; t < 0.4; t += 1 / 60) stepVehicle(v, drive({ steer: steerLater, handbrake: false, throttle: 0.4 }), 1 / 60, env);
+      return v;
+    };
+    const noHb = createVehicleState('sedan', 0, 0, 0, env.groundHeight);
+    noHb.vz = -18;
+    noHb.forwardSpeed = 18;
+    for (let t = 0; t < 0.5; t += 1 / 60) stepVehicle(noHb, drive({ steer: 1 }), 1 / 60, env);
+    const hb = createVehicleState('sedan', 0, 0, 0, env.groundHeight);
+    hb.vz = -18;
+    hb.forwardSpeed = 18;
+    for (let t = 0; t < 0.5; t += 1 / 60) stepVehicle(hb, drive({ steer: 1, handbrake: true }), 1 / 60, env);
+    expect(Math.abs(hb.yawRate)).toBeGreaterThan(Math.abs(noHb.yawRate) * 1.3);
+    expect(hb.slip).toBeGreaterThan(noHb.slip);
+    // Contravolante: girar al lado contrario reduce la rotación.
+    expect(Math.abs(spin(-1).yawRate)).toBeLessThan(Math.abs(spin(1).yawRate));
+  });
+
+  it('la carrocería cabecea al frenar (nariz abajo) y al arrancar (nariz arriba)', () => {
+    const env = flatEnv();
+    const v = createVehicleState('taxi', 0, 0, 0, env.groundHeight);
+    simulate(v, drive({ throttle: 1 }), 0.5, env);
+    expect(v.bodyPitch).toBeGreaterThan(0.01);
+    simulate(v, drive({ throttle: 1 }), 3, env);
+    simulate(v, drive({ brake: 1 }), 0.4, env);
+    expect(v.bodyPitch).toBeLessThan(-0.01);
+  });
+
   it('choca contra una pared: no la atraviesa, rebota y recibe daño', () => {
     const env = flatEnv([{ minX: -20, maxX: 20, minZ: -61, maxZ: -60, minY: -1, maxY: 10 }]);
     const v = createVehicleState('taxi', 0, 0, 0, env.groundHeight);

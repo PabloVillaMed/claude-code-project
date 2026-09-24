@@ -1,17 +1,21 @@
-// Física arcade de vehículos (modelo bicicleta con agarre lateral): aceleración,
-// frenado, reversa, freno de mano con derrape, pendientes, colisiones y daño.
+// Física arcade de vehículos (modelo bicicleta con agarre limitado): el giro
+// y la corrección del deslizamiento lateral no pueden pedir más aceleración
+// de la que dan las llantas (mu·g), así que a alta velocidad el carro subvira
+// y los derrapes conservan el impulso y se corrigen con contravolante; con el
+// freno de mano se suelta la cola. Aceleración, frenado, reversa, pendientes,
+// inercia de giro, cabeceo y balanceo de la carrocería, colisiones y daño.
 
 import { clamp, damp, forwardX, forwardZ, rightX, rightZ, wrapAngle } from './math.js';
 import { aabbToObb, obbVsObb } from './collision.js';
 import { PLAY_BOUNDS } from './terrain.js';
 
 export const VEHICLE_TYPES = {
-  taxi: { name: 'Taxi', length: 3.7, width: 1.65, height: 1.5, mass: 950, maxSpeed: 40, accel: 7.5, brake: 16, reverseMax: 8, steerMax: 0.6, wheelBase: 2.4, grip: 10, handbrakeGrip: 1.6, health: 1000, seats: 4 },
-  sedan: { name: 'Sedán', length: 4.4, width: 1.8, height: 1.45, mass: 1250, maxSpeed: 46, accel: 8.5, brake: 17, reverseMax: 9, steerMax: 0.58, wheelBase: 2.7, grip: 10, handbrakeGrip: 1.5, health: 1000, seats: 4 },
-  camioneta: { name: 'Camioneta', length: 4.7, width: 1.95, height: 1.85, mass: 1900, maxSpeed: 42, accel: 7, brake: 15, reverseMax: 8, steerMax: 0.55, wheelBase: 2.85, grip: 9, handbrakeGrip: 1.8, health: 1400, seats: 5 },
-  buseta: { name: 'Buseta', length: 7.8, width: 2.3, height: 2.9, mass: 5500, maxSpeed: 26, accel: 3.6, brake: 10, reverseMax: 5, steerMax: 0.5, wheelBase: 4.6, grip: 8, handbrakeGrip: 3, health: 2200, seats: 1 },
-  policia: { name: 'Patrulla', length: 4.5, width: 1.85, height: 1.55, mass: 1400, maxSpeed: 50, accel: 9.5, brake: 18, reverseMax: 9, steerMax: 0.6, wheelBase: 2.75, grip: 11, handbrakeGrip: 1.6, health: 1300, seats: 2 },
-  moto: { name: 'Moto', length: 2.0, width: 0.75, height: 1.2, mass: 180, maxSpeed: 44, accel: 10.5, brake: 15, reverseMax: 2.5, steerMax: 0.62, wheelBase: 1.35, grip: 12, handbrakeGrip: 2.2, health: 500, seats: 2, twoWheels: true },
+  taxi: { name: 'Taxi', length: 3.7, width: 1.65, height: 1.5, mass: 950, maxSpeed: 40, accel: 7.5, brake: 16, reverseMax: 8, steerMax: 0.6, wheelBase: 2.4, grip: 10, handbrakeGrip: 1.6, mu: 0.95, health: 1000, seats: 4 },
+  sedan: { name: 'Sedán', length: 4.4, width: 1.8, height: 1.45, mass: 1250, maxSpeed: 46, accel: 8.5, brake: 17, reverseMax: 9, steerMax: 0.58, wheelBase: 2.7, grip: 10, handbrakeGrip: 1.5, mu: 1.0, health: 1000, seats: 4 },
+  camioneta: { name: 'Camioneta', length: 4.7, width: 1.95, height: 1.85, mass: 1900, maxSpeed: 42, accel: 7, brake: 15, reverseMax: 8, steerMax: 0.55, wheelBase: 2.85, grip: 9, handbrakeGrip: 1.8, mu: 0.88, health: 1400, seats: 5 },
+  buseta: { name: 'Buseta', length: 7.8, width: 2.3, height: 2.9, mass: 5500, maxSpeed: 26, accel: 3.6, brake: 10, reverseMax: 5, steerMax: 0.5, wheelBase: 4.6, grip: 8, handbrakeGrip: 3, mu: 0.75, health: 2200, seats: 1 },
+  policia: { name: 'Patrulla', length: 4.5, width: 1.85, height: 1.55, mass: 1400, maxSpeed: 50, accel: 9.5, brake: 18, reverseMax: 9, steerMax: 0.6, wheelBase: 2.75, grip: 11, handbrakeGrip: 1.6, mu: 1.08, health: 1300, seats: 2 },
+  moto: { name: 'Moto', length: 2.0, width: 0.75, height: 1.2, mass: 180, maxSpeed: 44, accel: 10.5, brake: 15, reverseMax: 2.5, steerMax: 0.62, wheelBase: 1.35, grip: 12, handbrakeGrip: 2.2, mu: 1.05, health: 500, seats: 2, twoWheels: true },
 };
 
 const GRAVITY = 9.8;
@@ -40,6 +44,10 @@ export function createVehicleState(type, x, z, heading, groundFn) {
     lastImpact: 0,
     handbrake: false,
     throttle: 0,
+    yawRate: 0, // rad/s (positivo = a la derecha)
+    bodyPitch: 0, // cabeceo de la carrocería por acelerar/frenar (visual)
+    bodyRoll: 0, // balanceo en las curvas (visual)
+    slip: 0, // velocidad lateral absoluta (derrape)
   };
 }
 
@@ -71,11 +79,19 @@ function substep(v, input, dt, env) {
   // --- Dirección con reducción a alta velocidad ---
   const speedAbs = Math.abs(v.forwardSpeed);
   const steerLimit = sp.steerMax / (1 + speedAbs / 22);
-  v.steer = damp(v.steer, clamp(input.steer, -1, 1) * steerLimit, 8, dt);
+  v.steer = damp(v.steer, clamp(input.steer, -1, 1) * steerLimit, sp.twoWheels ? 10 : 8, dt);
 
-  // Giro según geometría de Ackermann simplificada. Derecha = yaw decreciente.
-  const yawRate = (v.forwardSpeed / sp.wheelBase) * Math.tan(v.steer);
-  v.heading = wrapAngle(v.heading - yawRate * dt);
+  // Giro: Ackermann simplificado, limitado por el agarre (subviraje) y con
+  // inercia. Con freno de mano la cola se suelta y el carro rota de más
+  // (sobreviraje), y el contravolante lo frena. Derecha = yaw decreciente.
+  const aMax = (sp.mu ?? 0.95) * GRAVITY;
+  const kin = (v.forwardSpeed / sp.wheelBase) * Math.tan(v.steer);
+  const wMax = aMax / Math.max(2.5, speedAbs);
+  const hb = !!input.handbrake && speedAbs > 4;
+  const target = hb ? kin * 1.8 : clamp(kin, -wMax * 1.1, wMax * 1.1);
+  const yawResp = sp.mass > 3000 ? 5 : sp.twoWheels ? 14 : 9;
+  v.yawRate = damp(v.yawRate ?? 0, target, yawResp, dt);
+  v.heading = wrapAngle(v.heading - v.yawRate * dt);
 
   // --- Descomponer velocidad en el nuevo marco ---
   const fx = forwardX(v.heading);
@@ -111,9 +127,20 @@ function substep(v, input, dt, env) {
   if (input.handbrake) vf = damp(vf, 0, 1.2, dt);
   v.handbrake = !!input.handbrake;
 
-  // --- Agarre lateral (derrape con freno de mano) ---
+  // --- Agarre lateral: las llantas anulan el deslizamiento hasta su límite
+  //     (si se pide más, el carro derrapa y conserva parte del impulso) ---
   const grip = input.handbrake ? sp.handbrakeGrip : sp.grip;
-  vr = damp(vr, 0, grip, dt);
+  const want = vr * (1 - Math.exp(-grip * dt));
+  const limit = (input.handbrake ? 0.45 : 1) * aMax * 1.2 * dt;
+  vr -= clamp(want, -limit, limit);
+  v.slip = Math.abs(vr);
+
+  // --- Carrocería: cabecea al acelerar/frenar y se balancea en las curvas ---
+  const ax = (vf - (v.forwardSpeed ?? vf)) / Math.max(dt, 1e-4);
+  const ay = vf * (v.yawRate ?? 0);
+  const soft = sp.twoWheels ? 0 : sp.mass > 3000 ? 1.5 : 1;
+  v.bodyPitch = damp(v.bodyPitch ?? 0, clamp(ax * 0.0045 * soft, -0.055, 0.045), 7, dt);
+  v.bodyRoll = damp(v.bodyRoll ?? 0, clamp(ay * 0.0042 * soft, -0.07, 0.07), 6, dt);
 
   v.forwardSpeed = vf;
   v.lateralSpeed = vr;

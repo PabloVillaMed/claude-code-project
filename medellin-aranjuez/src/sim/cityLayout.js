@@ -13,6 +13,7 @@ import {
   MAP_MIN_X,
   MAP_MIN_Z,
   MAP_MAX_Z,
+  onRoad as onRoadCheck,
 } from './terrain.js';
 import { CollisionWorld } from './collision.js';
 
@@ -380,6 +381,81 @@ function addStreetLife(city, rng) {
     }
   }
 
+  const blockAtPt = (x, z) => city.blocks.find((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) ?? null;
+
+  // 6) Placas de nomenclatura en una esquina de cada cruce ("Cl 92" / "Cr 49").
+  for (const n of city.nodes) {
+    if (!n.active) continue;
+    const axes = new Set(n.links.map((l) => city.edges[l.edge].axis));
+    if (axes.size < 2) continue;
+    const d = GRID.blockInset + 0.45;
+    for (const [sx, sz] of [[1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const x = n.x + sx * d;
+      const z = n.z + sz * d;
+      const block = blockAtPt(x, z);
+      if (!block || block.merged) continue;
+      if (place({ type: 'streetSign', x, z, calle: n.j, carrera: n.i, collider: { hx: 0.07, hz: 0.07 } }, block)) break;
+    }
+  }
+
+  // 7) Paraderos de bus (banca y aviso) en las vías por donde pasan las busetas.
+  const busRoute = (e) => (e.axis === 'z' && (e.i === 1 || e.i === 4)) || (e.axis === 'x' && (e.j === 1 || e.j === 6));
+  let stopK = 0;
+  for (const e of city.edges) {
+    if (!busRoute(e) || stopK++ % 2) continue;
+    const a = city.nodes[e.a];
+    const b = city.nodes[e.b];
+    const mx = (a.x + b.x) / 2;
+    const mz = (a.z + b.z) / 2;
+    for (const side of rng.chance(0.5) ? [1, -1] : [-1, 1]) {
+      const off = GRID.blockInset + 0.55;
+      const x = mx + (e.axis === 'z' ? side * off : 0);
+      const z = mz + (e.axis === 'x' ? side * off : 0);
+      const block = blockAtPt(x, z);
+      if (!block || block.merged) continue;
+      // La banca mira a la calle.
+      const rot = e.axis === 'z' ? (side > 0 ? -Math.PI / 2 : Math.PI / 2) : side > 0 ? Math.PI : 0;
+      const along = e.axis === 'z';
+      if (place({ type: 'busStop', x, z, rot, collider: { hx: along ? 0.3 : 1.1, hz: along ? 1.1 : 0.3, maxY: ground(x, z) + 0.9 } }, block)) break;
+    }
+  }
+
+  // 8) Venteros ambulantes: minutos, frutas, mango biche, arepas, helados y
+  //    dulces, cerca de los lugares concurridos y en las vías principales.
+  const VENDORS = ['minutos', 'frutas', 'mangos', 'arepas', 'helados', 'dulces'];
+  const spots = [];
+  for (const id of ['parque', 'iglesia', 'metro', 'cementerio', 'explora', 'hospital', 'cancha', 'museo', 'botanico', 'moravia']) {
+    const poi = city.pois.find((q) => q.id === id);
+    if (poi) spots.push(poi, poi);
+  }
+  for (const e of city.edges) if (busRoute(e) && rng.chance(0.25)) spots.push({ x: (city.nodes[e.a].x + city.nodes[e.b].x) / 2, z: (city.nodes[e.a].z + city.nodes[e.b].z) / 2 });
+  let vk = rng.int(0, VENDORS.length - 1);
+  for (const sp of spots) {
+    for (let tries = 0; tries < 16; tries++) {
+      const ang = rng.range(0, Math.PI * 2);
+      const rr = rng.range(5, 14);
+      const x = sp.x + Math.cos(ang) * rr;
+      const z = sp.z + Math.sin(ang) * rr;
+      const block = blockAtPt(x, z);
+      if (!block || onRoadCheck(x, z)) continue;
+      // Solo en el andén (no dentro de los lotes) o en plazas abiertas.
+      const inLot = x > block.lot.minX && x < block.lot.maxX && z > block.lot.minZ && z < block.lot.maxZ;
+      if (inLot && !['parque', 'botanico', 'moravia', 'cancha', 'mirador'].includes(block.type)) continue;
+      // Mirando hacia la calle más cercana.
+      const dW = x - block.minX;
+      const dE = block.maxX - x;
+      const dN = z - block.minZ;
+      const dS = block.maxZ - z;
+      const m = Math.min(dW, dE, dN, dS);
+      const rot = m === dN ? Math.PI : m === dS ? 0 : m === dW ? -Math.PI / 2 : Math.PI / 2;
+      const p = place({ type: 'vendor', kind: VENDORS[vk % VENDORS.length], x, z, rot, collider: { hx: 0.55, hz: 0.55, maxY: ground(x, z) + 1.2 } }, block);
+      if (p) {
+        vk++;
+        break;
+      }
+    }
+  }
+
   for (const p of added) {
     if (!p.collider) continue;
     const c = p.collider;
@@ -509,6 +585,7 @@ function fillSide(ctx, lot, side, depthMax, opts = {}) {
       tank: floors < 6 && rng.chance(0.55),
       roof: floors <= 2 && rng.chance(0.3) ? 'tejas' : 'flat',
       balcony: floors >= 3 && rng.chance(opts.informal ? 0.2 : 0.5),
+      informal: !!opts.informal,
     });
     a += w;
   }
@@ -557,15 +634,16 @@ function addSidewalkProps(block, ctx) {
       });
     }
   }
-  // Motos parqueadas en el andén (muy de Medellín).
-  if (block.type === 'residencial' && rng.chance(0.45)) {
+  // Motos parqueadas en el andén (muy de Medellín): a veces varias.
+  const nMotos = block.type === 'residencial' ? (rng.chance(0.75) ? rng.int(1, 3) : 0) : 0;
+  for (let mk = 0; mk < nMotos; mk++) {
     const s = rng.pick(sides);
     // Buscar un hueco libre entre faroles y árboles del andén.
     for (let tries = 0; tries < 12; tries++) {
       const t = rng.range(0.15, 0.85);
       const x = s.horiz ? s.x0 + (s.x1 - s.x0) * t : s.x;
       const z = s.horiz ? s.z : s.z0 + (s.z1 - s.z0) * t;
-      const clash = ctx.city.props.some((p) => p.collider && Math.abs(p.x - x) < 1.8 && Math.abs(p.z - z) < 1.8);
+      const clash = ctx.city.props.some((p) => p.collider && Math.abs(p.x - x) < 1.8 && Math.abs(p.z - z) < 1.8) || ctx.city.parkedVehicles.some((v) => Math.hypot(v.x - x, v.z - z) < 2.2);
       if (clash) continue;
       ctx.city.parkedVehicles.push({ type: 'moto', x, z, heading: s.rot + Math.PI / 2 });
       break;
