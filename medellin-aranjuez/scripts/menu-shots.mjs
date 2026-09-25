@@ -1,0 +1,46 @@
+// Capturas de las pantallas de inicio (carga, menú, entrada, pausa): node scripts/menu-shots.mjs <carpeta>
+import { chromium } from '@playwright/test';
+import { serveDist } from './serve.mjs';
+import path from 'node:path';
+const out = process.argv[2] ?? 'menu-shots';
+const PORT = +(process.env.SHOTS_PORT ?? 4221);
+const server = await serveDist(PORT, path.resolve(process.env.DIST_DIR ?? 'dist'));
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+page.on('console', (m) => m.type() === 'error' && !/404|favicon/.test(m.text()) && errors.push(m.text()));
+await page.goto(`http://localhost:${PORT}/?quality=${process.env.Q ?? 'media'}`, { timeout: 600000 });
+await page.waitForTimeout(2500);
+await page.screenshot({ path: `${out}/01-carga.png` });
+await page.waitForFunction(() => window.__game?.ready, null, { timeout: 900000 });
+const frames = async (n) => {
+  const s = await page.evaluate(() => window.__game.frames);
+  await page.waitForFunction((t) => window.__game.frames >= t, s + n, { timeout: 900000 });
+};
+await frames(40);
+await page.screenshot({ path: `${out}/02-menu.png` });
+await page.hover('[data-action="play"]');
+await frames(8);
+await page.screenshot({ path: `${out}/03-menu-hover.png` });
+// Otra toma del menú.
+await page.evaluate(() => (window.__gameInstance.menuT = 23.5));
+await frames(20);
+await page.screenshot({ path: `${out}/04-menu-toma.png` });
+await page.click('[data-action="play"]');
+await page.waitForFunction(() => window.__game.state().state === 'playing', null, { timeout: 900000 });
+await frames(14);
+await page.screenshot({ path: `${out}/05-entrada.png` });
+await page.waitForFunction(() => !window.__gameInstance.intro, null, { timeout: 900000 });
+await frames(6);
+await page.screenshot({ path: `${out}/06-en-juego.png` });
+await page.evaluate(() => window.__gameInstance.pause());
+await frames(4);
+await page.screenshot({ path: `${out}/07-pausa.png` });
+await page.click('#pause [data-action="settings"]');
+await frames(4);
+await page.screenshot({ path: `${out}/08-configuracion.png` });
+console.log('ERRORES', JSON.stringify(errors));
+await browser.close();
+server.close?.();
+process.exit(0);

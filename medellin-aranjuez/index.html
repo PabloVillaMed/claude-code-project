@@ -66,30 +66,56 @@
       <div id="map-legend"></div>
     </div>
 
-    <!-- Menús -->
-    <div id="menu" class="overlay">
+    <!-- Velo de transiciones y franjas de cine -->
+    <div id="fade"></div>
+    <div id="letterbox"><i class="lb-top"></i><i class="lb-bottom"></i></div>
+
+    <!-- Pantalla de carga -->
+    <div id="boot">
+      <div class="boot-bg"></div>
+      <div class="boot-grain"></div>
+      <div class="boot-center">
+        <div class="brand">
+          <div class="brand-top"><span>M</span><span>E</span><span>D</span><span>E</span><span>L</span><span>L</span><span>Í</span><span>N</span></div>
+          <div class="brand-main">ARANJUEZ</div>
+          <div class="brand-rule"></div>
+          <div class="brand-sub">Comuna 4 · Moravia · Mundo abierto</div>
+        </div>
+      </div>
+      <div class="boot-bottom">
+        <div class="boot-tip"><span class="tip-k">¿Sabías que…?</span><span id="boot-tip-text"></span></div>
+        <div class="boot-progress">
+          <div class="boot-row"><span id="boot-stage">Iniciando…</span><span id="boot-pct">0 %</span></div>
+          <div class="boot-track"><div id="boot-fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Menú principal -->
+    <div id="menu" class="overlay hidden">
       <div class="menu-bg"></div>
-      <div class="menu-panel">
+      <div class="menu-panel menu-main-panel">
         <div class="logo">
           <div class="logo-top">MEDELLÍN</div>
           <div class="logo-bottom">ARANJUEZ</div>
           <div class="logo-sub">Comuna 4 · Mundo abierto</div>
         </div>
-        <div id="menu-main" class="menu-buttons">
-          <button data-action="continue" class="hidden">Continuar partida</button>
-          <button data-action="play">Nueva partida</button>
-          <button data-action="controls">Controles</button>
-          <button data-action="credits">Créditos</button>
-          <button data-action="settings">Configuración</button>
-          <button data-action="quit">Salir</button>
+        <div id="menu-main" class="menu-buttons main">
+          <button data-action="continue" class="hidden"><span class="t">Continuar partida</span><span class="d" id="continue-desc">Retoma donde la dejaste</span></button>
+          <button data-action="play"><span class="t">Nueva partida</span><span class="d">Empieza en el Parque de Aranjuez</span></button>
+          <button data-action="controls"><span class="t">Controles</span><span class="d">Teclado, ratón y mando</span></button>
+          <button data-action="settings"><span class="t">Configuración</span><span class="d">Gráficos, sonido y pantalla</span></button>
+          <button data-action="credits"><span class="t">Créditos</span><span class="d">Datos, modelos y sonidos libres</span></button>
+          <button data-action="quit"><span class="t">Salir</span><span class="d">Cerrar el juego</span></button>
         </div>
-        <div id="loading" class="hidden"><div class="load-text">Construyendo el barrio…</div><div class="bar"><div id="load-bar"></div></div></div>
       </div>
+      <div class="menu-caption"><div class="cap-kicker">Estás viendo</div><div id="menu-cap-title">Parque de Aranjuez</div><div id="menu-cap-sub"></div></div>
+      <div class="menu-footer"><span id="menu-version"></span><span class="menu-keys"><kbd>↑</kbd><kbd>↓</kbd> Elegir <kbd>Enter</kbd> Aceptar <kbd>Esc</kbd> Volver</span></div>
     </div>
 
     <div id="pause" class="overlay hidden">
       <div class="menu-panel">
-        <h1>PAUSA</h1>
+        <div class="panel-kicker">Medellín · Aranjuez</div><h1>Pausa</h1>
         <div class="menu-buttons">
           <button data-action="resume">Continuar</button>
           <button data-action="map">Mapa</button>
@@ -105,7 +131,7 @@
 
     <div id="controls" class="overlay hidden">
       <div class="menu-panel wide">
-        <h1>Controles</h1>
+        <div class="panel-kicker">Cómo se juega</div><h1>Controles</h1>
         <div class="controls-grid">
           <div>
             <h3>A pie</h3>
@@ -146,7 +172,7 @@
 
     <div id="settings" class="overlay hidden">
       <div class="menu-panel">
-        <h1>Configuración</h1>
+        <div class="panel-kicker">Ajustes</div><h1>Configuración</h1>
         <label>Calidad gráfica
           <select id="set-quality">
             <option value="baja">Baja</option>
@@ -171,7 +197,7 @@
 
     <div id="credits" class="overlay hidden">
       <div class="menu-panel wide">
-        <h1>Créditos</h1>
+        <div class="panel-kicker">Gracias</div><h1>Créditos</h1>
         <p class="note">Juego hecho con three.js. Modelos, texturas y datos de terceros con licencias libres; gracias a sus autores.</p>
         <div id="credits-body"></div>
         <div class="menu-buttons"><button data-action="back">Volver</button></div>

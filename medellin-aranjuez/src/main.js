@@ -10,6 +10,7 @@ import '@fontsource/barlow-condensed/latin-700.css';
 import { Game, loadSave, saveSettings } from './game/Game.js';
 import { LINE_ICONS, weaponIconHtml } from './ui/icons.js';
 import { creditsHtml } from './ui/credits.js';
+import pkg from '../package.json';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -24,6 +25,8 @@ let returnTo = 'menu'; // a dónde vuelven Controles/Configuración
 
 function showOverlay(id) {
   for (const o of ['menu', 'pause', 'controls', 'settings', 'credits', 'shop', 'map-screen']) $(o).classList.toggle('hidden', o !== id);
+  document.body.classList.toggle('menu-open', id === 'menu');
+  if (id === 'menu') $('menu').classList.remove('leaving');
 }
 
 function hideOverlays() {
@@ -31,7 +34,35 @@ function hideOverlays() {
 }
 
 function refreshMenu() {
-  $('menu').querySelector('[data-action="continue"]').classList.toggle('hidden', !loadSave());
+  const save = loadSave();
+  $('menu').querySelector('[data-action="continue"]').classList.toggle('hidden', !save);
+  if (save) {
+    const min = Math.floor((save.stats?.playTime ?? 0) / 60);
+    $('continue-desc').textContent = `${save.missions?.length ?? 0}/3 misiones · $${(save.money ?? 0).toLocaleString('es-CO')} · ${min} min jugados`;
+  }
+}
+
+// Leyenda del lugar que muestra la cámara del menú.
+game.onMenuShot = (shot) => {
+  const cap = document.querySelector('.menu-caption');
+  cap.classList.add('swap');
+  setTimeout(() => {
+    $('menu-cap-title').textContent = shot.title;
+    $('menu-cap-sub').textContent = shot.sub;
+    cap.classList.remove('swap');
+  }, 450);
+};
+$('menu-version').textContent = `Versión ${pkg.version} · Datos © OpenStreetMap`;
+
+/** Del menú a la partida: el panel se va, fundido a negro y entrada de cine. */
+function enterGame(save) {
+  $('menu').classList.add('leaving');
+  game.setFade(1);
+  setTimeout(() => {
+    game.newGame(save);
+    resumeFullscreen();
+    if (!autotest) game.input.requestLock();
+  }, 550);
 }
 
 game.onStateChange = (s) => {
@@ -79,14 +110,10 @@ document.body.addEventListener('click', (e) => {
   const action = btn.dataset.action;
   switch (action) {
     case 'play':
-      game.newGame();
-      resumeFullscreen();
-      if (!autotest) game.input.requestLock();
+      enterGame(null);
       break;
     case 'continue':
-      game.newGame(loadSave());
-      resumeFullscreen();
-      if (!autotest) game.input.requestLock();
+      enterGame(loadSave());
       break;
     case 'resume':
       game.resume();
@@ -242,24 +269,118 @@ function applySettings() {
 }
 for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
 
+// ---------------------------------------------------------------- navegación con teclado y mando
+function visibleButtons() {
+  const ov = ['menu', 'pause', 'controls', 'settings', 'credits', 'shop'].map($).find((o) => !o.classList.contains('hidden'));
+  return ov ? [...ov.querySelectorAll('.menu-buttons button:not(.hidden)')] : [];
+}
+function moveFocus(dir) {
+  const list = visibleButtons();
+  if (!list.length) return;
+  const i = list.indexOf(document.activeElement);
+  const next = list[(i + dir + list.length) % list.length];
+  next.focus();
+  if (game.audio?.ctx) game.audio.ui('tick');
+}
+window.addEventListener('keydown', (e) => {
+  if (game.state === 'playing') return;
+  if (e.code === 'ArrowDown') {
+    e.preventDefault();
+    moveFocus(1);
+  } else if (e.code === 'ArrowUp') {
+    e.preventDefault();
+    moveFocus(-1);
+  } else if (e.code === 'Escape' && game.state === 'menu' && ['controls', 'settings', 'credits'].some((o) => !$(o).classList.contains('hidden'))) {
+    showOverlay('menu');
+  }
+});
+// Mando en los menús: cruceta arriba/abajo, A aceptar, B volver.
+{
+  const prev = {};
+  const poll = () => {
+    const pad = navigator.getGamepads?.().find((p) => p);
+    if (pad && game.state !== 'playing') {
+      const press = (i) => pad.buttons[i]?.pressed && !prev[i];
+      if (press(12)) moveFocus(-1);
+      if (press(13)) moveFocus(1);
+      if (press(0)) document.activeElement?.click?.();
+      if (press(1)) visibleButtons().find((b) => ['back', 'resume', 'close-shop'].includes(b.dataset.action))?.click();
+      pad.buttons.forEach((b, i) => (prev[i] = b.pressed));
+    }
+    requestAnimationFrame(poll);
+  };
+  requestAnimationFrame(poll);
+}
+// Sonido suave al pasar por las opciones.
+document.querySelectorAll('.menu-buttons button').forEach((b) =>
+  b.addEventListener('mouseenter', () => {
+    if (game.audio?.ctx) game.audio.ui('tick');
+  }),
+);
+
 // ---------------------------------------------------------------- carga
-$('menu-main').classList.add('hidden');
-$('loading').classList.remove('hidden');
+const TIPS = [
+  'El Metro de Medellín fue el primero de Colombia: la Línea A empezó a rodar en 1995.',
+  'El Morro de Moravia fue el basurero de la ciudad; hoy es un jardín comunitario.',
+  'Aranjuez nació en los años veinte como barrio obrero, al pie de las lomas nororientales.',
+  'La Casa Museo Pedro Nel Gómez guarda los murales del gran pintor antioqueño.',
+  'La estación Caribe conecta con la Terminal del Norte por un puente peatonal cubierto.',
+  'El guayacán amarillo florece dos veces al año y tiñe las calles de Medellín.',
+  'La Comuna 4 lleva el nombre de Aranjuez y va del río hasta las lomas de Manrique.',
+  'Por la Carrera 52 (Carabobo) pasa buena parte de la vida comercial del sector.',
+];
+const STAGES = [
+  [0.05, 'Trazando las calles reales'],
+  [0.2, 'Mezclando el ladrillo y el repello'],
+  [0.3, 'Cargando modelos y sonidos'],
+  [0.45, 'Pintando el cielo del valle'],
+  [0.55, 'Levantando las casas y los techos'],
+  [0.8, 'Llenando el barrio de gente'],
+  [0.92, 'Preparando los últimos detalles'],
+];
+let tip = Math.floor(Math.random() * TIPS.length);
+$('boot-tip-text').textContent = TIPS[tip];
+const tipTimer = setInterval(() => {
+  const el = document.querySelector('.boot-tip');
+  el.classList.add('swap');
+  setTimeout(() => {
+    tip = (tip + 1) % TIPS.length;
+    $('boot-tip-text').textContent = TIPS[tip];
+    el.classList.remove('swap');
+  }, 500);
+}, 5200);
+
+function finishBoot() {
+  clearInterval(tipTimer);
+  $('boot').classList.add('done');
+  setTimeout(() => $('boot').remove(), 1200);
+}
+
 game
   .init((p) => {
-    $('load-bar').style.width = `${Math.round(p * 100)}%`;
+    const pct = Math.round(p * 100);
+    $('boot-fill').style.width = `${pct}%`;
+    $('boot-pct').textContent = `${pct} %`;
+    let label = 'Iniciando…';
+    for (const [at, text] of STAGES) if (p >= at) label = text;
+    $('boot-stage').textContent = label;
   })
   .then(() => {
-    $('loading').classList.add('hidden');
-    $('menu-main').classList.remove('hidden');
     refreshMenu();
-    $('menu-main').querySelector('button:not(.hidden)').focus();
     if (autotest) {
+      finishBoot();
       hideOverlays();
       game.newGame();
+      return;
     }
+    $('boot-stage').textContent = 'Listo';
+    setTimeout(() => {
+      showOverlay('menu');
+      finishBoot();
+      $('menu-main').querySelector('button:not(.hidden)').focus({ preventScroll: true });
+    }, 350);
   })
   .catch((err) => {
     console.error(err);
-    $('loading').querySelector('.load-text').textContent = `Error al iniciar: ${err.message}`;
+    $('boot-stage').textContent = `Error al iniciar: ${err.message}`;
   });

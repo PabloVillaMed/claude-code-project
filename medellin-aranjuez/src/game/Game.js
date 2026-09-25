@@ -31,6 +31,15 @@ import { Dialogue } from './dialogue.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
 
+// Tomas del menú principal (relativas al punto de interés, en metros; y sobre el suelo).
+const MENU_SHOTS = [
+  { poi: 'parque', title: 'Parque de Aranjuez', sub: 'Calle 92 · la iglesia San Nicolás al lado', from: [95, 48, 55], to: [45, 34, -80], look: [0, 4, 0] },
+  { poi: 'moravia', title: 'Morro de Moravia', sub: 'De basurero a jardín comunitario', from: [-90, 45, 70], to: [70, 58, 95], look: [0, 12, 0] },
+  { poi: 'metro', title: 'Estación Caribe', sub: 'Línea A del Metro · río Medellín', from: [45, 24, 75], to: [-5, 28, 100], look: [-60, 6, 0] },
+  { poi: 'mirador', title: 'Mirador de Aranjuez', sub: 'El valle de Aburrá a tus pies', from: [15, 14, -35], to: [15, 16, 35], look: [-400, -70, 0] },
+  { poi: 'iglesia', title: 'Iglesia San Nicolás', sub: 'Aranjuez · Comuna 4', from: [28, 7, 42], to: [-20, 9, 34], look: [0, 9, 0] },
+];
+
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
@@ -215,6 +224,8 @@ export class Game {
     await this._warmUp(sp);
     await step(1);
     this.state = 'menu';
+    this.env.setTime(17.4);
+    this._menuShot = -1;
     this.last = performance.now();
     this.menuT = 0;
     this._loop = (t) => {
@@ -354,8 +365,10 @@ export class Game {
     this.hud.moneyShown = p.money;
     document.getElementById('money').textContent = `$${p.money.toLocaleString('es-CO')}`;
     this.setState('playing');
-    this.hud.show(true);
-    this.hud.big('ARANJUEZ', 'Comuna 4 · Medellín', 'gold', 3);
+    if (this.opts.autotest) {
+      this.hud.show(true);
+      this.hud.big('ARANJUEZ', 'Comuna 4 · Medellín', 'gold', 3);
+    } else this._startIntro();
     setTimeout(() => {
       if (this.state === 'playing') {
         this.hud.help('Explora el barrio: los <b class="hl">puntos dorados</b> del minimapa son lugares por descubrir y las misiones <b class="hl">!</b> dan plata. <kbd>F</kbd> para subirte a un carro o moto, <kbd>M</kbd> mapa, <kbd>F1</kbd> controles.', 9);
@@ -381,6 +394,14 @@ export class Game {
 
   setState(s) {
     this.state = s;
+    if (s === 'menu') {
+      // El menú se ve a la hora dorada, con la ciudad encendiendo sus luces.
+      this.env?.setTime(17.4);
+      this.menuT = 0;
+      this._menuShot = -1;
+      this.intro = null;
+      document.body.classList.remove('intro');
+    } else if (s !== 'playing') this.setFade(0);
     this.audio.suspend(s === 'paused' || s === 'shop');
     if (s !== 'playing') this.audio.setEngine(false);
     if (this.onStateChange) this.onStateChange(s);
@@ -406,6 +427,8 @@ export class Game {
     this._adaptResolution(realDt);
     if (!(dt > 0)) dt = 1 / 60;
     const a = this.input.poll();
+    // Durante la entrada cinematográfica el jugador no se mueve.
+    if (this.intro) for (const k of Object.keys(a)) a[k] = typeof a[k] === 'number' ? 0 : false;
     if (this.state === 'playing') {
       const simDt = this.wheel.open ? dt * 0.25 : dt;
       this.updatePlaying(simDt, dt, a);
@@ -446,16 +469,77 @@ export class Game {
     p.triangles += (info.triangles - p.triangles) * k;
   }
 
+  /**
+   * Menú principal: tomas de cine por lugares reales del mapa, con fundido a
+   * negro entre una y otra. `onMenuShot(toma)` avisa a la interfaz del lugar.
+   */
   updateMenuCamera(dt) {
     this.menuT += dt;
-    const c = this.city.pois.find((p) => p.id === 'parque');
-    const ang = this.menuT * 0.05;
-    const r = 120;
-    this.camera.position.set(c.x + Math.cos(ang) * r, groundHeight(c.x, c.z) + 55, c.z + Math.sin(ang) * r);
-    this.camera.lookAt(c.x - 40, groundHeight(c.x, c.z) + 5, c.z);
+    const SHOT = 11;
+    const k = Math.floor(this.menuT / SHOT) % MENU_SHOTS.length;
+    const t = (this.menuT % SHOT) / SHOT;
+    const shot = MENU_SHOTS[k];
+    const c = this.city.pois.find((p) => p.id === shot.poi) ?? this.city.spawn;
+    if (this._menuShot !== k) {
+      this._menuShot = k;
+      this.onMenuShot?.(shot, c);
+    }
+    const e = t * t * (3 - 2 * t);
+    const g = groundHeight(c.x, c.z);
+    const lerp = (i) => shot.from[i] + (shot.to[i] - shot.from[i]) * e;
+    this.camera.position.set(c.x + lerp(0), g + lerp(1), c.z + lerp(2));
+    this.camera.lookAt(c.x + shot.look[0], g + shot.look[1], c.z + shot.look[2]);
     this.camRig.pos.copy(this.camera.position);
+    // Fundido entre tomas.
+    const fade = Math.max(0, 1 - (this.menuT % SHOT) / 0.9, 1 - (SHOT - (this.menuT % SHOT)) / 0.9);
+    this.setFade(this.menuT < 1.2 ? Math.max(fade, 1 - this.menuT / 1.2) : fade);
     // La ciudad sigue viva en el fondo del menú.
     this.world.update(dt, { x: c.x, y: 0, z: c.z, inVehicle: false, speed: 0, dead: false });
+  }
+
+  /** Opacidad del velo negro de transiciones (0 = nada). */
+  setFade(v) {
+    const el = (this._fadeEl ??= document.getElementById('fade'));
+    if (!el) return;
+    const o = Math.max(0, Math.min(1, v));
+    if (this._fadeV === o) return;
+    this._fadeV = o;
+    el.style.opacity = o.toFixed(3);
+  }
+
+  /** Entrada a la partida: la cámara baja del cielo hasta el jugador. */
+  _startIntro() {
+    const p = this.player;
+    const yaw = p.state.yaw;
+    // Detrás y muy arriba del jugador, mirando hacia donde él mira.
+    const bx = Math.sin(yaw) * 70;
+    const bz = Math.cos(yaw) * 70;
+    this.intro = { t: 0, dur: 3.4, from: new THREE.Vector3(p.x + bx, p.y + 85, p.z + bz), look: new THREE.Vector3(p.x, p.y + 2, p.z) };
+    this.hud.show(false);
+    document.body.classList.add('intro');
+    this.setFade(1);
+  }
+
+  _updateIntro(dt) {
+    const it = this.intro;
+    it.t += dt;
+    const u = Math.min(1, it.t / it.dur);
+    // Suave al arrancar y al llegar (ease in-out cúbico).
+    const e = u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+    const rigPos = this.camera.position.clone();
+    const rigQ = this.camera.quaternion.clone();
+    const m = new THREE.Matrix4().lookAt(it.from, it.look, THREE.Object3D.DEFAULT_UP);
+    const fromQ = new THREE.Quaternion().setFromRotationMatrix(m);
+    this.camera.position.lerpVectors(it.from, rigPos, e);
+    this.camera.quaternion.slerpQuaternions(fromQ, rigQ, e);
+    this.setFade(1 - Math.min(1, it.t / 0.7));
+    if (u >= 1) {
+      this.intro = null;
+      document.body.classList.remove('intro');
+      this.setFade(0);
+      this.hud.show(true);
+      this.hud.big('ARANJUEZ', 'Comuna 4 · Medellín', 'gold', 3.2);
+    }
   }
 
   updatePlaying(dt, realDt, a) {
@@ -516,6 +600,7 @@ export class Game {
       lookX,
       lookY,
     });
+    if (this.intro) this._updateIntro(realDt);
     // Cámara libre de depuración (__game.aerial).
     if (this._aerial) {
       const q = this._aerial;
