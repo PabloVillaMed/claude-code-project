@@ -1,8 +1,9 @@
-// Estación Caribe de la línea A del Metro de Medellín: dos vías a nivel con
-// andenes laterales, un vestíbulo elevado sobre las vías con torniquetes, y
-// el puente peatonal que cruza el río hacia Moravia. Accesible: escaleras y
-// ascensores en cada andén, en el acceso occidental (Carrera 63) y en la
-// llegada del puente al lado de Moravia.
+// Estación Caribe de la línea A del Metro de Medellín, como la real: a nivel,
+// dos vías con plataforma central, vestíbulo elevado sobre las vías con
+// torniquetes, y dos puentes peatonales cubiertos: al occidente hacia la
+// Terminal del Norte y al oriente, sobre el río, hacia Moravia. Accesible:
+// escaleras (una eléctrica) y ascensor desde el andén, y escalera más
+// ascensor en la llegada de cada puente.
 // Aquí solo se describe la geometría (marco local a = a lo largo de la vía,
 // c = hacia el oriente) y se registran los pisos caminables y las colisiones;
 // render/metro.js la dibuja.
@@ -12,7 +13,7 @@ import { obbFromAxis } from './collision.js';
 import { makeFrame } from './geom2d.js';
 
 const STAIR_SLOPE = 0.58; // ~30°
-const CLEAR = 7.2; // del riel al piso del vestíbulo
+const CLEAR = 7.4; // del riel al piso del vestíbulo
 
 /** Rectángulo local [a0,a1]×[c0,c1] → caja orientada del mundo. */
 function makeLocal(st) {
@@ -46,12 +47,12 @@ function makeLocal(st) {
 export function buildMetroStation(city, st) {
   const L = makeLocal(st);
   const { W, toLocal, rectBounds } = L;
-  const tr = st.track ?? 2.5;
+  const tr = st.track ?? 5.6; // medio entre ejes de vía
   const yR = st.y;
   const yP = yR + 1.1;
   const yC = yR + CLEAR;
   const half = st.length / 2;
-  const S = { frame: L, station: st, yR, yP, yC, platforms: [], stairs: [], elevators: [], fences: [], roofs: [], walls: [], turnstiles: [] };
+  const S = { frame: L, station: st, yR, yP, yC, platforms: [], stairs: [], elevators: [], fences: [], roofs: [], walls: [], turnstiles: [], bridges: [], piers: [], rails: [] };
 
   const collide = (r, minY, maxY, kind = 'metro') => {
     const b = rectBounds(r);
@@ -69,87 +70,96 @@ export function buildMetroStation(city, st) {
       },
     });
   };
+  const stairRails = (r, yLow, yHigh) => {
+    for (const cc of [r.c0 - 0.1, r.c1 + 0.1]) collide({ a0: r.a0, a1: r.a1, c0: cc - 0.05, c1: cc + 0.05 }, yLow - 0.5, yHigh + 1.1);
+  };
 
-  // ---- andenes laterales
-  const pw = 4;
+  // ---- andén central (plataforma central entre las dos vías, como la Caribe real)
+  const pc = tr - 1.6;
+  const plat = { a0: -half, a1: half, c0: -pc, c1: pc, side: 0 };
+  S.platforms.push(plat);
+  walk(plat, () => yP);
+  collide(plat, yR - 2, yP);
+  S.roofs.push({ a0: -half + 10, a1: half - 10, c0: -pc - 0.6, c1: pc + 0.6, y: yP + 3.9, side: 0 });
+  // Rejas del corredor a lado y lado de las vías (no se entra a pie a la vía).
   for (const sgn of [1, -1]) {
-    const c0 = sgn > 0 ? tr + 1.55 : -tr - 1.55 - pw;
-    const r = { a0: -half, a1: half, c0, c1: c0 + pw, side: sgn };
-    S.platforms.push(r);
-    walk(r, () => yP);
-    collide(r, yR - 2, yP);
-    // Reja del borde exterior del andén.
-    const cf = sgn > 0 ? r.c1 : r.c0;
-    const fence = { a0: -half, a1: half, c0: cf - 0.06, c1: cf + 0.06 };
-    S.fences.push({ ...fence, y0: yP, y1: yP + 2.2 });
-    collide(fence, yR - 2, yP + 2.2);
-    // Cubierta del andén.
-    S.roofs.push({ a0: -half + 12, a1: half - 12, c0: r.c0 - 0.4, c1: r.c1 + 0.6, y: yP + 3.9, side: sgn });
+    const cf = sgn * (tr + 2.6);
+    const fence = { a0: -half - 10, a1: half + 10, c0: cf - 0.06, c1: cf + 0.06 };
+    S.fences.push({ ...fence, y0: terrainHeight(...W(0, cf)), y1: terrainHeight(...W(0, cf)) + 2.2 });
+    collide(fence, yR - 3, yR + 4);
   }
 
-  // ---- vestíbulo sobre las vías
-  const conc = { a0: -6, a1: 6, c0: -14, c1: 12 };
+  // ---- vestíbulo sobre las vías, con torniquetes a cada lado
+  const conc = { a0: -6, a1: 6, c0: -12, c1: 12 };
   S.concourse = conc;
   walk(conc, () => yC, true);
   collide(conc, yC - 0.7, yC);
-  // Muros del vestíbulo (con vidrio arriba) salvo por donde entran puentes y escaleras.
-  S.walls.push({ a0: -6, a1: -5.8, c0: -14, c1: 12, y0: yC, y1: yC + 3.2 });
-  S.walls.push({ a0: 5.8, a1: 6, c0: -14, c1: 12, y0: yC, y1: yC + 3.2 });
-  S.roofs.push({ a0: -7, a1: 7, c0: -15, c1: 13, y: yC + 3.4, flat: true });
-  S.turnstiles = [-9.2, 9.2].map((c) => ({ c, a0: -5.2, a1: 5.2, y: yC }));
+  S.roofs.push({ a0: -7, a1: 7, c0: -13, c1: 13, y: yC + 3.4, flat: true });
+  S.turnstiles = [-8.5, 8.5].map((c) => ({ c, a0: -5.2, a1: 5.2, y: yC }));
 
-  // ---- escaleras y ascensores de cada andén al vestíbulo
+  // ---- del andén al vestíbulo: dos tramos de escalera (uno de ellos eléctrica) y ascensor
   const run = (yC - yP) / STAIR_SLOPE;
-  for (const p of S.platforms) {
-    const c0 = p.side > 0 ? p.c0 + 0.9 : p.c1 - 3.1;
-    const r = { a0: 6, a1: 6 + run, c0, c1: c0 + 2.2, y0: yC, y1: yP, dir: 1 };
+  for (const [c0, kind] of [
+    [0.35, 'escalera'],
+    [-2.55, 'electrica'],
+  ]) {
+    const r = { a0: 6, a1: 6 + run, c0, c1: c0 + 2.2, y0: yC, y1: yP, dir: 1, kind };
     S.stairs.push(r);
     walk(r, (a) => yC - (a - r.a0) * STAIR_SLOPE);
-    // Barandas laterales (no se entra de lado).
-    for (const cc of [r.c0 - 0.1, r.c1 + 0.1]) collide({ a0: r.a0, a1: r.a1, c0: cc - 0.05, c1: cc + 0.05 }, yP - 0.5, yC + 1.1);
-    // Bajo la escalera: cerrado.
+    stairRails(r, yP, yC);
     collide({ a0: r.a0 + 2, a1: r.a1, c0: r.c0, c1: r.c1 }, yP - 0.5, yP + 0.01);
-    S.elevators.push(elevator(S, walk, collide, { a0: -7.9, a1: -6.1, c0: c0 + 0.2, c1: c0 + 2.0 }, yP, yC, [1, 0], [1, 0]));
   }
+  S.elevators.push(elevator(S, walk, collide, { a0: -7.9, a1: -6.1, c0: -0.9, c1: 0.9 }, yP, yC, [1, 0], [1, 0]));
 
-  // ---- acceso occidental (Carrera 63): escalera y ascensor al andén de la calle
-  const yW = terrainHeight(...W(-10, -12.8)) + GRID.curb;
-  const runW = (yC - yW) / STAIR_SLOPE;
-  const west = { a0: -6 - runW, a1: -6, c0: -14, c1: -11.6, y0: yW, y1: yC, dir: -1 };
-  S.stairs.push(west);
-  walk(west, (a) => yC - (west.a1 - a) * STAIR_SLOPE);
-  for (const cc of [west.c0 - 0.1, west.c1 + 0.1]) collide({ a0: west.a0, a1: west.a1, c0: cc - 0.05, c1: cc + 0.05 }, yW - 0.5, yC + 1.1);
-  S.elevators.push(elevator(S, walk, collide, { a0: 6.1, a1: 7.9, c0: -13.8, c1: -12 }, yW, yC, [-1, 0], [1, 0]));
-
-  // ---- puente peatonal sobre el río hacia Moravia
-  let cE = 60;
-  for (let c = 24; c < 140; c += 2) {
-    const [x, z] = W(0, c);
-    if (!insideMap(x, z)) break;
-    if (riverDistance(x, z) > RIVER.half + RIVER.bank + 3 && !onRoad(x, z)) {
-      cE = c;
-      break;
+  // ---- puentes peatonales cubiertos: al occidente (Terminal del Norte) y al oriente (Moravia, sobre el río)
+  const landing = (sgn) => {
+    let cEnd = sgn * 60;
+    for (let c = 24; c < 150; c += 2) {
+      const [x, z] = W(0, sgn * c);
+      if (!insideMap(x, z)) break;
+      if (riverDistance(x, z) > RIVER.half + RIVER.bank + 3 && !onRoad(x, z) && !onRoad(...W(3, sgn * c)) && !onRoad(...W(-3, sgn * c))) {
+        cEnd = sgn * c;
+        break;
+      }
     }
+    return cEnd;
+  };
+  for (const [sgn, name] of [
+    [1, 'Moravia'],
+    [-1, 'Terminal del Norte'],
+  ]) {
+    const cE = landing(sgn);
+    const c0 = sgn > 0 ? conc.c1 : cE;
+    const c1 = sgn > 0 ? cE : conc.c0;
+    const bridge = { a0: -1.9, a1: 1.9, c0, c1, name, sgn };
+    S.bridges.push(bridge);
+    walk(bridge, () => yC, true);
+    collide(bridge, yC - 0.9, yC);
+    // Llegada: escalera hacia +a (bajando) y ascensor en la punta.
+    const [lx, lz] = W(4, cE - sgn * 1.2);
+    const yE = terrainHeight(lx, lz) + GRID.curb;
+    const runE = Math.max(1, (yC - yE) / STAIR_SLOPE);
+    const sc0 = sgn > 0 ? cE - 2.4 : cE;
+    const stair = { a0: 1.9, a1: 1.9 + runE, c0: sc0, c1: sc0 + 2.4, y0: yC, y1: yE, dir: 1, kind: 'escalera' };
+    S.stairs.push(stair);
+    walk(stair, (a) => yC - (a - stair.a0) * STAIR_SLOPE);
+    stairRails(stair, yE, yC);
+    const ec = sgn > 0 ? { c0: cE, c1: cE + 1.8 } : { c0: cE - 1.8, c1: cE };
+    S.elevators.push(elevator(S, walk, collide, { a0: -0.9, a1: 0.9, ...ec }, yE, yC, [0, sgn], [0, -sgn]));
+    bridge.stair = stair;
+    const endPt = W(1.9 + runE + 2, sc0 + 1.2);
+    bridge.landing = { x: endPt[0], z: endPt[1] };
+    for (let c = Math.min(c0, c1) + 6; c < Math.max(c0, c1) - 2; c += 12) S.piers.push({ a: 0, c });
   }
-  const bridge = { a0: -1.9, a1: 1.9, c0: 12, c1: cE };
-  S.bridge = bridge;
-  walk(bridge, () => yC, true);
-  collide(bridge, yC - 0.9, yC);
-  // Llegada del lado de Moravia: escalera hacia +a y ascensor al final.
-  const yE = terrainHeight(...W(0, cE + 3)) + GRID.curb;
-  const runE = Math.max(1, (yC - yE) / STAIR_SLOPE);
-  const east = { a0: 1.9, a1: 1.9 + runE, c0: cE - 2.4, c1: cE, y0: yC, y1: yE, dir: 1 };
-  S.stairs.push(east);
-  walk(east, (a) => yC - (a - east.a0) * STAIR_SLOPE);
-  for (const cc of [east.c0 - 0.1, east.c1 + 0.1]) collide({ a0: east.a0, a1: east.a1, c0: cc - 0.05, c1: cc + 0.05 }, yE - 0.5, yC + 1.1);
-  S.elevators.push(elevator(S, walk, collide, { a0: -0.9, a1: 0.9, c0: cE, c1: cE + 1.8 }, yE, yC, [0, 1], [0, -1]));
-  S.landing = { x: W(1.9 + runE + 2, cE - 1.2)[0], z: W(1.9 + runE + 2, cE - 1.2)[1] };
-  S.westLanding = { x: W(west.a0 - 2, -12.8)[0], z: W(west.a0 - 2, -12.8)[1] };
+  const east = S.bridges[0];
+  const west = S.bridges[1];
+  S.bridge = east;
+  S.landing = east.landing;
+  S.westLanding = west.landing;
 
-  // Barandas del vestíbulo con vanos donde llegan escaleras, ascensores y el puente.
-  S.rails = [];
+  // Barandas del vestíbulo y de los puentes, con vanos donde llegan escaleras, ascensores y puentes.
   const railLine = (fixed, value, from, to, gaps) => {
-    const gs = gaps.map(([g0, g1]) => [g0 - 0.1, g1 + 0.1]).sort((p, q) => p[0] - q[0]);
+    const gs = gaps.map(([g0, g1]) => [Math.min(g0, g1) - 0.1, Math.max(g0, g1) + 0.1]).sort((p, q) => p[0] - q[0]);
     let cur = from;
     for (const [g0, g1] of [...gs, [to, to]]) {
       if (g0 > cur + 0.2) {
@@ -161,28 +171,29 @@ export function buildMetroStation(city, st) {
     }
   };
   const near = (x, y) => Math.abs(x - y) < 0.3;
-  const gapsAt = (edgeA) => [
-    ...S.stairs.filter((r) => near(r.a0, edgeA) || near(r.a1, edgeA)).map((r) => [r.c0, r.c1]),
-    ...S.elevators.filter((e) => near(e.a0, edgeA + 0.1) || near(e.a1, edgeA - 0.1)).map((e) => [e.c0, e.c1]),
+  const gapsAt = (edgeA, cMin, cMax) => [
+    ...S.stairs.filter((r) => (near(r.a0, edgeA) || near(r.a1, edgeA)) && r.c1 > cMin && r.c0 < cMax).map((r) => [r.c0, r.c1]),
+    ...S.elevators.filter((e) => (near(e.a0, edgeA + 0.1) || near(e.a1, edgeA - 0.1)) && e.c1 > cMin && e.c0 < cMax).map((e) => [e.c0, e.c1]),
   ];
-  railLine('a', conc.a1, conc.c0, conc.c1, gapsAt(conc.a1));
-  railLine('a', conc.a0, conc.c0, conc.c1, gapsAt(conc.a0));
-  railLine('c', conc.c1, conc.a0, conc.a1, [[bridge.a0, bridge.a1]]);
-  railLine('c', conc.c0, conc.a0, conc.a1, []);
-  railLine('a', bridge.a0, bridge.c0, bridge.c1, []);
-  railLine('a', bridge.a1, bridge.c0, bridge.c1, [[east.c0, east.c1]]);
-  railLine('c', bridge.c1, bridge.a0, bridge.a1, [[-0.9, 0.9]]);
-
-  // Pilas del puente cada ~12 m.
-  S.piers = [];
-  for (let c = 16; c < cE - 2; c += 12) S.piers.push({ a: 0, c });
+  railLine('a', conc.a1, conc.c0, conc.c1, gapsAt(conc.a1, conc.c0, conc.c1));
+  railLine('a', conc.a0, conc.c0, conc.c1, gapsAt(conc.a0, conc.c0, conc.c1));
+  railLine('c', conc.c1, conc.a0, conc.a1, [[east.a0, east.a1]]);
+  railLine('c', conc.c0, conc.a0, conc.a1, [[west.a0, west.a1]]);
+  for (const br of S.bridges) {
+    const lo = Math.min(br.c0, br.c1);
+    const hi = Math.max(br.c0, br.c1);
+    railLine('a', br.a0, lo, hi, []);
+    railLine('a', br.a1, lo, hi, [[br.stair.c0, br.stair.c1]]);
+    const endC = br.sgn > 0 ? br.c1 : br.c0;
+    railLine('c', endC, br.a0, br.a1, [[-0.9, 0.9]]);
+  }
 
   // Huella de la estación (para no construir casas ni poner utilería encima).
   const fp = (r, m = 1) => {
     const [x, z] = W((r.a0 + r.a1) / 2, (r.c0 + r.c1) / 2);
     return makeFrame(x, z, L.cx, L.cz, (r.a1 - r.a0) / 2 + m, (r.c1 - r.c0) / 2 + m);
   };
-  S.footprints = [fp({ a0: -half, a1: half, c0: -9, c1: 9 }), fp(conc), fp(bridge), ...S.stairs.map((r) => fp(r)), ...S.elevators.map((e) => fp(e, 1.5))];
+  S.footprints = [fp({ a0: -half - 10, a1: half + 10, c0: -tr - 3, c1: tr + 3 }), fp(conc), ...S.bridges.map((r) => fp(r)), ...S.stairs.map((r) => fp(r)), ...S.elevators.map((e) => fp(e, 1.5))];
 
   S.update = (dt) => {
     for (const e of S.elevators) stepElevator(e, dt);

@@ -983,6 +983,46 @@ function addMetro(ctx) {
         return { name: 'Caribe', x, z, dx: (bx - ax) / l, dz: (bz - az) / l, length: 120, y: terrainHeight(x, z), track: h1 ? Math.hypot(h1.x - h0.x, h1.z - h0.z) / 2 : 2 };
       })()
     : null;
+  // La Caribe tiene plataforma central: en OpenStreetMap las dos vías van a
+  // ~5 m, así que se abren con suavidad alrededor de la estación para que
+  // quepa el andén de 8 m entre ellas.
+  const TRACK_HALF = 5.6;
+  if (station && hits.length >= 2) {
+    const extra = TRACK_HALF - station.track;
+    const cxs = -station.dz;
+    const czs = station.dx;
+    const reach = station.length / 2 + 15;
+    const taper = 70;
+    const spread = (l) => {
+      const pts = [];
+      for (const [x, z] of densifyPts(l.pts, 6)) {
+        const a = (x - station.x) * station.dx + (z - station.z) * station.dz;
+        const c = (x - station.x) * cxs + (z - station.z) * czs;
+        if (Math.abs(c) > 15) {
+          pts.push([x, z]);
+          continue;
+        }
+        const u = Math.max(0, Math.min(1, (reach + taper - Math.abs(a)) / taper));
+        const k = u * u * (3 - 2 * u) * extra * Math.sign(c || 1);
+        pts.push([x + cxs * k, z + czs * k]);
+      }
+      return { ...l, pts };
+    };
+    const moved = new Set(hits.map((h) => h.line));
+    const spreadOf = new Map();
+    // Cualquier tramo de vía cerca de la estación se abre (incluidos los vecinos encadenados).
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.bridge) continue;
+      const nearSt = l.pts.some(([x, z]) => Math.hypot(x - station.x, z - station.z) < station.length / 2 + taper + 30);
+      if (moved.has(l) || nearSt) {
+        lines[i] = spread(l);
+        spreadOf.set(l, lines[i]);
+      }
+    }
+    for (const h of hits) h.line = spreadOf.get(h.line) ?? h.line;
+    station.track = TRACK_HALF;
+  }
   city.metro = { lines: lines.map((l) => ({ pts: l.pts, cum: cumLengths(l.pts), bridge: !!l.bridge })), station, geo: null, trainPath: null };
   if (!station) return;
   city.metro.geo = buildMetroStation(city, station);
@@ -1022,6 +1062,17 @@ function addMetro(ctx) {
       }
     }
   }
+}
+
+function densifyPts(pts, step) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = pts[i - 1];
+    const [bx, bz] = pts[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / step));
+    for (let k = 1; k <= n; k++) out.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]);
+  }
+  return out;
 }
 
 /** Encadena tramos de vía férrea que se tocan por los extremos, a partir de `start`. */

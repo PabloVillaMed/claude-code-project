@@ -154,39 +154,50 @@ function buildStation(r, root, S, mats, add) {
   const light = [0.92, 0.91, 0.88];
   const W1 = [1, 1, 1];
 
-  // Andenes con borde amarillo de seguridad (táctil).
+  // Andén central con borde amarillo de seguridad (táctil) a lado y lado.
   for (const p of S.platforms) {
     box(conc, p.a0, p.a1, p.c0, p.c1, yR - 0.3, yP, light);
-    const ce = p.side > 0 ? p.c0 : p.c1 - 0.6;
-    box(yellow, p.a0, p.a1, ce, ce + 0.6, yP, yP + 0.01, W1);
+    for (const ce of [p.c0, p.c1 - 0.6]) box(yellow, p.a0, p.a1, ce, ce + 0.6, yP, yP + 0.01, W1);
+    // Bancas y canecas a lo largo del andén.
+    for (let a = p.a0 + 14; a < p.a1 - 14; a += 16) {
+      if (a > -9 && a < 18) continue; // escaleras y ascensor
+      box(dark, a - 1, a + 1, -0.25, 0.25, yP + 0.42, yP + 0.48, W1);
+      box(green, a + 2.2, a + 2.6, -0.2, 0.2, yP, yP + 0.9, W1);
+    }
   }
-  // Rejas del borde exterior.
+  // Rejas del corredor de las vías.
   for (const f of S.fences) {
     box(dark, f.a0, f.a1, f.c0, f.c1, f.y1 - 0.06, f.y1, W1);
-    for (let a = f.a0; a <= f.a1; a += 2.5) box(dark, a - 0.04, a + 0.04, f.c0, f.c1, f.y0, f.y1, W1);
+    for (let a = f.a0; a <= f.a1; a += 2.5) box(dark, a - 0.04, a + 0.04, f.c0, f.c1, f.y0 - 0.2, f.y1, W1);
     glassPanel(glass, P, f.a0, f.a1, (f.c0 + f.c1) / 2, f.y0 + 0.1, f.y1 - 0.1, N(0, 0, 1));
   }
-  // Cubiertas: techo metálico ligeramente inclinado sobre columnas.
+  // Cubiertas: techo metálico en V invertida sobre columnas centrales (andén) o plano (vestíbulo).
   for (const rf of S.roofs) {
     if (rf.flat) {
       box(metal, rf.a0, rf.a1, rf.c0, rf.c1, rf.y, rf.y + 0.35, light, true);
       continue;
     }
-    const lo = rf.side > 0 ? rf.c1 : rf.c0;
-    const hi = rf.side > 0 ? rf.c0 : rf.c1;
-    orientedQuad(metal, [P(rf.a0, lo, rf.y), P(rf.a1, lo, rf.y), P(rf.a1, hi, rf.y + 0.7), P(rf.a0, hi, rf.y + 0.7)], [0, 1, 0], [[0, 0], [10, 0], [10, 1], [0, 1]], light);
-    orientedQuad(metal, [P(rf.a0, lo, rf.y - 0.02), P(rf.a1, lo, rf.y - 0.02), P(rf.a1, hi, rf.y + 0.68), P(rf.a0, hi, rf.y + 0.68)], [0, -1, 0], [[0, 0], [10, 0], [10, 1], [0, 1]], [0.8, 0.8, 0.8]);
-    const cc = rf.side > 0 ? rf.c1 - 1.2 : rf.c0 + 1.2;
-    for (let a = rf.a0 + 2; a < rf.a1; a += 9) box(dark, a - 0.14, a + 0.14, cc - 0.14, cc + 0.14, yP, rf.y + 0.4, [0.35, 0.37, 0.4]);
-    // Letrero de la estación colgado de la cubierta.
-    for (const a of [rf.a0 + 16, rf.a1 - 16]) signBoard(root, P(a, (rf.c0 + rf.c1) / 2, rf.y - 0.75), L, 'CARIBE');
+    const mid = (rf.c0 + rf.c1) / 2;
+    for (const [lo, hi] of [
+      [rf.c0, mid],
+      [rf.c1, mid],
+    ]) {
+      orientedQuad(metal, [P(rf.a0, lo, rf.y), P(rf.a1, lo, rf.y), P(rf.a1, hi, rf.y + 0.6), P(rf.a0, hi, rf.y + 0.6)], [0, 1, 0], [[0, 0], [10, 0], [10, 1], [0, 1]], light);
+      orientedQuad(metal, [P(rf.a0, lo, rf.y - 0.02), P(rf.a1, lo, rf.y - 0.02), P(rf.a1, hi, rf.y + 0.58), P(rf.a0, hi, rf.y + 0.58)], [0, -1, 0], [[0, 0], [10, 0], [10, 1], [0, 1]], [0.8, 0.8, 0.8]);
+    }
+    for (let a = rf.a0 + 2; a < rf.a1; a += 9) {
+      if (a > -9 && a < 18) continue;
+      box(dark, a - 0.16, a + 0.16, mid - 0.16, mid + 0.16, yP, rf.y + 0.6, [0.35, 0.37, 0.4]);
+    }
+    // Letreros de la estación colgados de la cubierta, legibles desde ambas vías.
+    for (const a of [rf.a0 + 12, rf.a1 - 12]) signBoard(root, P(a, mid, rf.y - 0.75), L, 'CARIBE');
   }
   // Vestíbulo: losa, muros bajos con vidrio y cubierta.
   const c = S.concourse;
   box(conc, c.a0, c.a1, c.c0, c.c1, yC - 0.7, yC, light, true);
   for (const w of S.walls) glassPanel(glass, P, w.a0, w.a1, 0, 0, 0, null, w, c);
   // Columnas del vestíbulo entre las vías y a los lados.
-  for (const cc of [0, c.c0 + 0.6, c.c1 - 0.6]) for (const a of [c.a0 + 0.8, c.a1 - 0.8]) box(conc, a - 0.35, a + 0.35, cc - 0.35, cc + 0.35, yR - 0.3, yC - 0.7, light);
+  for (const cc of [-3.3, 3.3, c.c0 + 0.6, c.c1 - 0.6]) for (const a of [c.a0 + 0.8, c.a1 - 0.8]) box(conc, a - 0.35, a + 0.35, cc - 0.35, cc + 0.35, yR - 0.3, yC - 0.7, light);
   // Torniquetes (validadores de la tarjeta Cívica).
   for (const t of S.turnstiles) {
     for (let a = t.a0; a <= t.a1; a += 1.1) {
@@ -199,23 +210,26 @@ function buildStation(r, root, S, mats, add) {
     box(dark, rl.a0, rl.a1, rl.c0, rl.c1, rl.y + 1.0, rl.y + 1.08, W1);
     glassPanel(glass, P, rl.a0, rl.a1, (rl.c0 + rl.c1) / 2, rl.y + 0.05, rl.y + 1.0, null, null, null, rl);
   }
-  // Puente peatonal: losa, pilas y cubierta curva.
-  const b = S.bridge;
-  box(conc, b.a0, b.a1, b.c0, b.c1, yC - 0.9, yC, light, true);
+  // Puentes peatonales cubiertos: losa, pilas y cubierta curva.
+  for (const b of S.bridges) {
+    box(conc, b.a0, b.a1, b.c0, b.c1, yC - 0.9, yC, light, true);
+    for (let k = 0; k < 8; k++) {
+      const t0 = k / 8;
+      const t1 = (k + 1) / 8;
+      const arc = (t) => [b.a0 - 0.3 + (b.a1 - b.a0 + 0.6) * t, yC + 2.9 + Math.sin(t * Math.PI) * 0.7];
+      const [a0, y0] = arc(t0);
+      const [a1, y1] = arc(t1);
+      orientedQuad(metal, [P(a0, b.c0, y0), P(a1, b.c0, y1), P(a1, b.c1, y1), P(a0, b.c1, y0)], [0, 1, 0], [[0, 0], [1, 0], [1, 8], [0, 8]], light);
+    }
+    for (let cc = Math.min(b.c0, b.c1) + 1; cc < Math.max(b.c0, b.c1); cc += 6) for (const a of [b.a0 - 0.2, b.a1 + 0.2]) box(dark, a - 0.06, a + 0.06, cc - 0.06, cc + 0.06, yC, yC + 2.9, W1);
+    const endC = b.sgn > 0 ? b.c1 : b.c0;
+    signBoard(root, P(b.a0 - 0.1, endC - b.sgn * 1.5, yC + 3.3), L, b.sgn > 0 ? 'METRO · CARIBE' : 'TERMINAL DEL NORTE', true);
+  }
   for (const pr of S.piers) {
     const [x, z] = W(pr.a, pr.c);
     const yg = terrainHeight(x, z) - 1;
     box(conc, -0.5, 0.5, pr.c - 0.5, pr.c + 0.5, yg, yC - 0.9, light);
   }
-  for (let k = 0; k < 8; k++) {
-    const t0 = k / 8;
-    const t1 = (k + 1) / 8;
-    const arc = (t) => [b.a0 - 0.3 + (b.a1 - b.a0 + 0.6) * t, yC + 2.9 + Math.sin(t * Math.PI) * 0.7];
-    const [a0, y0] = arc(t0);
-    const [a1, y1] = arc(t1);
-    orientedQuad(metal, [P(a0, b.c0, y0), P(a1, b.c0, y1), P(a1, b.c1, y1), P(a0, b.c1, y0)], [0, 1, 0], [[0, 0], [1, 0], [1, 8], [0, 8]], light);
-  }
-  for (let cc = b.c0 + 1; cc < b.c1; cc += 6) for (const a of [b.a0 - 0.2, b.a1 + 0.2]) box(dark, a - 0.06, a + 0.06, cc - 0.06, cc + 0.06, yC, yC + 2.9, W1);
   // Escaleras: peldaños de 17 cm.
   for (const st of S.stairs) {
     const rise = Math.abs(st.y0 - st.y1);
@@ -226,7 +240,7 @@ function buildStation(r, root, S, mats, add) {
       const yTop = Math.max(st.y0, st.y1) - (rise * k) / n;
       const aTop = st.dir > 0 ? st.a0 + (run * k) / n : st.a1 - (run * k) / n;
       const aBot = st.dir > 0 ? aTop + run / n : aTop - run / n;
-      box(conc, Math.min(aTop, aBot), Math.max(aTop, aBot), st.c0, st.c1, Math.min(st.y0, st.y1) - 0.2, yTop, light);
+      box(st.kind === 'electrica' ? dark : conc, Math.min(aTop, aBot), Math.max(aTop, aBot), st.c0, st.c1, Math.min(st.y0, st.y1) - 0.2, yTop, st.kind === 'electrica' ? [0.55, 0.57, 0.6] : light);
     }
     // Pasamanos.
     for (const cc of [st.c0 - 0.1, st.c1 + 0.1]) {
@@ -274,8 +288,7 @@ function buildStation(r, root, S, mats, add) {
   gm.renderOrder = 2;
 
   // Letreros de acceso y del puente.
-  signBoard(root, P(c.a1 + 0.1, c.c0 + 4, yC + 2.4), L, 'CARIBE', true);
-  signBoard(root, P(b.a0, b.c1 - 1, yC + 3.4), L, 'METRO · CARIBE');
+  signBoard(root, P(c.a1 + 0.1, 0, yC + 2.4), L, 'CARIBE', true);
 
   // Cabinas de los ascensores (se mueven).
   const cabGeo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
