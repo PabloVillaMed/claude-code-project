@@ -141,22 +141,24 @@ const _up = new THREE.Vector3(0, 1, 0);
  * hace cuando la cámara se mueve.
  */
 class LodChunk {
-  constructor(group, center, radius, items, nearLevel, farLevel, near, far) {
+  /** levels = [cerca, lejos, (muy lejos)]; mid = desde dónde se usa el tercer nivel. */
+  constructor(group, center, radius, items, levels, near, far, mid = Infinity) {
     this.group = group;
     this.cx = center.x;
     this.cz = center.z;
     this.radius = radius;
     this.near = near;
     this.far = far;
+    this.mid = levels.length > 2 ? Math.max(near + 10, mid) : Infinity;
     this.n = items.length;
     this.px = Float32Array.from(items, (it) => it.x);
     this.pz = Float32Array.from(items, (it) => it.z);
-    this.levels = [nearLevel, farLevel];
+    this.levels = levels;
     // Copia fija de las matrices/colores originales (fuente de las particiones).
-    this.srcMatrix = nearLevel.matrix.array.slice();
-    this.srcColor = nearLevel.color ? nearLevel.color.array.slice() : null;
-    this.idx = [new Uint16Array(this.n), new Uint16Array(this.n)];
-    this.mode = -1; // 0 = todo lejos, 1 = todo cerca, 2 = mezclado
+    this.srcMatrix = levels[0].matrix.array.slice();
+    this.srcColor = levels[0].color ? levels[0].color.array.slice() : null;
+    this.idx = levels.map(() => new Uint16Array(this.n));
+    this.mode = -1; // nivel único (0, 1, 2) o 9 = mezclado
   }
 
   update(x, z) {
@@ -166,30 +168,31 @@ class LodChunk {
       return;
     }
     this.group.visible = true;
-    if (d - this.radius > this.near) return this._all(0);
-    if (d + this.radius < this.near) return this._all(1);
-    this.mode = 2;
+    const r = this.radius;
+    if (d - r > this.mid) return this._all(2);
+    if (d + r < this.near) return this._all(0);
+    if (d - r > this.near && d + r < this.mid) return this._all(1);
+    this.mode = 9;
     const near2 = this.near * this.near;
-    const [ni, fi] = this.idx;
-    let kn = 0;
-    let kf = 0;
+    const mid2 = this.mid * this.mid;
+    const k = this.levels.map(() => 0);
     for (let i = 0; i < this.n; i++) {
       const dx = this.px[i] - x;
       const dz = this.pz[i] - z;
-      if (dx * dx + dz * dz < near2) ni[kn++] = i;
-      else fi[kf++] = i;
+      const d2 = dx * dx + dz * dz;
+      const l = d2 < near2 ? 0 : d2 < mid2 || this.levels.length < 3 ? 1 : 2;
+      this.idx[l][k[l]++] = i;
     }
-    this._write(this.levels[0], ni, kn);
-    this._write(this.levels[1], fi, kf);
+    this.levels.forEach((lv, l) => this._write(lv, this.idx[l], k[l]));
   }
 
-  _all(nearMode) {
-    if (this.mode === nearMode) return;
-    this.mode = nearMode;
+  _all(level) {
+    if (level >= this.levels.length) level = this.levels.length - 1;
+    if (this.mode === level) return;
+    this.mode = level;
     const all = this.idx[0];
     for (let i = 0; i < this.n; i++) all[i] = i;
-    this._write(this.levels[nearMode ? 0 : 1], all, this.n);
-    this._write(this.levels[nearMode ? 1 : 0], all, 0);
+    this.levels.forEach((lv, l) => this._write(lv, all, l === level ? this.n : 0));
   }
 
   _write(level, idx, k) {
@@ -212,6 +215,38 @@ class LodChunk {
   }
 }
 
+// Árbol lejano genérico: copa (icosaedro deformado) y tronco, ~100 triángulos.
+const _blobCache = new Map();
+const _blobLeaf = new THREE.MeshLambertMaterial({ color: 0x6a8f48 });
+const _blobBark = new THREE.MeshLambertMaterial({ color: 0x5a4a3a });
+_blobLeaf.userData.blob = true;
+/** Partes del nivel "muy lejos" hechas a la medida de la caja de la plantilla. */
+export function blobParts(tpl) {
+  if (_blobCache.has(tpl)) return _blobCache.get(tpl);
+  const b = tpl.box;
+  const H = Math.max(0.5, b.max.y);
+  const W = Math.max(0.4, Math.max(b.max.x - b.min.x, b.max.z - b.min.z));
+  const slim = H > W * 2.2; // palmas y guaduas: copa alta y angosta
+  const canopy = new THREE.IcosahedronGeometry(0.5, 1);
+  const pos = canopy.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const n = 1 + 0.12 * Math.sin(pos.getX(i) * 9) * Math.cos(pos.getZ(i) * 7);
+    pos.setXYZ(i, pos.getX(i) * n, pos.getY(i) * n, pos.getZ(i) * n);
+  }
+  const ch = slim ? H * 0.35 : H * 0.62;
+  canopy.scale(W * (slim ? 0.8 : 0.95), ch, W * (slim ? 0.8 : 0.95));
+  canopy.translate(0, H - ch / 2, 0);
+  canopy.computeVertexNormals();
+  const trunk = new THREE.CylinderGeometry(W * 0.03 + 0.05, W * 0.04 + 0.08, H - ch * 0.8, 5, 1, true);
+  trunk.translate(0, (H - ch * 0.8) / 2, 0);
+  const parts = [
+    { geometry: canopy, material: _blobLeaf },
+    { geometry: trunk, material: _blobBark },
+  ];
+  _blobCache.set(tpl, parts);
+  return parts;
+}
+
 /**
  * Conjunto de instancias de una plantilla repartidas en trozos de ciudad.
  * Si la plantilla tiene versión reducida ('lejos'), cada instancia elige su
@@ -219,10 +254,11 @@ class LodChunk {
  * THREE.LOD que desaparece más allá de `far`.
  */
 export class ChunkedInstances {
-  constructor(tpl, { near = 140, far = 1500, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK } = {}) {
+  constructor(tpl, { near = 140, far = 1500, mid = Infinity, blob = false, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK } = {}) {
     this.tpl = tpl;
     this.items = [];
-    this.opts = { near, far, castShadow, receiveShadow, tint, name, chunk };
+    // mid + blob: más allá de `mid` cada instancia pasa a un árbol genérico barato.
+    this.opts = { near, far, mid, blob, castShadow, receiveShadow, tint, name, chunk };
   }
 
   /** q: cuaternión opcional (ya incluye la rotación en Y). */
@@ -253,9 +289,11 @@ export class ChunkedInstances {
         g.position.copy(c);
         const nearLevel = this._level(this.tpl.cerca, list, c, this.opts.castShadow);
         const farLevel = this._level(this.tpl.lejos, list, c, false);
-        g.add(nearLevel.group, farLevel.group);
+        const levels = [nearLevel, farLevel];
+        if (this.opts.blob && this.opts.mid < this.opts.far) levels.push(this._level(blobParts(this.tpl), list, c, false));
+        for (const lv of levels) g.add(lv.group);
         root.add(g);
-        const lc = new LodChunk(g, c, radius, list, nearLevel, farLevel, this.opts.near, this.opts.far);
+        const lc = new LodChunk(g, c, radius, list, levels, this.opts.near, this.opts.far, this.opts.mid);
         lc._all(0);
         lodChunks.push(lc);
         out.push(g);
@@ -279,7 +317,8 @@ export class ChunkedInstances {
     const n = list.length;
     const matrix = new THREE.InstancedBufferAttribute(new Float32Array(n * 16), 16);
     matrix.setUsage(THREE.DynamicDrawUsage);
-    const tinted = this.opts.tint && parts.some((p) => this.opts.tint(p.material));
+    const tintOf = (m) => m.userData?.blob || (this.opts.tint && this.opts.tint(m));
+    const tinted = parts.some((p) => tintOf(p.material));
     const color = tinted ? new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3) : null;
     const col = new THREE.Color();
     list.forEach((it, i) => {
@@ -293,7 +332,7 @@ export class ChunkedInstances {
     for (const part of parts) {
       const im = new THREE.InstancedMesh(part.geometry, part.material, n);
       im.instanceMatrix = matrix;
-      if (color && this.opts.tint(part.material)) im.instanceColor = color;
+      if (color && tintOf(part.material)) im.instanceColor = color;
       im.castShadow = castShadow;
       im.receiveShadow = this.opts.receiveShadow;
       im.computeBoundingSphere(); // con todas las instancias: vale aunque cambie count

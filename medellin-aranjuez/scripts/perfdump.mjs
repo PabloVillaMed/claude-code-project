@@ -9,7 +9,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto(`http://localhost:${PORT}/?autotest=1&quality=alta`, { timeout: 600000 });
 await page.waitForFunction(() => window.__game?.ready && window.__game.state().state === 'playing', null, { timeout: 600000 });
 const poi = process.argv[2] ?? 'cayetano';
-const out = await page.evaluate(async (poi) => {
+const out = await page.evaluate(async ([poi, by]) => {
   const p = window.__game.pois().find((q) => q.id === poi);
   window.__game.teleport(p.x, p.z + 6);
   window.__game.advance(1);
@@ -25,14 +25,16 @@ const out = await page.evaluate(async (poi) => {
     const idx = geo.index ? geo.index.count : geo.attributes.position.count;
     const inst = o.isInstancedMesh ? o.count : 1;
     const tris = (idx / 3) * inst;
-    let key = o.name || o.parent?.name || o.type;
+    let an = o;
+    while (an && !an.name) an = an.parent;
+    let key = (an?.name || o.type) + (o.isInstancedMesh ? ' [inst]' : '');
     key = key.replace(/[0-9]+/g, '#');
     const a = (agg[key] ??= { n: 0, tris: 0 });
     a.n++;
     a.tris += tris;
   });
-  return Object.entries(agg).sort((a, b) => b[1].tris - a[1].tris).slice(0, 30);
-}, poi);
+  return Object.entries(agg).sort((a, b) => b[1][by] - a[1][by]).slice(0, 30);
+}, [poi, process.env.BY === 'n' ? 'n' : 'tris']);
 for (const [k, v] of out) console.log(k.padEnd(40), String(v.n).padStart(6), (v.tris / 1e6).toFixed(3) + ' M');
 await browser.close();
 server.close();

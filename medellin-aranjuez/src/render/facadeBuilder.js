@@ -33,7 +33,7 @@ import {
   wallDirt,
 } from './facadeTextures.js';
 
-const CHUNK = 240; // m por lado de cada trozo (menos llamadas de dibujo en el mapa grande)
+const CHUNK = 360; // m por lado de cada trozo (menos llamadas de dibujo en el mapa grande)
 // Materiales de detalle: se ocultan de lejos.
 const DETAIL = new Set(['detail', 'grille']);
 // Relieve de la fachada (jambas, vigas, columnas, balcones, toldos): a media
@@ -492,7 +492,7 @@ export class FacadeBuilder {
   /** Detalles pequeños solo cerca de la cámara (por zona). */
   update(camPos) {
     const far = this.quality?.detailDraw ?? 150;
-    const mid = Math.max(260, far * 2.2);
+    const mid = Math.max(200, far * 1.6);
     for (const c of this.chunks.values()) {
       const dx = Math.max(c.minX - camPos.x, 0, camPos.x - c.maxX);
       const dz = Math.max(c.minZ - camPos.z, 0, camPos.z - c.maxZ);

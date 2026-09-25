@@ -173,7 +173,7 @@ export function buildTrees(r, trees) {
     }
     if (!sets.has(sp.model)) {
       const isLeaf = prepareLeaves(tpl);
-      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: treeFar(r), tint: isLeaf, name: `arboles-${sp.model}` }));
+      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: treeFar(r), mid: Math.max(near * 2, r.quality?.treeMid ?? 200), blob: true, tint: isLeaf, name: `arboles-${sp.model}` }));
     }
     const sc = t.scale ?? 1;
     const k = (sp.h * sc) / tpl.height;
@@ -194,15 +194,18 @@ export function buildShrubs(r, shrubs) {
   const rng = makeRng(91);
   const sets = new Map();
   const col = new THREE.Color();
-  const near = Math.round((r.quality?.treeNear ?? 70) * 0.6);
-  const far = Math.max(160, (r.quality?.detailDraw ?? 120) * 2.5);
+  // Matas: detalle completo muy cerca, luego versión reducida y más allá una
+  // bola verde barata; se dejan de dibujar a media distancia.
+  const near = Math.round((r.quality?.treeNear ?? 70) * 0.45);
+  const far = Math.max(110, (r.quality?.detailDraw ?? 120) * 1.3);
+  const mid = Math.max(near + 15, (r.quality?.detailDraw ?? 120) * 0.55);
   for (const p of shrubs) {
     const sp = SHRUBS[p.kind] ?? SHRUBS.seto;
     const tpl = propTemplate(`vegetacion/${sp.model}`);
     if (!tpl) continue;
     if (!sets.has(sp.model)) {
       const isLeaf = prepareLeaves(tpl);
-      sets.set(sp.model, new ChunkedInstances(tpl, { near, far, tint: isLeaf, name: `arbustos-${sp.model}` }));
+      sets.set(sp.model, new ChunkedInstances(tpl, { near, far, mid, blob: true, tint: isLeaf, name: `arbustos-${sp.model}` }));
     }
     const s = (p.scale ?? 1) * rng.range(0.9, 1.1);
     const k = (sp.h * s) / tpl.height;

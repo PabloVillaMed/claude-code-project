@@ -89,9 +89,46 @@ export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4
   for (let i = 0; i < out.length; i += 3) g.idx.push(vert(out[i][0], out[i][1]), vert(out[i + 1][0], out[i + 1][1]), vert(out[i + 2][0], out[i + 2][1]));
 }
 
+/** Douglas-Peucker sobre un anillo cerrado (quita vértices casi colineales). */
+export function simplifyRing(pts, tol) {
+  if (!tol || pts.length < 8) return pts;
+  const keep = new Uint8Array(pts.length);
+  const dp = (i0, i1) => {
+    const [ax, az] = pts[i0];
+    const [bx, bz] = pts[i1];
+    const dx = bx - ax;
+    const dz = bz - az;
+    const l = Math.hypot(dx, dz) || 1e-9;
+    let best = -1;
+    let bd = tol;
+    for (let i = i0 + 1; i < i1; i++) {
+      const d = Math.abs((pts[i][0] - ax) * dz - (pts[i][1] - az) * dx) / l;
+      if (d > bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    if (best >= 0) {
+      keep[best] = 1;
+      dp(i0, best);
+      dp(best, i1);
+    }
+  };
+  const mid = Math.floor(pts.length / 2);
+  keep[0] = keep[mid] = keep[pts.length - 1] = 1;
+  dp(0, mid);
+  dp(mid, pts.length - 1);
+  const out = pts.filter((_, i) => keep[i]);
+  return out.length >= 3 ? out : pts;
+}
+
 /** Triangula un polígono (con huecos opcionales) y lo cuelga del terreno. */
 export function drapePolygon(g, poly, hf, opts = {}, holes = []) {
   if (!poly || poly.length < 3) return;
+  if (opts.simplify) {
+    poly = simplifyRing(poly, opts.simplify);
+    holes = holes.map((h) => (h ? simplifyRing(h, opts.simplify) : h));
+  }
   const contour = poly.map(([x, z]) => new THREE.Vector2(x, z));
   const hs = holes.filter((h) => h && h.length >= 3).map((h) => h.map(([x, z]) => new THREE.Vector2(x, z)));
   let faces;

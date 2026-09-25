@@ -140,6 +140,20 @@ export class CityRenderer {
     return m;
   }
 
+  /** GeoBuilders por trozo de 420 m: mallas grandes del suelo que la cámara puede descartar. */
+  _chunked() {
+    const map = new Map();
+    const get = (x, z) => {
+      const k = `${Math.floor(x / 420)},${Math.floor(z / 420)}`;
+      if (!map.has(k)) map.set(k, new GeoBuilder());
+      return map.get(k);
+    };
+    get.build = (mat, opts) => {
+      for (const gb of map.values()) if (gb.idx.length) this._mesh(gb.build(), mat, opts);
+    };
+    return get;
+  }
+
   // ---------------------------------------------------------------- terreno
   _terrain() {
     const pad = 110;
@@ -306,7 +320,7 @@ export class CityRenderer {
   }
 
   _roads() {
-    const g = new GeoBuilder();
+    const g = this._chunked();
     const lift = 0.03;
     const hf = (x, z) => terrainHeight(x, z) + lift;
     // UV del mundo: los tramos que se traslapan en los cruces se ven iguales.
@@ -314,10 +328,11 @@ export class CityRenderer {
     const all = [...this.city.edges, ...this.city.paths.filter((p) => p.cls !== 'footway')];
     for (const e of all) {
       const hw = e.width / 2;
-      ribbon(g, e.pts, -hw, hw, hf, { step: 3, across: Math.max(1, Math.ceil(e.width / 4)), uv });
+      const mid = e.pts[Math.floor(e.pts.length / 2)];
+      ribbon(g(mid[0], mid[1]), e.pts, -hw, hw, hf, { step: 4, across: Math.max(1, Math.ceil(e.width / 4)), uv });
     }
     // Intersecciones: disco de asfalto que tapa las uniones.
-    const gi = new GeoBuilder();
+    const gi = this._chunked();
     for (const n of this.city.nodes) {
       if (n.links.length < 2) continue;
       const r = this._nodeRadius(n) * 1.08;
@@ -328,10 +343,10 @@ export class CityRenderer {
         const a1 = ((i + 1) / k) * Math.PI * 2;
         tris.push([[n.x, n.z], [n.x + Math.cos(a0) * r, n.z + Math.sin(a0) * r], [n.x + Math.cos(a1) * r, n.z + Math.sin(a1) * r]]);
       }
-      drapeTris(gi, tris, (x, z) => terrainHeight(x, z) + lift + 0.004, { step: 3, uv: (x, z) => [x / 9, -z / 9] });
+      drapeTris(gi(n.x, n.z), tris, (x, z) => terrainHeight(x, z) + lift + 0.004, { step: 3, uv: (x, z) => [x / 9, -z / 9] });
     }
-    this._mesh(g.build(), this.materials.asphalt, { cast: false, name: 'vias' });
-    this._mesh(gi.build(), this.materials.asphaltPlain, { cast: false, name: 'intersecciones' });
+    g.build(this.materials.asphalt, { cast: false, name: 'vias' });
+    gi.build(this.materials.asphaltPlain, { cast: false, name: 'intersecciones' });
     if (this.photo) this._roadMarkings();
   }
 
@@ -390,10 +405,10 @@ export class CityRenderer {
 
   // ---------------------------------------------------------------- manzanas
   _blocks() {
-    const walk = new GeoBuilder();
-    const lots = new GeoBuilder();
-    const green = new GeoBuilder();
-    const curb = new GeoBuilder();
+    const walk = this._chunked();
+    const lots = this._chunked();
+    const green = this._chunked();
+    const curb = this._chunked();
     const hf = (x, z) => terrainHeight(x, z) + GRID.curb;
     const hLot = (x, z) => terrainHeight(x, z) + GRID.curb + 0.01;
     // Área construida por manzana: los lotes casi vacíos son solares con prado
@@ -403,27 +418,27 @@ export class CityRenderer {
     const greenAreas = this.city.areas.filter((a) => ['verde', 'parque', 'colegio', 'salud', 'cancha'].includes(a.kind));
     for (const b of this.city.blocks) {
       const out = polyArea(b.curb) > 0 ? -1 : 1;
-      polyWall(curb, b.curb, out, (x, z) => terrainHeight(x, z) - 0.08, hf, { step: 3, uvScale: 2, color: [0.85, 0.83, 0.8] });
+      polyWall(curb(b.cx, b.cz), b.curb, out, (x, z) => terrainHeight(x, z) - 0.08, hf, { step: 4, uvScale: 2, color: [0.85, 0.83, 0.8] });
       if (b.type !== 'residencial') {
         // Separadores y orillas del río: prado.
-        drapePolygon(green, b.curb, hf, { step: 5, uv: (x, z) => [x / 10, -z / 10] });
+        drapePolygon(green(b.cx, b.cz), b.curb, hf, { step: 8, uv: (x, z) => [x / 10, -z / 10] });
         continue;
       }
       // Andén: el contorno menos los lotes; los lotes son patios de concreto.
-      drapePolygon(walk, b.curb, hf, { step: 4, uv: (x, z) => [x / 4, -z / 4] }, b.lots);
+      drapePolygon(walk(b.cx, b.cz), b.curb, hf, { step: 5, simplify: 0.25, uv: (x, z) => [x / 4, -z / 4] }, b.lots);
       const lotArea = b.lots.reduce((acc, l) => acc + Math.abs(polyArea(l)), 0);
       const coverage = (built.get(b.id) ?? 0) / Math.max(1, lotArea);
       for (const l of b.lots) {
         const [cx, cz] = l[Math.floor(l.length / 2)];
         const isGreen = coverage < 0.35 || greenAreas.some((a) => a.block === b && pointInPoly(cx, cz, a.poly));
-        if (isGreen) drapePolygon(green, l, hLot, { step: 5, uv: (x, z) => [x / 10, -z / 10] });
-        else drapePolygon(lots, l, hLot, { step: 5, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
+        if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 10, -z / 10] });
+        else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
       }
     }
-    this._mesh(walk.build(), this.materials.sidewalk, { cast: false, name: 'andenes' });
-    this._mesh(lots.build(), this.materials.concrete, { cast: false, name: 'patios' });
-    this._mesh(green.build(), this.materials.grass, { cast: false, name: 'prados' });
-    this._mesh(curb.build(), this.materials.concrete, { cast: false, name: 'sardineles' });
+    walk.build(this.materials.sidewalk, { cast: false, name: 'andenes' });
+    lots.build(this.materials.concrete, { cast: false, name: 'patios' });
+    green.build(this.materials.grass, { cast: false, name: 'prados' });
+    curb.build(this.materials.concrete, { cast: false, name: 'sardineles' });
   }
 
   /** Zonas especiales del mapa: plaza del parque, jardines y canchas. */
@@ -589,19 +604,23 @@ export class CityRenderer {
       this._mesh(gb.build(), mat, { name: `edificios-${key}` });
     }
 
-    // Murales: planos pegados a una culata.
+    // Murales: planos pegados a una culata, una sola malla por diseño.
+    const muralGeo = this.tex.mural.map(() => new GeoBuilder());
     for (const b of murals) {
-      const tex = new THREE.MeshStandardMaterial({ map: this.tex.mural[rng.int(0, 2)], roughness: 0.85 });
       const f = faceFrame(b, rng.chance(0.5) ? 'W' : 'E');
       const h = Math.min(8, b.topY - b.groundY - 1);
       const len = Math.min(10, f.len - 1);
       if (len < 3) continue;
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(len, h), tex);
-      plane.position.set(f.x0 + f.rx * (f.len / 2) + f.nx * 0.03, b.groundY + 1 + h / 2, f.z0 + f.rz * (f.len / 2) + f.nz * 0.03);
-      plane.rotation.y = Math.atan2(f.nx, f.nz);
-      plane.receiveShadow = true;
-      this.root.add(plane);
+      const u0 = (f.len - len) / 2;
+      const y0 = b.groundY + 1;
+      const P = (u, y) => [f.x0 + f.rx * u + f.nx * 0.03, y, f.z0 + f.rz * u + f.nz * 0.03];
+      orientedQuad(muralGeo[rng.int(0, muralGeo.length - 1)], [P(u0, y0), P(u0 + len, y0), P(u0 + len, y0 + h), P(u0, y0 + h)], [f.nx, 0, f.nz], [[0, 0], [1, 0], [1, 1], [0, 1]]);
     }
+    muralGeo.forEach((gb, i) => {
+      if (!gb.idx.length) return;
+      const m = this._mesh(gb.build(), new THREE.MeshStandardMaterial({ map: this.tex.mural[i], roughness: 0.85 }), { cast: false, name: 'murales' });
+      m.receiveShadow = true;
+    });
 
     // Tanques de agua (negros tipo Eternit o azules).
     const { tanks, rebar } = out;
