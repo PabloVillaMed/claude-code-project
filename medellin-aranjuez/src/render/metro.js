@@ -19,7 +19,7 @@ export function buildMetro(r) {
   root.name = 'metro';
   r.root.add(root);
   const mats = {
-    ballast: new THREE.MeshStandardMaterial({ color: 0x77736c, roughness: 1, map: r.tex.concrete.map, polygonOffset: true, polygonOffsetFactor: -1 }),
+    ballast: new THREE.MeshStandardMaterial({ color: 0xa39d92, roughness: 1, normalMap: r.tex.concrete.normalMap, polygonOffset: true, polygonOffsetFactor: -1 }),
     rail: new THREE.MeshStandardMaterial({ color: 0x8d8f92, roughness: 0.35, metalness: 0.85 }),
     conc: new THREE.MeshStandardMaterial({ color: 0xc9c6bf, roughness: 0.85, map: r.tex.concrete.map, normalMap: r.tex.concrete.normalMap, vertexColors: true }),
     metal: new THREE.MeshStandardMaterial({ color: 0xd8dadc, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide, vertexColors: true }),

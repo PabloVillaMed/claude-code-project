@@ -75,9 +75,9 @@ float glBeam( vec3 p, vec3 dir, vec3 nW ) {
   // hacia atrás del asfalto que ve el conductor) el piso casi no se ilumina.
   float nl = dot( nW, l );
   float lam = smoothstep( -0.05, 0.08, nl ) * ( 0.3 + 0.7 * max( nl, 0.0 ) );
-  // Núcleo de 6 m: junto al parachoques no se quema.
+  // Núcleo de 8 m: junto al parachoques no se quema.
   float w = clamp( 1.0 - pow( d2 / ( uGLBeamRange * uGLBeamRange ), 2.0 ), 0.0, 1.0 );
-  return cone * lam * w * w / max( d2, 36.0 );
+  return cone * lam * w * w / max( d2, 64.0 );
 }
 `;
 
@@ -143,14 +143,15 @@ export function lampColor(h, out) {
     const k = Math.sin(Math.round(h.x) * 12.9898 + Math.round(h.z) * 78.233) * 43758.5453;
     h.led = !!h.park || k - Math.floor(k) < 0.33;
   }
-  return out.copy(h.led ? LED : SODIUM);
+  const c = h.led ? LED : SODIUM;
+  return out.isColor ? out.copy(c) : out.set(c.r, c.g, c.b);
 }
 
 export const groundLights = {
   uniforms: U,
   /** Intensidad base de un farol y de cada haz de un faro (en unidades de la luz del juego). */
-  lampPower: 80,
-  beamPower: 500,
+  lampPower: 110,
+  beamPower: 520,
   /**
    * @param camPos Vector3 de la cámara.
    * @param lampHeads [{x, y, z, park?}] cabezas de los faroles (props.js).
@@ -231,3 +232,4 @@ export const groundLights = {
     for (let k = n; k < MAX_BEAMS; k++) P[k].w = 0;
   },
 };
+window.__gl = groundLights;

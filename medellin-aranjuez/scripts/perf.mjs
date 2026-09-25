@@ -18,8 +18,9 @@ const frames = async (n) => {
 // Puntos de medición: lugares del mapa (por id) o coordenadas de calle.
 const spots = [
   ['parque', 'parque', 0],
-  ['calle', [-35, 30.5], -Math.PI / 2],
-  ['botanico', 'botanico', -0.8],
+  ['calle', 'cayetano', -Math.PI / 2],
+  ['moravia', 'consuelo', 0.6],
+  ['metro', 'metro', -1.4],
   ['mirador', 'mirador', Math.PI / 2],
 ];
 for (const [name, where, yaw] of spots) {

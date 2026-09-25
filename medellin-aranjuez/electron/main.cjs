@@ -28,6 +28,8 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/ogg',
   '.hdr': 'image/vnd.radiance',
   '.ktx2': 'image/ktx2',
   '.md': 'text/markdown; charset=utf-8',

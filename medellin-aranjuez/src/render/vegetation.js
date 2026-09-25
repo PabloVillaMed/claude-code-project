@@ -98,7 +98,7 @@ export const GRASS_KINDS = { pasto: 'Prado, parque y borde de andén', maleza: '
 // TEMPORAL (hasta que el generador nuevo use TREE_KINDS): reparte las especies
 // que pide el generador actual (casi todo guayacanes) en el bosque verde de
 // Medellín. Poner en false cuando cityLayout ya elija las especies.
-const REMAP_ESPECIES_TEMPORAL = true;
+const REMAP_ESPECIES_TEMPORAL = false;
 const REMAP = {
   guayacan: [['guayacan', 2], ['mango', 3], ['carbonero', 2], ['almendro', 2], ['saman', 1], ['aguacate', 1], ['ficus', 1]],
   guayacanRosado: [['guayacanRosado', 2], ['mango', 3], ['carbonero', 2], ['almendro', 1], ['guayabo', 1], ['aguacate', 1], ['ficus', 2]],

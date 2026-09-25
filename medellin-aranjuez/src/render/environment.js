@@ -53,8 +53,10 @@ export class Environment {
     this.hemi = new THREE.HemisphereLight(0xbfd8ff, 0x5a4a38, 0.9);
     scene.add(this.hemi);
 
-    this.moon = new THREE.DirectionalLight(0x8fa8ff, 0);
-    scene.add(this.moon);
+    // Luna (un poco azulada, desde lo alto): de noche es la luz de relleno
+    // que deja leer calles, andenes y personas lejos de los postes.
+    this.moon = new THREE.DirectionalLight(0xa8bcff, 0);
+    scene.add(this.moon, this.moon.target);
 
     scene.fog = new THREE.FogExp2(0xc9d6df, 0.0003);
 
@@ -71,6 +73,7 @@ export class Environment {
     this.sunDir = new THREE.Vector3();
     this.night = 0;
     this._stars();
+    this._cityGlow();
     this.update(0, new THREE.Vector3());
     this._refreshEnv();
   }
@@ -98,9 +101,48 @@ export class Environment {
     this.scene.add(this.stars);
   }
 
+  /**
+   * Resplandor de la ciudad en el cielo nocturno: el valle de Aburrá iluminado
+   * con sodio tiñe de naranja pardo la bruma cerca del horizonte. Una cúpula
+   * con degradado (aditiva, una sola llamada) entre el cielo y el horizonte.
+   */
+  _cityGlow() {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uStrength: { value: 0 } },
+      vertexShader: /* glsl */ `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize( position );
+          gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+          gl_Position.z = gl_Position.w; // en el plano lejano, como el cielo
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uStrength;
+        varying vec3 vDir;
+        void main() {
+          float h = max( vDir.y, 0.0 );
+          // Fuerte en el horizonte, se apaga hacia los ~25°; un poco más hacia el sur y el occidente (el centro).
+          float g = exp( -h * 9.0 ) * ( 0.75 + 0.25 * max( 0.0, -vDir.x * 0.6 + vDir.z * 0.4 ) );
+          vec3 c = mix( vec3( 0.16, 0.12, 0.10 ), vec3( 0.55, 0.32, 0.16 ), exp( -h * 16.0 ) );
+          gl_FragColor = vec4( c * g * uStrength, 1.0 );
+        }`,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.BackSide,
+      fog: false,
+    });
+    this.glow = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.05), mat);
+    this.glow.frustumCulled = false;
+    this.glow.renderOrder = -16; // después del cielo, antes de estrellas y montañas
+    this.scene.add(this.glow);
+  }
+
   /** El cielo estrellado acompaña a la cámara (está "en el infinito"). */
   followCamera(pos) {
     this.stars.position.copy(pos);
+    this.glow.position.copy(pos);
   }
 
   get hours() {
@@ -134,7 +176,7 @@ export class Environment {
     this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 2000);
     this.scene.environment = this.envTarget.texture;
     // De noche el cielo físico queda negro: bajamos la intensidad del entorno.
-    this.scene.environmentIntensity = 0.12 + 0.43 * (1 - this.night);
+    this.scene.environmentIntensity = 0.2 + 0.35 * (1 - this.night);
   }
 
   update(dt, focus) {
@@ -162,19 +204,25 @@ export class Environment {
     this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 300);
     this.sun.target.updateMatrixWorld();
 
-    this.moon.intensity = 0.35 * this.night;
-    this.moon.position.copy(focus).add(new THREE.Vector3(-100, 200, 50));
+    this.moon.intensity = 0.75 * this.night;
+    this.moon.position.copy(focus).add(new THREE.Vector3(-100, 220, 60));
     this.moon.target.position.copy(focus);
+    this.moon.target.updateMatrixWorld();
 
-    this.hemi.intensity = 0.12 + 0.38 * dayF;
-    this.hemi.color.setRGB(0.55 + 0.2 * dayF, 0.65 + 0.2 * dayF, 0.9);
-    this.hemi.groundColor.setRGB(0.28 * (0.3 + dayF), 0.24 * (0.3 + dayF), 0.2 * (0.3 + dayF));
+    // De noche el cielo no es negro: la bruma del valle devuelve la luz de la
+    // ciudad (azul grisáceo arriba, cálido desde el piso iluminado).
+    const n = this.night;
+    this.hemi.intensity = 0.12 + 0.38 * dayF + 0.42 * n;
+    this.hemi.color.setRGB(0.55 + 0.2 * dayF - 0.05 * n, 0.65 + 0.2 * dayF - 0.03 * n, 0.9);
+    this.hemi.groundColor.setRGB(0.28 * (0.3 + dayF) + 0.2 * n, 0.24 * (0.3 + dayF) + 0.12 * n, 0.2 * (0.3 + dayF) + 0.05 * n);
+    this.glow.material.uniforms.uStrength.value = n;
 
     // Niebla: bruma dorada al atardecer, azul noche, neblina clara de día.
     const fog = this.scene.fog;
     const dayFog = new THREE.Color(0xbfcfda);
     const duskFog = new THREE.Color(0xe0a878);
-    const nightFog = new THREE.Color(0x121a2a);
+    // Noche: bruma gris azulada con algo del naranja de la ciudad.
+    const nightFog = new THREE.Color(0x232833);
     const c = dayFog.clone().lerp(duskFog, golden * dayF).lerp(nightFog, this.night);
     fog.color.copy(c);
     // Aire del valle: la misma bruma que usa el horizonte lejano (render/horizon.js),
@@ -182,7 +230,7 @@ export class Environment {
     fog.density = 0.00018 + 0.0002 * golden;
     // Con la luz de la ciudad apenas se ven unas pocas estrellas.
     this.stars.material.opacity = clamp(this.night * 0.5, 0, 0.5);
-    this.renderer.toneMappingExposure = (0.62 + 0.28 * dayF + 0.45 * this.night) * this.brightness;
+    this.renderer.toneMappingExposure = (0.62 + 0.28 * dayF + 0.6 * this.night) * this.brightness;
 
     this.envTimer += dt;
     if (this.envTimer > 8) {

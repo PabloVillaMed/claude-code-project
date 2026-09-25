@@ -92,6 +92,7 @@ export function generateCity(seed = 4) {
     fillBlock(ctx, block);
   }
   for (const block of city.blocks) addSidewalkProps(ctx, block);
+  addGreenery(ctx);
   addPowerLines(ctx);
   placeServices(ctx);
 
@@ -452,7 +453,7 @@ function fillBlock(ctx, block, opts = {}) {
         let w = informal ? rng.range(4.2, 7.5) : rng.range(5.5, 10.5);
         if (L - (s + w) < 3.5) w = L - s;
         if (w < 3.2) break;
-        if (!opts.noGaps && rng.chance(0.04)) {
+        if (!opts.noGaps && rng.chance(informal ? 0.01 : 0.04)) {
           s += Math.min(w, 4);
           continue;
         }
@@ -501,12 +502,13 @@ function fillBlock(ctx, block, opts = {}) {
     }
     // Fondos de manzana: casas interiores (se ven desde arriba y desde las lomas).
     const bb = polyBounds(lot);
-    const step = 9;
+    // Moravia es un tejido apretado de casas pegadas; Aranjuez deja patios.
+    const step = informal ? 7.2 : 9;
     for (let x = bb.minX + step / 2; x < bb.maxX; x += step) {
       for (let z = bb.minZ + step / 2; z < bb.maxZ; z += step) {
-        if (!pointInPoly(x, z, lot) || distToPolyEdge(x, z, lot) < 6) continue;
-        if (rng.chance(0.15)) continue; // patio
-        const size = rng.range(3.2, 4.4);
+        if (!pointInPoly(x, z, lot) || distToPolyEdge(x, z, lot) < (informal ? 5 : 6)) continue;
+        if (rng.chance(informal ? 0.05 : 0.15)) continue; // patio
+        const size = informal ? rng.range(3.1, 3.6) : rng.range(3.2, 4.4);
         // Alineada con el paramento más cercano.
         let best = null;
         for (let i = 0; i < lot.length; i++) {
@@ -516,10 +518,11 @@ function fillBlock(ctx, block, opts = {}) {
           if (!best || c.d2 < best.d2) best = { d2: c.d2, dx: bx2 - ax, dz: bz2 - az };
         }
         const l = Math.hypot(best.dx, best.dz) || 1;
-        const f = makeFrame(x + rng.range(-1, 1), z + rng.range(-1, 1), -best.dz / l, best.dx / l, size, size * rng.range(0.9, 1.2));
+        const jitter = informal ? 0.3 : 1;
+        const f = makeFrame(x + rng.range(-jitter, jitter), z + rng.range(-jitter, jitter), -best.dz / l, best.dx / l, size, size * rng.range(0.9, 1.1));
         if (!frameFits(ctx, block, lot, f, placed, reserved)) continue;
         placed.push(f);
-        const floors = rng.int(1, informal ? 3 : 3);
+        const floors = rng.int(1, informal ? 4 : 3);
         addBuilding(ctx, f, { floors, style: 'ladrillo', color: houseColor(rng, 'ladrillo'), roof: pickRoof(rng, floors, informal), interior: true, tank: rng.chance(0.4), informal, block: block.id });
       }
     }
@@ -631,7 +634,7 @@ function buildSpecialAreas(ctx) {
         if (a.area < 250) {
           // Parquecito: árboles y bancas.
           addProp(ctx, { type: 'garden', poly: a.poly, x: a.c[0], z: a.c[1] });
-          plantTrees(ctx, a.poly, Math.max(1, Math.round(a.area / 60)), ['mango', 'ficus', 'guayacan']);
+          plantTrees(ctx, a.poly, Math.max(1, Math.round(a.area / 60)), ['mango', 'ficus', 'carbonero', 'almendro', 'guayacan']);
           break;
         }
         const plaza = /Aranjuez/.test(a.name);
@@ -645,15 +648,15 @@ function buildSpecialAreas(ctx) {
             if (!pointInPoly(bx, bz, a.poly)) continue;
             addProp(ctx, { type: 'bench', x: bx, z: bz, rot: -ang + Math.PI / 2, collider: { hx: 0.75, hz: 0.75, maxY: terrainHeight(bx, bz) + GRID.curb + 0.9 } });
           }
-          plantTrees(ctx, a.poly, Math.round(a.area / 180), ['ceiba', 'mango', 'guayacan', 'guayacanRosado', 'ficus'], 11);
+          plantTrees(ctx, a.poly, Math.round(a.area / 180), ['ceiba', 'saman', 'mango', 'guayacan', 'guayacanRosado', 'palma', 'carbonero'], 11);
           for (let k = 0; k < 8; k++) {
             const ang = (k / 8) * Math.PI * 2 + Math.PI / 8;
             addProp(ctx, { type: 'parkLamp', x: a.c[0] + Math.cos(ang) * 11.5, z: a.c[1] + Math.sin(ang) * 11.5, rot: ang, collider: { hx: 0.15, hz: 0.15 } });
           }
         } else if (/Morro/.test(a.name)) {
-          plantTrees(ctx, a.poly, Math.round(a.area / 90), ['guayacan', 'mango', 'palma', 'ficus', 'guayacanRosado']);
+          plantTrees(ctx, a.poly, Math.round(a.area / 90), ['platano', 'guadua', 'mango', 'palma', 'aguacate', 'guayabo', 'guayacanRosado', 'saman']);
         } else {
-          plantTrees(ctx, a.poly, Math.max(2, Math.round(a.area / 150)), ['mango', 'ficus', 'guayacan', 'palma']);
+          plantTrees(ctx, a.poly, Math.max(2, Math.round(a.area / 150)), ['mango', 'saman', 'carbonero', 'almendro', 'palma', 'guayacan']);
           const bx = a.c[0];
           const bz = a.c[1];
           addProp(ctx, { type: 'bench', x: bx, z: bz, rot: rng.range(0, 6.28), collider: { hx: 0.75, hz: 0.75, maxY: terrainHeight(bx, bz) + GRID.curb + 0.9 } });
@@ -715,7 +718,7 @@ function buildSpecialAreas(ctx) {
         break;
       }
       case 'verde':
-        plantTrees(ctx, a.poly, Math.max(1, Math.round(a.area / 70)), ['mango', 'platano', 'palma', 'ficus']);
+        plantTrees(ctx, a.poly, Math.max(1, Math.round(a.area / 70)), ['mango', 'platano', 'platano', 'aguacate', 'guayabo', 'guadua', 'palma']);
         break;
       default:
         break;
@@ -723,8 +726,8 @@ function buildSpecialAreas(ctx) {
   }
   // Río Medellín canalizado y separadores con árboles.
   for (const b of city.blocks) {
-    if (b.type === 'separador' && b.area > 120) plantTrees(ctx, b.curb, Math.max(1, Math.round(b.area / 250)), ['palma', 'ficus', 'guayacan']);
-    if (b.type === 'rio') plantTrees(ctx, b.curb, Math.round(b.area / 900), ['ficus', 'guayacan', 'mango', 'palma'], 0, true);
+    if (b.type === 'separador' && b.area > 120) plantTrees(ctx, b.curb, Math.max(1, Math.round(b.area / 250)), ['palmaReal', 'palmaReal', 'ficus', 'carbonero', 'guayacan']);
+    if (b.type === 'rio') plantTrees(ctx, b.curb, Math.round(b.area / 900), ['guadua', 'ficus', 'saman', 'mango', 'palma', 'carbonero'], 0, true);
   }
 
   // Puntos de interés (lugares reales del mapa).
@@ -769,6 +772,77 @@ function plantTrees(ctx, poly, n, kinds, minDist = 0, loose = false) {
     if (!loose && distToPolyEdge(x, z, poly) < 1.5) continue;
     addProp(ctx, { type: 'tree', kind: rng.pick(kinds), x, z, scale: rng.range(0.9, 1.5), collider: { hx: 0.35, hz: 0.35 } });
     placed++;
+  }
+}
+
+// ------------------------------------------------------------------ verde
+/**
+ * Lo verde de Medellín fuera de parques: guaduales y helechos en las orillas
+ * de las quebradas, solares con plátano, guayabo y maleza, setos y pasto en
+ * los separadores.
+ */
+function addGreenery(ctx) {
+  const { city, rng } = ctx;
+  const free = (x, z) => insideMap(x, z) && !onRoadCheck(x, z) && !city.inStation?.(x, z);
+  // Orillas de las quebradas.
+  for (const w of city.water) {
+    if (/Medell/i.test(w.name)) continue;
+    const cum = cumLengths(w.pts);
+    const L = cum[cum.length - 1];
+    for (let s0 = 2; s0 < L; s0 += 5) {
+      const p = pointAlong(w.pts, cum, s0);
+      for (const side of [1, -1]) {
+        const off = (w.kind === 'canal' ? 3.6 : 2.4) + rng.range(0, 1.5);
+        const x = p.x - p.dz * off * side;
+        const z = p.z + p.dx * off * side;
+        if (!free(x, z)) continue;
+        const r = rng.next();
+        if (r < 0.14) addProp(ctx, { type: 'tree', kind: 'guadua', x, z, scale: rng.range(0.8, 1.2), collider: { hx: 0.3, hz: 0.3 } });
+        else if (r < 0.6) addProp(ctx, { type: 'shrub', kind: rng.pick(['helecho', 'heliconia', 'helecho', 'monstera']), x, z, rot: rng.range(0, 6.28), scale: rng.range(0.8, 1.3) });
+        else if (r < 0.75) addProp(ctx, { type: 'grass', kind: 'maleza', x, z, r: rng.range(1.5, 3) });
+      }
+    }
+  }
+  // Solares: lotes casi sin construir.
+  const built = new Map();
+  for (const h of city.buildings) built.set(h.block, (built.get(h.block) ?? 0) + 4 * h.frame.hu * h.frame.hv);
+  for (const b of city.blocks) {
+    if (b.type !== 'residencial') continue;
+    const lotArea = b.lots.reduce((acc, l) => acc + Math.abs(polyArea(l)), 0);
+    if ((built.get(b.id) ?? 0) / Math.max(1, lotArea) >= 0.35) continue;
+    for (const l of b.lots) {
+      const A = Math.abs(polyArea(l));
+      const bb = polyBounds(l);
+      const n = Math.min(40, Math.round(A / 120));
+      for (let k = 0; k < n; k++) {
+        const x = rng.range(bb.minX, bb.maxX);
+        const z = rng.range(bb.minZ, bb.maxZ);
+        if (!pointInPoly(x, z, l) || !free(x, z) || city.collision.pointBlocked(x, z)) continue;
+        const r = rng.next();
+        if (r < 0.3) {
+          // Mata de plátano: 2 a 5 matas juntas.
+          const m = rng.int(2, 5);
+          for (let j = 0; j < m; j++) addProp(ctx, { type: 'tree', kind: 'platano', x: x + rng.range(-1.5, 1.5), z: z + rng.range(-1.5, 1.5), scale: rng.range(0.8, 1.1) });
+        } else if (r < 0.45) addProp(ctx, { type: 'tree', kind: rng.pick(['guayabo', 'aguacate', 'mango']), x, z, scale: rng.range(0.8, 1.2), collider: { hx: 0.3, hz: 0.3 } });
+        else addProp(ctx, { type: 'grass', kind: rng.chance(0.6) ? 'maleza' : 'pasto', x, z, r: rng.range(2, 4.5) });
+      }
+    }
+  }
+  // Separadores: seto y pasto a lo largo.
+  for (const b of city.blocks) {
+    if (b.type !== 'separador' || b.area < 60) continue;
+    const r = b.curb;
+    for (let i = 0; i < r.length; i++) {
+      const [ax, az] = r[i];
+      const [bx, bz] = r[(i + 1) % r.length];
+      const len = Math.hypot(bx - ax, bz - az);
+      if (len < 8 || !rng.chance(0.5)) continue;
+      const cx = (ax + bx) / 2;
+      const cz = (az + bz) / 2;
+      const [mx, mz] = [cx + (b.cx - cx) * 0.25, cz + (b.cz - cz) * 0.25];
+      if (!pointInPoly(mx, mz, b.curb) || !free(mx, mz)) continue;
+      addProp(ctx, { type: 'shrub', kind: 'seto', x: mx, z: mz, rot: Math.atan2(-(bz - az), bx - ax), len: Math.min(len * 0.7, 20) });
+    }
   }
 }
 
@@ -822,7 +896,7 @@ function addSidewalkProps(ctx, block) {
   walkCurb(block, 0.55, rng.range(12, 20), rng.range(6, 12), (x, z) => {
     if (!rng.chance(0.5) || onRoadCheck(x, z)) return;
     if (city.props.some((p) => p.type === 'lamp' && Math.abs(p.x - x) < 3 && Math.abs(p.z - z) < 3)) return;
-    addProp(ctx, { type: 'tree', kind: rng.pick(['mango', 'ficus', 'ficus', 'guayacan', 'guayacanRosado', 'palma', 'mango']), x, z, scale: rng.range(0.75, 1.15), collider: { hx: 0.25, hz: 0.25 } });
+    addProp(ctx, { type: 'tree', kind: rng.pick(['mango', 'mango', 'ficus', 'carbonero', 'almendro', 'guayacan', 'guayacanRosado', 'palma', 'aguacate']), x, z, scale: rng.range(0.75, 1.15), collider: { hx: 0.25, hz: 0.25 } });
   });
   // Motos parqueadas en el andén (muy de Medellín).
   const nMotos = block.type === 'residencial' ? (rng.chance(0.55) ? rng.int(1, 2) : 0) : 0;

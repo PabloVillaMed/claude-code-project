@@ -14,7 +14,7 @@ import { albedoAt } from './horizon.js';
 import { makeRng } from '../sim/rng.js';
 import { GRID, MAPA, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, RIVER, backdropHeight, terrainHeight } from '../sim/terrain.js';
 import { faceFrame } from '../sim/facades.js';
-import { pointAlong, polyArea } from '../sim/geom2d.js';
+import { pointAlong, pointInPoly, polyArea } from '../sim/geom2d.js';
 import { densify, drapePolygon, drapeTris, orientedQuad, polylineFrames, polyWall, ribbon } from './drape.js';
 import { buildRoof, roofParapet } from './roofs.js';
 import { buildMetro } from './metro.js';
@@ -90,8 +90,8 @@ export class CityRenderer {
           asphaltPlain: P('asphalt_02', { uvMeters: 9, ...roadOpts }),
           sidewalk: P('grey_tiles', { uvMeters: 4 }),
           pavers: P('herringbone_brick', { uvMeters: 4 }),
-          grass: P('leafy_grass', { uvMeters: 10 }),
-          dryGrass: P('leafy_grass', { uvMeters: 10, color: 0xd6c48e }),
+          grass: P('leafy_grass', { uvMeters: 10, color: 0xa9d98a }),
+          dryGrass: P('leafy_grass', { uvMeters: 10, color: 0xc9d08e }),
           terrain: P('leafy_grass', { uvMeters: 8, vertexColors: true }),
         }
       : {};
@@ -154,7 +154,7 @@ export class CityRenderer {
     const col = [0.9, 0.95, 0.85];
     // Fuera del área jugable sigue el mismo suelo que el fondo (backdropHeight):
     // así las casas lejanas no quedan enterradas bajo la ladera del mapa.
-    g.heightGrid(x0, z0, x1, z1, step, backdropHeight, 8, col);
+    g.heightGrid(x0, z0, x1, z1, step, terrainHeight, 8, col);
     // Variación de color (tierra seca / pasto) por vértice.
     for (let i = 0; i < g.col.length; i += 3) {
       const x = g.pos[i];
@@ -164,9 +164,11 @@ export class CityRenderer {
       // Fuera del área jugable el suelo es de ciudad (calles, patios), no potrero.
       const out = Math.max(0, MAP_MIN_X - 25 - x, x - MAP_MAX_X - 25, MAP_MIN_Z - 25 - z, z - MAP_MAX_Z - 25);
       const u = Math.min(1, out / 30);
-      g.col[i] = (k * (1 + (1 - n) * 0.25)) * (1 - u) + 0.3 * u;
-      g.col[i + 1] = k * (1 - u) + 0.28 * u;
-      g.col[i + 2] = k * 0.85 * (1 - u) + 0.28 * u;
+      // Prado verde de Medellín con manchas más secas.
+      const dry = (1 - n) * 0.35;
+      g.col[i] = k * (0.64 + dry * 0.4) * (1 - u) + 0.3 * u;
+      g.col[i + 1] = k * (0.84 - dry * 0.1) * (1 - u) + 0.28 * u;
+      g.col[i + 2] = k * (0.5 + dry * 0.1) * (1 - u) + 0.28 * u;
     }
     this._mesh(g.build(), this.materials.terrain, { cast: false, name: 'terreno' });
   }
@@ -393,6 +395,11 @@ export class CityRenderer {
     const curb = new GeoBuilder();
     const hf = (x, z) => terrainHeight(x, z) + GRID.curb;
     const hLot = (x, z) => terrainHeight(x, z) + GRID.curb + 0.01;
+    // Área construida por manzana: los lotes casi vacíos son solares con prado
+    // y matas (en Medellín todo lo que no se pavimenta se vuelve verde).
+    const built = new Map();
+    for (const h of this.city.buildings) built.set(h.block, (built.get(h.block) ?? 0) + 4 * h.frame.hu * h.frame.hv);
+    const greenAreas = this.city.areas.filter((a) => ['verde', 'parque', 'colegio', 'salud', 'cancha'].includes(a.kind));
     for (const b of this.city.blocks) {
       const out = polyArea(b.curb) > 0 ? -1 : 1;
       polyWall(curb, b.curb, out, (x, z) => terrainHeight(x, z) - 0.08, hf, { step: 3, uvScale: 2, color: [0.85, 0.83, 0.8] });
@@ -403,7 +410,14 @@ export class CityRenderer {
       }
       // Andén: el contorno menos los lotes; los lotes son patios de concreto.
       drapePolygon(walk, b.curb, hf, { step: 4, uv: (x, z) => [x / 4, -z / 4] }, b.lots);
-      for (const l of b.lots) drapePolygon(lots, l, hLot, { step: 5, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
+      const lotArea = b.lots.reduce((acc, l) => acc + Math.abs(polyArea(l)), 0);
+      const coverage = (built.get(b.id) ?? 0) / Math.max(1, lotArea);
+      for (const l of b.lots) {
+        const [cx, cz] = l[Math.floor(l.length / 2)];
+        const isGreen = coverage < 0.35 || greenAreas.some((a) => a.block === b && pointInPoly(cx, cz, a.poly));
+        if (isGreen) drapePolygon(green, l, hLot, { step: 5, uv: (x, z) => [x / 10, -z / 10] });
+        else drapePolygon(lots, l, hLot, { step: 5, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
+      }
     }
     this._mesh(walk.build(), this.materials.sidewalk, { cast: false, name: 'andenes' });
     this._mesh(lots.build(), this.materials.concrete, { cast: false, name: 'patios' });
