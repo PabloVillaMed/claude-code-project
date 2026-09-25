@@ -429,19 +429,7 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
     }
     set.build(r.root);
   }
-  if (glows.length && handledStreet) {
-    // Charco de luz falso en el piso (el mismo truco de la versión procedural).
-    const glowGeo = new THREE.PlaneGeometry(11, 11).rotateX(-Math.PI / 2);
-    const glowMat = new THREE.MeshBasicMaterial({ map: glowSprite(), color: 0xffb865, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4 });
-    const gm = new THREE.InstancedMesh(glowGeo, glowMat, glows.length);
-    glows.forEach((g, i) => {
-      _m.compose(_v.set(g.x, terrainHeight(g.x, g.z) + 0.08, g.z), _q.identity(), _s.set(g.s, 1, g.s));
-      gm.setMatrixAt(i, _m);
-    });
-    gm.computeBoundingSphere();
-    r.root.add(gm);
-    r.lampGlow = glowMat;
-  }
+  // El charco de luz de cada farol lo pinta el shader del piso (render/groundLights.js).
   return handledStreet;
 }
 

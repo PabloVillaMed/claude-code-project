@@ -18,6 +18,7 @@ import { pointAlong, pointInPoly, polyArea } from '../sim/geom2d.js';
 import { densify, drapePolygon, drapeTris, orientedQuad, polylineFrames, polyWall, ribbon } from './drape.js';
 import { buildRoof, roofParapet } from './roofs.js';
 import { buildMetro } from './metro.js';
+import { applyGroundLights } from './groundLights.js';
 
 const FACADE_M = 12; // metros que cubre una textura de fachada
 
@@ -35,6 +36,12 @@ export class CityRenderer {
     this.lampGlow = null;
     this.cityLights = null;
     this.materials = this._materials();
+    // Luz de faroles y faros calculada en el shader (render/groundLights.js).
+    {
+      const M = this.materials;
+      for (const k of ['asphalt', 'asphaltPlain', 'sidewalk', 'pavers', 'grass', 'dryGrass', 'field', 'terrain', 'concrete']) if (M[k]) applyGroundLights(M[k]);
+      for (const m of [...M.brick, ...M.stucco, ...M.mural, M.tower, M.plain, M.glossy, M.white, M.wood, M.stone]) if (m) applyGroundLights(m, { walls: true });
+    }
     this.facades = new FacadeBuilder(this);
     this._terrain();
     this._backdrop();
@@ -398,7 +405,7 @@ export class CityRenderer {
         for (let off = -hw + 0.6; off <= hw - 0.5; off += 1.15) strip(white, e, a, a + 2.6, off, 0.55);
       }
     }
-    const paint = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const paint = (color) => applyGroundLights(new THREE.MeshStandardMaterial({ color, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
     this._mesh(yellow.build(), paint(0xe0b12a), { cast: false, name: 'linea-central' });
     this._mesh(white.build(), paint(0xe8e8e2), { cast: false, name: 'demarcacion' });
   }
@@ -799,10 +806,6 @@ export class CityRenderer {
     this.nightMaterials.push({ m: headMat, max: 6 });
     const pm = new THREE.InstancedMesh(poleGeo, poleMat, lamps.length);
     const hm = new THREE.InstancedMesh(head, headMat, lamps.length);
-    // Charco de luz falso en el piso (barato y convincente de noche).
-    const glowGeo = new THREE.PlaneGeometry(11, 11).rotateX(-Math.PI / 2);
-    const glowMat = new THREE.MeshBasicMaterial({ map: glowSprite(), color: 0xffb865, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4 });
-    const gm = new THREE.InstancedMesh(glowGeo, glowMat, lamps.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const v = new THREE.Vector3();
@@ -814,13 +817,10 @@ export class CityRenderer {
       m.compose(v.set(l.x, y, l.z), q, one);
       pm.setMatrixAt(i, m);
       hm.setMatrixAt(i, m);
-      const dir = new THREE.Vector3(0, 0, -1.75).applyQuaternion(q);
-      m.compose(v.set(l.x + dir.x, terrainHeight(l.x + dir.x, l.z + dir.z) + 0.08, l.z + dir.z), new THREE.Quaternion(), one);
-      gm.setMatrixAt(i, m);
     });
     pm.castShadow = true;
-    this.root.add(pm, hm, gm);
-    this.lampGlow = glowMat;
+    // (El charco de luz en el piso lo calcula el shader: render/groundLights.js.)
+    this.root.add(pm, hm);
   }
 
   _poles(poles, cables) {
