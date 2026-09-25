@@ -97,7 +97,10 @@ if (want('drive')) {
   await shot('07-taxi-amarillo');
 }
 if (want('moto')) {
+  // Frenar antes de bajarse (a 60 km/h el golpe deja al jugador en el piso).
+  await adv(2.5, { brake: 1 });
   await G(() => window.__game.exitVehicle());
+  await adv(1.5);
   await goSpot(3, 'moto');
   await adv(3, { throttle: 1 });
   await adv(0.4, { throttle: 1, steer: 0.15 });
