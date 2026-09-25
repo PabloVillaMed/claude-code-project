@@ -567,6 +567,23 @@ function main() {
 
   const R = makeRaster();
   rasterRoads(R, net.edges);
+  // Marco de cierre junto al borde del raster: las manzanas cortadas por el
+  // borde de la región se cierran contra él en vez de perderse (si no, el
+  // occidente del mapa, junto a la Carrera 63 y la Terminal, queda vacío).
+  {
+    const m = 3;
+    const X0 = R.x0 + m;
+    const Z0 = R.z0 + m;
+    const X1 = R.x0 + R.nx * RES - m;
+    const Z1 = R.z0 + R.nz * RES - m;
+    for (const [a, b] of [
+      [[X0, Z0], [X1, Z0]],
+      [[X1, Z0], [X1, Z1]],
+      [[X1, Z1], [X0, Z1]],
+      [[X0, Z1], [X0, Z0]],
+    ])
+      capsule(R, a, b, 1.5);
+  }
   const D = distanceField(R);
   const { lab, sizes } = labelBlocks(R);
   const minCells = 90 / (RES * RES); // manzanas de menos de 90 m²: separadores e isletas

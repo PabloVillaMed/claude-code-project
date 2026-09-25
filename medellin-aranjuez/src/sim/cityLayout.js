@@ -212,6 +212,8 @@ function buildBlocks(city) {
   const river = MAPA.water.find((w) => /Medell/i.test(w.name));
   for (const b of city.blocks) {
     if (!b.ring || !b.lots.length) b.type = 'separador';
+    // Manzana cuyo andén cae sobre vías que no la delimitan (bordes del mapa): no es manzana útil.
+    else if (b.ring.filter(([x, z]) => onRoadCheck(x, z)).length > b.ring.length * 0.25) b.type = 'separador';
     if (river && river.pts.some(([x, z]) => pointInPoly(x, z, b.curb))) b.type = 'rio';
   }
   // Cruces peatonales: vértices de andenes de manzanas vecinas junto a cada
@@ -392,6 +394,9 @@ function frameFits(ctx, block, lot, frame, placed, reserved) {
   // Esquinas ligeramente hacia adentro (el frente queda sobre el paramento).
   const corners = frameCorners(frame).map(([x, z]) => [x + (frame.x - x) * 0.04, z + (frame.z - z) * 0.04]);
   for (const [x, z] of corners) if (!pointInPoly(x, z, lot)) return false;
+  // Nunca sobre la calzada (las manzanas del borde del mapa pueden venir mal cerradas).
+  if (onRoadCheck(frame.x, frame.z)) return false;
+  for (const [x, z] of corners) if (onRoadCheck(x, z)) return false;
   for (const o of placed) if (framesOverlap(frame, o, 0.02)) return false;
   for (const r of reserved) {
     if (pointInPoly(frame.x, frame.z, r)) return false;

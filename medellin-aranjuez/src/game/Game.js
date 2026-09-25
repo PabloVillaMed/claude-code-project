@@ -1243,6 +1243,21 @@ export class Game {
         const hits = rc.intersectObjects(g.scene.children, true).filter((h) => h.object.visible && h.object.name !== 'horizonte');
         return hits.slice(0, 4).map((h) => ({ name: h.object.name || h.object.parent?.name || h.object.type, dist: +h.distance.toFixed(1), point: h.point.toArray().map((v) => +v.toFixed(1)) }));
       },
+      /**
+       * Punto sobre el carril de una calle recta y larga del barrio (para
+       * pruebas): {x, z, yaw}. `k` elige otra calle.
+       */
+      streetSpot(k = 0) {
+        const c = g.city;
+        const ref = c.pois.find((p) => p.id === 'cayetano') ?? c.spawn;
+        const gr = g.world.graph;
+        const list = gr.activeEdges
+          .filter((e) => !e.oneway && e.pts.length === 2 && e.length > 60 && gr.core.has(e.a) && gr.core.has(e.b))
+          .sort((p, q) => Math.hypot(p.pts[0][0] - ref.x, p.pts[0][1] - ref.z) - Math.hypot(q.pts[0][0] - ref.x, q.pts[0][1] - ref.z));
+        const e = list[k % list.length];
+        const p = g.world.lanePointNear((e.pts[0][0] + e.pts[1][0]) / 2, (e.pts[0][1] + e.pts[1][1]) / 2);
+        return { x: p.x, z: p.z, yaw: p.yaw };
+      },
       /** Cámara fija de depuración: aerial(x, y, z, tx, ty, tz); sin argumentos la suelta. */
       aerial(...q) {
         g._aerial = q.length === 6 ? q : null;

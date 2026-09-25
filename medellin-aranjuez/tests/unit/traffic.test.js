@@ -11,9 +11,10 @@ const CAYETANO = { x: 52, z: -115 };
 const COMFAMA = { x: -53, z: -255 };
 const PARQUE = { x: 662, z: -434 };
 
-function spawnAgent(g, fromId, rng) {
+function spawnAgent(g, fromId, rng, wide = false) {
   const from = g.node(fromId);
-  const to = (from.links.find((l) => linkAllowed(g, l) && g.core.has(l.node)) ?? from.links.find((l) => linkAllowed(g, l)) ?? from.links[0]).node;
+  const ok = (l) => linkAllowed(g, l) && g.core.has(l.node) && (!wide || g.edges[l.edge].width >= 7.5);
+  const to = (from.links.find(ok) ?? from.links.find((l) => linkAllowed(g, l)) ?? from.links[0]).node;
   const p = lanePoint(g, fromId, to, 0.3);
   return { agent: { from: fromId, to, next: null }, p, rng };
 }
@@ -68,7 +69,7 @@ describe('tráfico y navegación vial', () => {
       // Como en el juego: nunca dos vehículos a menos de 15 m al aparecer.
       for (let j = 0; j < pool.length; j++) {
         const n = pool[(k * 7 + j) % pool.length];
-        const { agent, p } = spawnAgent(g, n.id, rng);
+        const { agent, p } = spawnAgent(g, n.id, rng, bus);
         if (cars.some((o) => Math.hypot(o.startX - p.x, o.startZ - p.z) < 12)) continue;
         const v = createVehicleState(bus ? 'buseta' : 'taxi', p.x, p.z, p.yaw, groundHeight);
         cars.push({ v, agent, offRoad: 0, samples: 0, startX: p.x, startZ: p.z, travelled: 0, lastX: p.x, lastZ: p.z });

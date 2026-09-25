@@ -6,6 +6,8 @@ import { test, expect } from '@playwright/test';
 // Una sola página compartida; si una prueba falla, las demás igual se ejecutan.
 
 let page;
+let S;
+let S2;
 const errors = [];
 const G = (fn, arg) => page.evaluate(fn, arg);
 const st = () => G(() => window.__game.state());
@@ -23,6 +25,9 @@ test.beforeAll(async ({ browser }) => {
   await page.goto('/?autotest=1&quality=baja');
   await page.waitForFunction(() => window.__game?.ready && window.__game.state().state === 'playing', null, { timeout: 300000 });
   await frames(10);
+  // Calles reales del mapa donde probar (rectas y largas, cerca de San Cayetano).
+  S = await G(() => window.__game.streetSpot(0));
+  S2 = await G(() => window.__game.streetSpot(3));
 });
 
 test.afterAll(async () => {
@@ -43,10 +48,10 @@ test('arranca sin errores, con HUD, NPCs y tráfico', async () => {
 });
 
 test('movilidad a pie con teclado: caminar, correr y saltar', async () => {
-  await G(() => {
-    window.__game.teleport(0, 30.5);
-    window.__game.look(Math.PI / 2); // mirar al oeste, por la calle
-  });
+  await G((S) => {
+    window.__game.teleport(S.x, S.z);
+    window.__game.look(S.yaw); // mirar a lo largo de la calle
+  }, S);
   await frames(3);
   const a = await st();
   await page.keyboard.down('KeyW');
@@ -56,7 +61,8 @@ test('movilidad a pie con teclado: caminar, correr y saltar', async () => {
   const b = await st();
   const walked = Math.hypot(b.x - a.x, b.z - a.z);
   expect(walked).toBeGreaterThan(2.5);
-  expect(b.x).toBeLessThan(a.x); // fue hacia el oeste
+  // Fue hacia donde miraba (adelante = (-sin yaw, -cos yaw)).
+  expect((b.x - a.x) * -Math.sin(S.yaw) + (b.z - a.z) * -Math.cos(S.yaw)).toBeGreaterThan(2);
 
   await page.keyboard.down('ShiftLeft');
   await page.keyboard.down('KeyW');
@@ -109,12 +115,12 @@ test('selección de armas con números y rueda del ratón, disparo y recarga', a
 });
 
 test('vehículos: subirse, conducir, frenar y bajarse', async () => {
-  await G(() => {
-    window.__game.teleport(0, 30.5);
+  await G((S) => {
+    window.__game.teleport(S.x, S.z);
     const v = window.__game.spawnVehicle('taxi');
     // Pararse junto a la puerta (a la derecha del vehículo).
     window.__game.teleport(v.x + Math.cos(v.heading) * 1.9, v.z - Math.sin(v.heading) * 1.9);
-  });
+  }, S);
   await frames(2);
   await page.keyboard.press('KeyF');
   await frames(3);
@@ -145,10 +151,10 @@ test('vehículos: subirse, conducir, frenar y bajarse', async () => {
 });
 
 test('moto: aceleración y giro', async () => {
-  await G(() => {
-    window.__game.teleport(210, 40);
+  await G((S2) => {
+    window.__game.teleport(S2.x, S2.z);
     window.__game.spawnVehicle('moto');
-  });
+  }, S2);
   await frames(2);
   expect(await G(() => window.__game.enterNearest(10))).toBe(true);
   expect((await st()).vehicleType).toBe('moto');
@@ -209,10 +215,10 @@ test('misión Domicilio express completa de principio a fin', async () => {
 });
 
 test('policía: con estrellas aparecen patrullas', async () => {
-  await G(() => {
-    window.__game.teleport(0, 30.5);
+  await G((S) => {
+    window.__game.teleport(S.x, S.z);
     window.__game.addWanted(2);
-  });
+  }, S);
   // La primera patrulla llega en cuanto el despacho la asigna; con el render
   // por software cada cuadro tarda distinto, así que se espera a que aparezca.
   await page.waitForFunction(() => window.__game.state().police >= 1, null, { timeout: 180000 });
@@ -222,12 +228,12 @@ test('policía: con estrellas aparecen patrullas', async () => {
 });
 
 test('de noche: faros encendidos; el derrape deja marcas', async () => {
-  await G(() => {
+  await G((S) => {
     window.__game.setTime(21);
-    window.__game.teleport(0, 30.5);
+    window.__game.teleport(S.x, S.z);
     window.__game.spawnVehicle('sedan');
     window.__game.enterNearest(20);
-  });
+  }, S);
   await G(() => window.__game.advance(3.5, { throttle: 1 }));
   await G(() => window.__game.advance(1, { throttle: 0.3, steer: 1, handbrake: true }));
   await frames(3);

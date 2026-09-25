@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPed, stepPed, ringCorners, PED } from '../../src/sim/pedAI.js';
-import { onBlock, onRoad } from '../../src/sim/terrain.js';
+import { insideMap, onBlock, onRoad } from '../../src/sim/terrain.js';
 import { makeRng } from '../../src/sim/rng.js';
 import { pointInPoly } from '../../src/sim/geom2d.js';
 import { city } from './helpers.js';
@@ -98,6 +98,7 @@ describe('peatones (NPC)', () => {
     let n = 0;
     for (const b of walkable(city())) {
       for (const k of ringCorners(b)) {
+        if (!insideMap(k.x, k.z)) continue; // fuera del área jugable
         n++;
         if (!onBlock(k.x, k.z)) bad++;
       }

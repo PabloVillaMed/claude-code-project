@@ -322,6 +322,16 @@ export class World {
       for (const v of [...this.vehicles]) {
         if (v.persistent || v.driver === 'player' || v === this.game.player.lastVehicle) continue;
         const d = dist2D(v.state.x, v.state.z, px, pz);
+        // Tráfico trabado (una buseta en una esquina cerrada): si nadie lo ve, se recicla.
+        if (v.kind === 'traffic') {
+          const m = (v._moveCheck ??= { x: v.state.x, z: v.state.z, t: 0 });
+          m.t += 0.4;
+          if (Math.hypot(v.state.x - m.x, v.state.z - m.z) > 4) Object.assign(m, { x: v.state.x, z: v.state.z, t: 0 });
+          if (m.t > 25 && d > 60) {
+            this.removeVehicle(v);
+            continue;
+          }
+        }
         if (d > 280 || (v.exploded && d > 120)) this.removeVehicle(v);
       }
       for (const p of [...this.peds]) {

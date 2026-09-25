@@ -117,7 +117,11 @@ export function buildMetroStation(city, st) {
     for (let c = 24; c < 150; c += 2) {
       const [x, z] = W(0, sgn * c);
       if (!insideMap(x, z)) break;
-      if (riverDistance(x, z) > RIVER.half + RIVER.bank + 3 && !onRoad(x, z) && !onRoad(...W(3, sgn * c)) && !onRoad(...W(-3, sgn * c))) {
+      void x;
+      void z;
+      // Tierra firme de al menos 10 m seguidos (no el separador de una avenida).
+      const clear = (cc) => riverDistance(...W(0, cc)) > RIVER.half + RIVER.bank + 3 && !onRoad(...W(0, cc)) && !onRoad(...W(3, cc)) && !onRoad(...W(-3, cc));
+      if ([0, 3, 6, 9].every((k) => clear(sgn * (c + k)))) {
         cEnd = sgn * c;
         break;
       }

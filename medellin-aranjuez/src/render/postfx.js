@@ -17,6 +17,7 @@ const GradeShader = {
     uVignette: { value: 0.35 },
     uSaturation: { value: 1.08 },
     uDamage: { value: 0 },
+    uNight: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -27,14 +28,20 @@ const GradeShader = {
     uniform float uVignette;
     uniform float uSaturation;
     uniform float uDamage;
+    uniform float uNight;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
       c.rgb = mix(vec3(l), c.rgb, uSaturation);
+      // Noche: las sombras y medios tonos se enfrían y pierden algo de color
+      // (visión nocturna); lo iluminado por postes y faros conserva su tono cálido.
+      float dark = uNight * (1.0 - smoothstep(0.05, 0.5, l));
+      c.rgb = mix(c.rgb, mix(vec3(l), c.rgb, 0.7) * vec3(0.9, 0.98, 1.14), dark);
       vec2 d = vUv - 0.5;
-      float v = smoothstep(0.85, 0.2, length(d) * (1.0 + uVignette));
-      c.rgb *= mix(1.0, v, uVignette * 1.4);
+      float vig = uVignette * (1.0 - 0.45 * uNight); // de noche la viñeta no hunde los bordes
+      float v = smoothstep(0.85, 0.2, length(d) * (1.0 + vig));
+      c.rgb *= mix(1.0, v, vig * 1.4);
       // Destello rojo al recibir daño.
       float edge = smoothstep(0.25, 0.75, length(d) * 1.4);
       c.rgb = mix(c.rgb, vec3(0.6, 0.0, 0.0), uDamage * edge * 0.8);
@@ -99,6 +106,7 @@ export class PostFX {
       this.bloom.strength = 0.15 + n * 0.5;
       this.bloom.threshold = 5 - n * 4.2;
     }
+    if (this.grade) this.grade.uniforms.uNight.value = n;
   }
 
   render(scene, camera) {
