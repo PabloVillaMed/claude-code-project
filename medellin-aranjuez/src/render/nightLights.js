@@ -40,7 +40,7 @@ export class NightLights {
       // Un farol que ya tiene PointLight real ilumina el piso con ella: la luz
       // del shader se reduce para no sumarlas (con transición suave).
       const k = this.assign.indexOf(i);
-      return k < 0 ? 1 : 1 - 0.55 * this.lights[k].userData.level;
+      return k < 0 ? 1 : 1 - 0.65 * this.lights[k].userData.level;
     };
   }
 
@@ -84,7 +84,7 @@ export class NightLights {
       const target = this.assign[k] >= 0 ? 1 : 0;
       l.userData.level += (target - l.userData.level) * Math.min(1, dt * 3);
       const park = this.assign[k] >= 0 && this.heads[this.assign[k]].park;
-      l.intensity = night * l.userData.level * (park ? 14 : 30);
+      l.intensity = night * l.userData.level * (park ? 12 : 24);
     }
     // Foco de los faros del jugador.
     if (this.spot) {
@@ -96,7 +96,7 @@ export class NightLights {
         this.spot.position.set(s.x + fx * half, s.y + 0.8, s.z + fz * half);
         this.spot.target.position.set(s.x + fx * (half + 18), groundHeight(s.x + fx * 18, s.z + fz * 18), s.z + fz * (half + 18));
         this.spot.target.updateMatrixWorld();
-        this.spot.intensity = 60 * night;
+        this.spot.intensity = 14 * night; // el piso lo iluminan los haces de groundLights; esto es para personas y carros
       } else this.spot.intensity = 0;
     }
   }

@@ -104,7 +104,7 @@ export class PostFX {
     if (this.bloom) {
       // De día solo destellos muy intensos; de noche brillan ventanas y postes.
       this.bloom.strength = 0.15 + n * 0.5;
-      this.bloom.threshold = 5 - n * 4.2;
+      this.bloom.threshold = 5 - n * 3.9; // de noche brillan las luces, no el andén iluminado
     }
     if (this.grade) this.grade.uniforms.uNight.value = n;
   }

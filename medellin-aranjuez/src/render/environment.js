@@ -204,7 +204,7 @@ export class Environment {
     this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 300);
     this.sun.target.updateMatrixWorld();
 
-    this.moon.intensity = 0.65 * this.night;
+    this.moon.intensity = 0.55 * this.night;
     this.moon.position.copy(focus).add(new THREE.Vector3(-100, 220, 60));
     this.moon.target.position.copy(focus);
     this.moon.target.updateMatrixWorld();
@@ -212,7 +212,7 @@ export class Environment {
     // De noche el cielo no es negro: la bruma del valle devuelve la luz de la
     // ciudad (azul grisáceo arriba, cálido desde el piso iluminado).
     const n = this.night;
-    this.hemi.intensity = 0.12 + 0.38 * dayF + 0.36 * n;
+    this.hemi.intensity = 0.12 + 0.38 * dayF + 0.28 * n;
     this.hemi.color.setRGB(0.55 + 0.2 * dayF - 0.05 * n, 0.65 + 0.2 * dayF - 0.03 * n, 0.9);
     this.hemi.groundColor.setRGB(0.28 * (0.3 + dayF) + 0.2 * n, 0.24 * (0.3 + dayF) + 0.12 * n, 0.2 * (0.3 + dayF) + 0.05 * n);
     this.glow.material.uniforms.uStrength.value = n;
