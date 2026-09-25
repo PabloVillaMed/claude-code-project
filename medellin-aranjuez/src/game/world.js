@@ -203,7 +203,7 @@ export class World {
     // Posición aleatoria sobre una arista, lejos del jugador.
     for (let tries = 0; tries < 20; tries++) {
       const e = this.graph.activeEdges[Math.floor(this.rng.next() * this.graph.activeEdges.length)];
-      if (e.cls === 'service') continue;
+      if (e.cls === 'service' || !this.graph.core.has(e.a) || !this.graph.core.has(e.b)) continue;
       const forward = e.oneway ? e.oneway === 1 : this.rng.chance(0.5);
       const from = forward ? e.a : e.b;
       const to = forward ? e.b : e.a;
@@ -213,6 +213,8 @@ export class World {
       if (d < minD || d > maxD) continue;
       if (this.vehicles.some((v) => dist2D(v.state.x, v.state.z, p.x, p.z) < 12)) continue;
       const vt = type ?? this._pickTrafficType();
+      // Busetas y camiones solo por las vías anchas.
+      if (['buseta', 'camion', 'bus'].includes(vt) && e.width < 7.5) continue;
       const v = new VehicleEntity(this, vt, p.x, p.z, p.yaw, { kind: 'traffic', agent: { from, to, next: null } });
       v.state.vx = forwardX(p.yaw) * 8;
       v.state.vz = forwardZ(p.yaw) * 8;

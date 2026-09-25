@@ -117,6 +117,8 @@ export function backdropHeight(x, z) {
 // ------------------------------------------------------------------ calzadas
 // Índice espacial de tramos de calzada (cápsulas con el medio ancho de la vía).
 const CS = 24;
+/** Radio del disco de asfalto de un cruce, relativo al medio ancho de la vía más ancha. */
+export const NODE_DISC = 1.08;
 const roadCells = new Map();
 const ROAD_SEGS = [];
 const key = (i, j) => i * 73856093 + j * 19349663;
@@ -134,6 +136,36 @@ for (const [ei, e] of MAPA.edges.entries()) {
     const j1 = Math.floor((Math.max(az, bz) + hw) / CS);
     for (let i = i0; i <= i1; i++) {
       for (let j = j0; j <= j1; j++) {
+        const k2 = key(i, j);
+        let c = roadCells.get(k2);
+        if (!c) roadCells.set(k2, (c = []));
+        c.push(seg);
+      }
+    }
+  }
+}
+
+// Intersecciones: disco de asfalto (el mismo que dibuja el render) con el
+// medio ancho de la vía más ancha que llega, para que las esquinas sean calzada.
+{
+  const deg = new Map();
+  for (const [ei, e] of MAPA.edges.entries()) {
+    if (!e.car) continue;
+    for (const n of [e.a, e.b]) {
+      const d = deg.get(n) ?? { k: 0, hw: 0, edge: ei };
+      d.k++;
+      d.hw = Math.max(d.hw, e.w / 2);
+      deg.set(n, d);
+    }
+  }
+  for (const [n, d] of deg) {
+    if (d.k < 2) continue;
+    const { x, z } = MAPA.nodes[n];
+    const hw = d.hw * NODE_DISC;
+    const seg = { ax: x, az: z, bx: x, bz: z, hw, edge: d.edge, dx: 0, dz: 0, l2: 1e-9 };
+    ROAD_SEGS.push(seg);
+    for (let i = Math.floor((x - hw) / CS); i <= Math.floor((x + hw) / CS); i++) {
+      for (let j = Math.floor((z - hw) / CS); j <= Math.floor((z + hw) / CS); j++) {
         const k2 = key(i, j);
         let c = roadCells.get(k2);
         if (!c) roadCells.set(k2, (c = []));

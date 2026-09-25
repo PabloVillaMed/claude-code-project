@@ -48,6 +48,9 @@ const SPECIES = {
  * Tipos de árbol que entiende props.js ({ type: 'tree', kind, x, z, scale?,
  * collider?, onBlock? }) y dónde se ven en Medellín, para el generador de ciudad.
  */
+/** Hasta dónde se dibujan los árboles (el mapa real mide 2 km: no todos a la vez). */
+export const treeFar = (r) => Math.min(r.quality?.drawDistance ?? 1500, r.quality?.treeFar ?? 650);
+
 export const TREE_KINDS = {
   mango: 'Calle, patio y parque: el árbol de sombra más común del barrio (copa densa, oscura)',
   ficus: 'Andén y separador: ficus podado en copa redonda',
@@ -170,7 +173,7 @@ export function buildTrees(r, trees) {
     }
     if (!sets.has(sp.model)) {
       const isLeaf = prepareLeaves(tpl);
-      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: r.quality?.drawDistance ?? 1500, tint: isLeaf, name: `arboles-${sp.model}` }));
+      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: treeFar(r), tint: isLeaf, name: `arboles-${sp.model}` }));
     }
     const sc = t.scale ?? 1;
     const k = (sp.h * sc) / tpl.height;

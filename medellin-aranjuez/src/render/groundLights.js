@@ -232,4 +232,3 @@ export const groundLights = {
     for (let k = n; k < MAX_BEAMS; k++) P[k].w = 0;
   },
 };
-window.__gl = groundLights;

@@ -36,8 +36,8 @@ function normalAt(hf, x, z) {
 }
 
 /**
- * Triángulos 2D ([[x,z],[x,z],[x,z]]) colgados del terreno: cada uno se
- * subdivide en n² triángulos (n según su lado más largo y `step`).
+ * Triángulos 2D ([[x,z],[x,z],[x,z]]) colgados del terreno, subdivididos
+ * hasta que ningún lado supere `step` metros.
  */
 export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4], color } = {}) {
   const cache = new Map();
@@ -52,32 +52,41 @@ export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4
     }
     return i;
   };
+  // Bisección por el lado más largo hasta que ningún lado supere `step`:
+  // los triángulos largos y angostos de los andenes se parten a lo largo, no
+  // en una malla n² como antes.
+  const out = [];
+  const split = (A, B, C, depth) => {
+    const ab = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const bc = Math.hypot(C[0] - B[0], C[1] - B[1]);
+    const ca = Math.hypot(A[0] - C[0], A[1] - C[1]);
+    const L = Math.max(ab, bc, ca);
+    if (L <= step || depth > 14) {
+      out.push(A, B, C);
+      return;
+    }
+    if (L === ab) {
+      const M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+      split(A, M, C, depth + 1);
+      split(M, B, C, depth + 1);
+    } else if (L === bc) {
+      const M = [(B[0] + C[0]) / 2, (B[1] + C[1]) / 2];
+      split(A, B, M, depth + 1);
+      split(A, M, C, depth + 1);
+    } else {
+      const M = [(C[0] + A[0]) / 2, (C[1] + A[1]) / 2];
+      split(A, B, M, depth + 1);
+      split(M, B, C, depth + 1);
+    }
+  };
   for (const [A, B, C] of tris) {
     // Orientación: la cara debe mirar hacia arriba.
     const cross = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
     if (Math.abs(cross) < 1e-6) continue;
-    const [P, Q, R] = cross < 0 ? [A, B, C] : [A, C, B];
-    const L = Math.max(Math.hypot(Q[0] - P[0], Q[1] - P[1]), Math.hypot(R[0] - Q[0], R[1] - Q[1]), Math.hypot(P[0] - R[0], P[1] - R[1]));
-    const n = Math.max(1, Math.min(24, Math.ceil(L / step)));
-    // Puntos baricéntricos (i, j) con i + j <= n.
-    const idx = [];
-    for (let i = 0; i <= n; i++) {
-      const row = [];
-      for (let j = 0; j <= n - i; j++) {
-        const a = i / n;
-        const b = j / n;
-        const c = 1 - a - b;
-        row.push(vert(P[0] * c + Q[0] * a + R[0] * b, P[1] * c + Q[1] * a + R[1] * b));
-      }
-      idx.push(row);
-    }
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n - i; j++) {
-        g.idx.push(idx[i][j], idx[i + 1][j], idx[i][j + 1]);
-        if (j < n - i - 1) g.idx.push(idx[i + 1][j], idx[i + 1][j + 1], idx[i][j + 1]);
-      }
-    }
+    if (cross < 0) split(A, B, C, 0);
+    else split(A, C, B, 0);
   }
+  for (let i = 0; i < out.length; i += 3) g.idx.push(vert(out[i][0], out[i][1]), vert(out[i + 1][0], out[i + 1][1]), vert(out[i + 2][0], out[i + 2][1]));
 }
 
 /** Triangula un polígono (con huecos opcionales) y lo cuelga del terreno. */

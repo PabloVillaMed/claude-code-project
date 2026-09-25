@@ -33,9 +33,12 @@ import {
   wallDirt,
 } from './facadeTextures.js';
 
-const CHUNK = 150; // m por lado de cada trozo de detalle
+const CHUNK = 240; // m por lado de cada trozo (menos llamadas de dibujo en el mapa grande)
 // Materiales de detalle: se ocultan de lejos.
 const DETAIL = new Set(['detail', 'grille']);
+// Relieve de la fachada (jambas, vigas, columnas, balcones, toldos): a media
+// distancia ya no se distingue y en el mapa real son millones de triángulos.
+const MID = new Set(['trim', 'awning', 'railingBars']);
 // Materiales que no proyectan sombra (planos finos o hundidos en el muro).
 const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopBox', 'sign', 'detail', 'gres', 'granito', 'door']);
 const LIT_WARM = [1, 0.77, 0.5];
@@ -149,7 +152,7 @@ export class FacadeBuilder {
     const cj = Math.max(0, Math.floor((cz - MAP_MIN_Z) / CHUNK));
     const key = `${ci},${cj}`;
     let c = this.chunks.get(key);
-    if (!c) this.chunks.set(key, (c = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, detail: [] }));
+    if (!c) this.chunks.set(key, (c = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, detail: [], mid: [] }));
     c.minX = Math.min(c.minX, b.minX);
     c.maxX = Math.max(c.maxX, b.maxX);
     c.minZ = Math.min(c.minZ, b.minZ);
@@ -480,6 +483,7 @@ export class FacadeBuilder {
       root.add(mesh);
       out.push(mesh);
       if (DETAIL.has(key)) this.chunks.get(chunk)?.detail.push(mesh);
+      else if (MID.has(key)) this.chunks.get(chunk)?.mid.push(mesh);
     }
     this.groups.clear();
     return out;
@@ -488,11 +492,13 @@ export class FacadeBuilder {
   /** Detalles pequeños solo cerca de la cámara (por zona). */
   update(camPos) {
     const far = this.quality?.detailDraw ?? 150;
+    const mid = Math.max(260, far * 2.2);
     for (const c of this.chunks.values()) {
       const dx = Math.max(c.minX - camPos.x, 0, camPos.x - c.maxX);
       const dz = Math.max(c.minZ - camPos.z, 0, camPos.z - c.maxZ);
-      const on = Math.hypot(dx, dz) < far;
-      for (const m of c.detail) m.visible = on;
+      const d = Math.hypot(dx, dz);
+      for (const m of c.detail) m.visible = d < far;
+      for (const m of c.mid) m.visible = d < mid;
     }
   }
 }

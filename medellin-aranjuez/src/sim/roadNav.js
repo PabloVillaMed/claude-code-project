@@ -28,6 +28,27 @@ export class RoadGraph {
     this.edges = city.edges;
     this.active = city.nodes.filter((n) => n.active);
     this.activeEdges = city.edges.filter((e) => e.active !== false);
+    // Núcleo de la red (2-core): quita una y otra vez los nodos con una sola
+    // salida. Lo que queda fuera son calles ciegas y bolsas sin salida, donde
+    // el tráfico no entra (no sabe dar la vuelta en U en una calle angosta).
+    const deg = new Map(this.nodes.map((n) => [n.id, new Set(n.links.map((l) => l.node)).size]));
+    // El borde del mapa también cuenta como salida cerrada.
+    const b = city.bounds;
+    const edge = (n) => b && (n.x < b.minX + 30 || n.x > b.maxX - 30 || n.z < b.minZ + 30 || n.z > b.maxZ - 30);
+    const stack = this.nodes.filter((n) => deg.get(n.id) <= 1 || edge(n)).map((n) => n.id);
+    const removed = new Set();
+    while (stack.length) {
+      const id = stack.pop();
+      if (removed.has(id)) continue;
+      removed.add(id);
+      for (const l of this.nodes[id].links) {
+        if (removed.has(l.node)) continue;
+        const d = deg.get(l.node) - 1;
+        deg.set(l.node, d);
+        if (d <= 1) stack.push(l.node);
+      }
+    }
+    this.core = new Set(this.nodes.filter((n) => !removed.has(n.id)).map((n) => n.id));
     // Índice espacial de aristas activas para nearestEdge.
     this.cell = 40;
     this.grid = new Map();
@@ -99,9 +120,17 @@ export class RoadGraph {
   }
 
   /** Siguiente nodo al llegar a `at` viniendo de `from`, evitando la vuelta en U y el contravía. */
-  pickNext(from, at, rand = Math.random) {
+  pickNext(from, at, rand = Math.random, minWidth = 0) {
     const all = this.nodes[at].links;
-    let links = all.filter((l) => l.node !== from && linkAllowed(this, l));
+    if (minWidth) {
+      // Vehículos largos: por las vías anchas mientras se pueda.
+      const wide = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.edges[l.edge].width >= minWidth && this.core.has(l.node));
+      if (wide.length) return wide[Math.floor(rand() * wide.length)].node;
+    }
+    // Las calles ciegas solo si no hay otra salida (el tráfico no da la vuelta en U ahí).
+    let links = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.core.has(l.node));
+    if (!links.length) links = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.nodes[l.node].links.length > 1);
+    if (!links.length) links = all.filter((l) => l.node !== from && linkAllowed(this, l));
     if (!links.length) links = all.filter((l) => l.node !== from);
     if (!links.length) return from;
     return links[Math.floor(rand() * links.length)].node;
@@ -116,7 +145,8 @@ export class RoadGraph {
       if (l.node === from && links.length > 1) continue;
       const n = this.nodes[l.node];
       // El contravía penaliza (la policía en persecución sí lo usa si toca).
-      const d = dist2D(n.x, n.z, tx, tz) + (linkAllowed(this, l) ? 0 : 60);
+      const dead = !this.core.has(n.id) && dist2D(n.x, n.z, tx, tz) > 40;
+      const d = dist2D(n.x, n.z, tx, tz) + (linkAllowed(this, l) ? 0 : 60) + (dead ? 200 : 0);
       if (d < bd) {
         bd = d;
         best = l.node;
@@ -240,11 +270,15 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   const distToEnd = elen - prog;
 
   // Al acercarse al final, elegir el siguiente tramo.
-  if (agent.next === undefined || agent.next === null) agent.next = chooseNext(graph, agent, opts);
+  if (agent.next === undefined || agent.next === null) agent.next = chooseNext(graph, agent, opts, v);
   const turning = agent.next !== agent.from && isTurn(graph, agent.from, agent.to, agent.next);
   const uTurn = agent.next === agent.from;
 
-  if (distToEnd < (uTurn ? 3 : 6.5)) {
+  // Los vehículos largos entran más al cruce antes de girar (giro abierto).
+  // Igual en los giros cerrados de las calles reales (más de ~50°).
+  const wb0 = v.spec?.wheelBase ?? 2.5;
+  const longTurn = turning && wb0 > 3.5;
+  if (distToEnd < (uTurn ? 3 : longTurn ? 2.5 : 6.5)) {
     agent.from = agent.to;
     agent.to = agent.next;
     agent.next = null;
@@ -254,15 +288,26 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   // Punto objetivo a cierta distancia adelante sobre el carril (más lejos
   // para vehículos largos, que necesitan abrirse en los giros).
   const wb = v.spec?.wheelBase ?? 2.5;
-  const look = clamp(2 + wb + Math.abs(v.forwardSpeed) * 0.6, 5, 16);
+  const look = wb > 3.5 ? clamp(1.5 + wb * 0.8 + Math.abs(v.forwardSpeed) * 0.45, 5, 13) : clamp(2 + wb + Math.abs(v.forwardSpeed) * 0.6, 5, 16);
   let target;
   if (distToEnd > look || uTurn) {
     target = lanePoint(graph, agent.from, agent.to, clamp(t + look / elen, 0, 1));
+  } else if (longTurn) {
+    // Hasta el fondo del carril actual y un poco más allá, luego gira.
+    const end = lanePoint(graph, agent.from, agent.to, 1);
+    const fx = Math.sin(end.yaw) * -1;
+    const fz = Math.cos(end.yaw) * -1;
+    const over = wb0 > 3.5 ? 2 : 0.5;
+    target = { x: end.x + fx * over, z: end.z + fz * over };
   } else {
     const rest = look - distToEnd;
     const nlen = graph.link(agent.to, agent.next) ? graph.edges[graph.link(agent.to, agent.next).edge].length : 20;
     target = lanePoint(graph, agent.to, agent.next, clamp(rest / nlen, 0, 1));
   }
+  // Curva por delante: cuánto cambia el rumbo del carril en los próximos metros.
+  const ahead = lanePoint(graph, agent.from, agent.to, clamp(t + Math.min(25, distToEnd) / elen, 0, 1));
+  const here = lanePoint(graph, agent.from, agent.to, clamp(t, 0, 1));
+  const bend = Math.abs(wrapAngle(ahead.yaw - here.yaw));
   const desiredYaw = yawFromDir(target.x - v.x, target.z - v.z);
   const err = wrapAngle(desiredYaw - v.heading);
   // err > 0 => hay que girar a la izquierda => steer negativo.
@@ -281,6 +326,8 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   if (turning && distToEnd < 22) desired = Math.min(desired, wb > 3.5 ? 4.5 : 6.5);
   if (uTurn && distToEnd < 15) desired = Math.min(desired, 3);
   if (Math.abs(err) > 0.5) desired = Math.min(desired, 5);
+  // Frena antes de las curvas (más los vehículos largos).
+  if (bend > 0.25) desired = Math.min(desired, Math.max(4, (wb > 3.5 ? 9 : 13) - bend * (wb > 3.5 ? 9 : 8)));
   if (opts.blockedAhead < Infinity) {
     const stopDist = 4.5;
     desired = Math.min(desired, Math.max(0, (opts.blockedAhead - stopDist) * 0.8));
@@ -307,14 +354,25 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
  * Siguiente nodo del agente: el de su ruta (agent.path, calculada con
  * Dijkstra) si la tiene y va por ella; si no, hacia el objetivo o al azar.
  */
-function chooseNext(graph, agent, opts) {
+function chooseNext(graph, agent, opts, v) {
   const path = agent.path;
   if (path) {
     const i = path.indexOf(agent.to);
     if (i >= 0 && i + 1 < path.length) return path[i + 1];
   }
   if (opts.target) return graph.pickToward(agent.from, agent.to, opts.target.x, opts.target.z);
-  return graph.pickNext(agent.from, agent.to, opts.rand);
+  return graph.pickNext(agent.from, agent.to, opts.rand, (v?.spec?.wheelBase ?? 0) > 3.5 ? 7.5 : 0);
+}
+
+/** Coseno del cambio de rumbo al pasar de from→at a at→next. */
+function turnDot(graph, from, at, next) {
+  const l1 = graph.link(from, at);
+  const l2 = graph.link(at, next);
+  if (!l1 || !l2) return 1;
+  const e1 = graph.edges[l1.edge];
+  const p1 = axisAt(graph, l1, e1.length - 0.01);
+  const p2 = axisAt(graph, l2, 0.01);
+  return p1.dx * p2.dx + p1.dz * p2.dz;
 }
 
 function isTurn(graph, from, at, next) {

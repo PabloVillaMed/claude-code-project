@@ -365,7 +365,7 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
       box.computeBoundingSphere();
       tpl.lejos.push({ geometry: box, material: glass });
     }
-    const set = new ChunkedInstances(tpl, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'faroles' });
+    const set = new ChunkedInstances(tpl, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'faroles' });
     r.lampHeads ??= [];
     for (const l of lamps) {
       set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot);
@@ -413,8 +413,8 @@ function buildPoles(r, poles, cables) {
   const rng = makeRng(313);
   const H = 9;
   const variant = new Map();
-  const setA = new ChunkedInstances(ta, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'postes' });
-  const setB = tb ? new ChunkedInstances(tb, { near: propNear(r), far: r.quality?.drawDistance ?? 1500, name: 'postes-transformador' }) : null;
+  const setA = new ChunkedInstances(ta, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes' });
+  const setB = tb ? new ChunkedInstances(tb, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes-transformador' }) : null;
   for (const p of poles) {
     const useB = setB && rng.chance(0.3);
     const tpl = useB ? tb : ta;

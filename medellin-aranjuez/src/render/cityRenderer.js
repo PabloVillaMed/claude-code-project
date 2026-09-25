@@ -144,7 +144,8 @@ export class CityRenderer {
   _terrain() {
     const pad = 110;
     const g = new GeoBuilder();
-    const step = 2.5;
+    // Casi todo el terreno del mapa queda bajo andenes, patios y prados: basta una rejilla gruesa.
+    const step = 4;
     const rng = makeRng(3);
     const x0 = MAP_MIN_X - pad;
     const x1 = MAP_MAX_X + pad;
