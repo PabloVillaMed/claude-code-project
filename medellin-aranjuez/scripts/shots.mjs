@@ -102,7 +102,8 @@ if (want('moto')) {
   await G(() => window.__game.exitVehicle());
   await adv(1.5);
   await goSpot(3, 'moto');
-  await adv(3, { throttle: 1 });
+  // Arranque corto: la calle termina en un cruce en T.
+  await adv(1.6, { throttle: 1 });
   await adv(0.4, { throttle: 1, steer: 0.15 });
   await shot('08-moto');
 }
