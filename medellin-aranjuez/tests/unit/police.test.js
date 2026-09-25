@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { WantedSystem, SEARCH } from '../../src/sim/wanted.js';
 import { POLICE_AI, canSee, footPath, pickSearchNode, planOfficerSearch, planPatrol } from '../../src/sim/policeAI.js';
-import { RoadGraph, autopilot, lanePoint } from '../../src/sim/roadNav.js';
+import { RoadGraph, autopilot, lanePoint, linkAllowed } from '../../src/sim/roadNav.js';
 import { createVehicleState, stepVehicle } from '../../src/sim/vehiclePhysics.js';
 import { createPed, stepPed } from '../../src/sim/pedAI.js';
 import { groundHeight } from '../../src/sim/terrain.js';
@@ -96,15 +96,16 @@ describe('visión de la policía', () => {
 describe('patrullas', () => {
   it('el piloto automático sigue la ruta calculada', () => {
     const g = new RoadGraph(city());
-    const a = g.nearestNode(-100, -100);
-    const b = g.nearestNode(150, 120);
-    const path = g.route(a.links[0].node, b.id);
+    const a = g.nearestNode(-53, -255); // Comfama
+    const b = g.nearestNode(52, -115); // San Cayetano
+    const first = a.links.find((l) => linkAllowed(g, l)).node;
+    const path = g.route(first, b.id);
     const agent = { from: a.id, to: path[0], next: null, path };
     const p = lanePoint(g, a.id, path[0], 0.2);
     const v = createVehicleState('policia', p.x, p.z, p.yaw, groundHeight);
     const visited = [agent.to];
     const env = cityEnv();
-    for (let t = 0; t < 90 && agent.to !== b.id; t += 1 / 30) {
+    for (let t = 0; t < 150 && agent.to !== b.id; t += 1 / 30) {
       const input = autopilot(g, agent, v, { cruise: 14, blockedAhead: Infinity, rand: Math.random, dt: 1 / 30 });
       stepVehicle(v, input, 1 / 30, env);
       if (visited[visited.length - 1] !== agent.to) visited.push(agent.to);
@@ -154,7 +155,7 @@ describe('patrullas', () => {
 
   it('ya en la zona la barren: recorren varios puntos dentro de ella', () => {
     const g = new RoadGraph(city());
-    const center = { x: 20, z: 40 };
+    const center = { x: 52, z: -115 }; // San Cayetano
     const unit = patrolAt(g, center.x, center.z);
     const w = new WantedSystem();
     w.report('copAssault', center);

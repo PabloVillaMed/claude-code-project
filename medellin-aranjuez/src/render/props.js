@@ -12,6 +12,7 @@ import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { GRID, terrainHeight } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
+import { buildVegetation } from './vegetation.js';
 
 export const PROP_MODELS = [
   'silla_plastica',
@@ -37,16 +38,6 @@ registerAssets(PROP_MODELS.map((k) => ({ key: `utileria/${k}`, type: 'gltf', url
 // (LodChunk), así que trozos grandes = muchas menos llamadas de dibujo sin
 // perder calidad de cerca.
 const CHUNK = 280;
-
-// Especies del barrio: modelo, altura base (m), factor de ancho de copa y
-// color del follaje (el atlas de hojas es casi gris y se tiñe por instancia).
-const SPECIES = {
-  guayacan: { model: 'arbol_copa_ancha', h: 8.5, w: 0.85, color: '#f2c230', jitter: 0.06 },
-  guayacanRosado: { model: 'arbol_copa_ancha', h: 8.5, w: 0.85, color: '#e78fb3', jitter: 0.06 },
-  ceiba: { model: 'arbol_copa_ancha', h: 13, w: 1.05, color: '#6f9a45', jitter: 0.08 },
-  mango: { model: 'arbol_copa_redonda', h: 7.2, w: 1.15, color: '#4f7f36', jitter: 0.1 },
-  ficus: { model: 'arbol_copa_redonda', h: 6.2, w: 1.0, color: '#6a9444', jitter: 0.1 },
-};
 
 // ------------------------------------------------------------------ plantillas
 
@@ -93,7 +84,7 @@ const templates = new Map();
  */
 export function propTemplate(key) {
   if (templates.has(key)) return templates.get(key);
-  const gltf = assets.gltf(`utileria/${key}`);
+  const gltf = assets.gltf(key.includes('/') ? key : `utileria/${key}`);
   if (!gltf) {
     templates.set(key, null);
     return null;
@@ -227,11 +218,11 @@ class LodChunk {
  * nivel según su distancia (LodChunk); si no, el trozo entero es un
  * THREE.LOD que desaparece más allá de `far`.
  */
-class ChunkedInstances {
-  constructor(tpl, { near = 140, far = 1500, castShadow = true, receiveShadow = true, tint = null, name = 'utileria' } = {}) {
+export class ChunkedInstances {
+  constructor(tpl, { near = 140, far = 1500, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK } = {}) {
     this.tpl = tpl;
     this.items = [];
-    this.opts = { near, far, castShadow, receiveShadow, tint, name };
+    this.opts = { near, far, castShadow, receiveShadow, tint, name, chunk };
   }
 
   /** q: cuaternión opcional (ya incluye la rotación en Y). */
@@ -244,7 +235,7 @@ class ChunkedInstances {
     if (!this.items.length) return [];
     const chunks = new Map();
     for (const it of this.items) {
-      const k = `${Math.floor(it.x / CHUNK)},${Math.floor(it.z / CHUNK)}`;
+      const k = `${Math.floor(it.x / this.opts.chunk)},${Math.floor(it.z / this.opts.chunk)}`;
       if (!chunks.has(k)) chunks.set(k, []);
       chunks.get(k).push(it);
     }
@@ -357,42 +348,6 @@ function lampMaterials(tpl, night, max) {
 }
 
 // ------------------------------------------------------------------ constructores por tipo
-
-function buildTrees(r, trees) {
-  const rng = makeRng(77);
-  const leftovers = [];
-  const sets = new Map();
-  const col = new THREE.Color();
-  const near = r.quality?.treeNear ?? 70;
-  for (const t of trees) {
-    const sp = SPECIES[t.kind];
-    const tpl = sp && propTemplate(sp.model);
-    if (!tpl) {
-      leftovers.push(t);
-      continue;
-    }
-    if (!sets.has(sp.model)) {
-      const isLeaf = (m) => m.name === 'follaje' || m.alphaTest > 0;
-      for (const p of [...tpl.cerca, ...(tpl.lejos ?? [])]) {
-        if (!isLeaf(p.material)) continue;
-        p.material.vertexColors = true;
-        p.material.alphaTest = Math.max(0.35, p.material.alphaTest);
-        p.material.side = THREE.FrontSide;
-      }
-      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: r.quality?.drawDistance ?? 1500, tint: isLeaf, name: `arboles-${sp.model}` }));
-    }
-    const sc = t.scale ?? 1;
-    const k = (sp.h * sc) / tpl.height;
-    // Árboles de andén (colisión delgada): copa algo más angosta.
-    const street = t.collider && t.collider.hx <= 0.25;
-    const w = sp.w * (street ? 0.78 : 1) * rng.range(0.92, 1.08);
-    const y = terrainHeight(t.x, t.z) + (t.onBlock === false ? 0 : GRID.curb) - 0.08;
-    col.set(sp.color).offsetHSL(rng.range(-0.015, 0.015), rng.range(-sp.jitter, sp.jitter) * 0.5, rng.range(-sp.jitter, sp.jitter));
-    sets.get(sp.model).add(t.x, y, t.z, rng.next() * Math.PI * 2, k * w, k, k * w, col);
-  }
-  for (const s of sets.values()) s.build(r.root, r.lodChunks);
-  return leftovers;
-}
 
 function buildLamps(r, lamps, parkLamps, glowSprite) {
   const tpl = propTemplate('farol_calle');
@@ -564,10 +519,13 @@ function buildSmallProps(r, byType) {
  * disponibles y devuelve lo que debe seguir siendo procedural.
  */
 export function buildModelProps(r, byType, { glowSprite }) {
-  const trees = buildTrees(r, byType.tree ?? []);
+  // Vegetación (vegetation.js): árboles, matas en los jardines y los props
+  // sueltos shrub / grass / climber. Devuelve los árboles sin modelo.
+  const trees = buildVegetation(r, byType.tree ?? [], (byType.garden ?? []).filter((g) => g.poly), [...(byType.shrub ?? []), ...(byType.grass ?? []), ...(byType.climber ?? [])]);
   const lamps = buildLamps(r, byType.lamp ?? [], byType.parkLamp ?? [], glowSprite);
   const poles = buildPoles(r, byType.pole ?? [], byType.cable ?? []);
   const benches = buildBenches(r, byType.bench ?? []);
   buildSmallProps(r, byType);
   return { trees, lamps, poles, benches };
 }
+

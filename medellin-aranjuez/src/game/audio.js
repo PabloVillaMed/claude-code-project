@@ -1,8 +1,22 @@
-// Audio 100 % sintetizado con WebAudio (sin archivos): disparos por arma,
-// motor según RPM, pito, sirena, explosiones, golpes y ambiente de ciudad.
+// Audio con WebAudio: las armas usan grabaciones reales (public/sounds/armas,
+// ver sfxArmas.js) con eco de la calle, filtro por distancia y límite de
+// voces; mientras cargan (o si faltan) se sintetizan. Motor según RPM, pito,
+// sirena, explosiones y ambiente de ciudad siguen sintetizados.
+
+import { ARMAS_SFX, BancoSonidos, GRUPOS, RECARGAS, crearRespuestaUrbana, mezclaDistancia } from './sfxArmas.js';
+
+const MAX_VOCES_DISPARO = 14;
+const MAX_VOCES_EFECTO = 10;
 
 export class AudioSystem {
   constructor() {
+    // Los bytes de los sonidos se piden ya (no bloquea la carga); se
+    // decodifican al crear el AudioContext.
+    this.banco = new BancoSonidos();
+    this.banco.precargar();
+    this.voces = [];
+    this.efectos = [];
+    this.camera = null; // la pone Game para el paneo estéreo
     this.ctx = null;
     this.master = null;
     this.volume = 0.7;
@@ -27,7 +41,248 @@ export class AudioSystem {
     comp.ratio.value = 6;
     this.master.connect(comp).connect(this.ctx.destination);
     this.noiseBuf = this._noise(2);
+    this._mezclaArmas();
+    this.banco.decodificar(this.ctx);
     this._ambient();
+  }
+
+  // ------------------------------------------------------------ armas grabadas
+  /** Bus de efectos y eco urbano (convolución con una respuesta generada). */
+  _mezclaArmas() {
+    const ctx = this.ctx;
+    this.sfx = ctx.createGain();
+    this.sfx.connect(this.master);
+    this.ecoIn = ctx.createGain();
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 160;
+    const conv = ctx.createConvolver();
+    conv.normalize = false;
+    const [L, R] = crearRespuestaUrbana(ctx.sampleRate);
+    const ir = ctx.createBuffer(2, L.length, ctx.sampleRate);
+    ir.copyToChannel(L, 0);
+    ir.copyToChannel(R, 1);
+    conv.buffer = ir;
+    this.ecoOut = ctx.createGain();
+    this.ecoOut.gain.value = 1;
+    this.ecoIn.connect(hp).connect(conv).connect(this.ecoOut).connect(this.master);
+  }
+
+  /** Cuántos sonidos grabados están listos (para pruebas). */
+  sampleStatus() {
+    return { cargados: this.banco.buffers.size, total: this.banco.nombres.length, fallidos: [...this.banco.fallidos] };
+  }
+
+  _dist(pos) {
+    if (!pos) return 0;
+    return Math.hypot(pos.x - this.listener.x, pos.y - this.listener.y, pos.z - this.listener.z);
+  }
+
+  /** Paneo estéreo según el vector "derecha" de la cámara. */
+  _panFor(pos) {
+    const c = this.camera;
+    if (!pos || !c) return 0;
+    const dx = pos.x - this.listener.x;
+    const dy = pos.y - this.listener.y;
+    const dz = pos.z - this.listener.z;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < 1.5) return 0;
+    const m = c.matrixWorld.elements;
+    return Math.max(-1, Math.min(1, (dx * m[0] + dy * m[1] + dz * m[2]) / d)) * 0.8 * Math.min(1, (d - 1.5) / 4);
+  }
+
+  /**
+   * Reproduce uno o varios buffers como una sola voz posicional:
+   * retardo de propagación, pasa-bajos por distancia, paneo y envío al eco.
+   * capas: [{buf, gain}]. Devuelve la voz (para robarla después).
+   */
+  _voz(capas, pos, { gain = 1, ref = 10, envio = null, rate = 1, delay = 0, lista = this.efectos, max = MAX_VOCES_EFECTO } = {}) {
+    const ctx = this.ctx;
+    const d = this._dist(pos);
+    const mz = mezclaDistancia(d);
+    const t = ctx.currentTime + delay + (pos ? mz.retardo : 0);
+    // Limpiar voces terminadas y robar la más vieja si no hay cupo.
+    const now = ctx.currentTime;
+    for (let i = lista.length - 1; i >= 0; i--) if (lista[i].fin < now) lista.splice(i, 1);
+    while (lista.length >= max) this._soltar(lista.shift(), now);
+    const vGain = ctx.createGain();
+    vGain.gain.value = gain * this._gainFor(pos, ref);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = pos ? mz.corte : 20000;
+    lp.Q.value = 0.5;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = this._panFor(pos);
+    vGain.connect(lp).connect(pan).connect(this.sfx);
+    const e = envio ?? mz.envio * 0.5;
+    if (e > 0) {
+      const send = ctx.createGain();
+      // El eco cae más despacio que el sonido directo.
+      send.gain.value = (e * this._gainFor(pos, ref * 3)) / Math.max(1e-3, this._gainFor(pos, ref));
+      lp.connect(send).connect(this.ecoIn);
+    }
+    let fin = t;
+    const srcs = [];
+    for (const c of capas) {
+      if (!c.buf || c.gain <= 0.001) continue;
+      const src = ctx.createBufferSource();
+      src.buffer = c.buf;
+      src.playbackRate.value = rate;
+      const g = ctx.createGain();
+      g.gain.value = c.gain;
+      src.connect(g).connect(vGain);
+      src.start(t);
+      srcs.push(src);
+      fin = Math.max(fin, t + c.buf.duration / rate);
+    }
+    const voz = { srcs, vGain, pos, t0: t, fin: fin + 0.05 };
+    lista.push(voz);
+    return voz;
+  }
+
+  /** Apaga una voz con un fundido corto (sin clic). */
+  _soltar(v, t) {
+    const at = Math.max(t, v.t0);
+    v.vGain.gain.cancelScheduledValues(at);
+    v.vGain.gain.setTargetAtTime(0, at, 0.025);
+    for (const s of v.srcs) {
+      try {
+        s.stop(at + 0.15);
+      } catch {
+        /* ya detenido */
+      }
+    }
+    v.fin = Math.min(v.fin, at + 0.15);
+  }
+
+  _uno(nombres, pos, opts = {}) {
+    const buf = this.banco.elegir(nombres);
+    return buf ? this._voz([{ buf, gain: 1 }], pos, opts) : null;
+  }
+
+  _disparoGrabado(weaponId, pos) {
+    const cfg = ARMAS_SFX[weaponId];
+    if (!cfg) return false;
+    const cerca = this.banco.elegir(cfg.cerca, weaponId);
+    if (!cerca) return false;
+    const lejos = this.banco.get(cfg.lejos);
+    const d = this._dist(pos);
+    const mz = mezclaDistancia(d);
+    const now = this.ctx.currentTime;
+    // La ráfaga del mismo tirador corta la cola del disparo anterior: cada
+    // tiro suena nítido y solo el último resuena entero (y el eco de la
+    // calle, alimentado por cada tiro, hace la cola de la ráfaga).
+    for (const v of this.voces) {
+      if (v.arma === weaponId && v.fin > now && now - v.t0 < 0.5 && pos && v.pos && Math.hypot(v.pos.x - pos.x, v.pos.y - pos.y, v.pos.z - pos.z) < 2.5) this._soltar(v, v.t0 + 0.07);
+    }
+    const vr = 1 + (Math.random() - 0.5) * 0.06;
+    const vg = cfg.gain * (0.88 + Math.random() * 0.12);
+    const capas = [{ buf: cerca, gain: lejos ? mz.cerca : 1 }];
+    if (lejos) capas.push({ buf: lejos, gain: mz.lejos * 0.9 });
+    const voz = this._voz(capas, pos, { gain: vg, ref: 10, envio: mz.envio, rate: vr, lista: this.voces, max: MAX_VOCES_DISPARO });
+    voz.arma = weaponId;
+    // Bomba de la escopeta tras cada tiro, y el cartucho vacío cae al piso.
+    if (cfg.bomba) {
+      this._uno(GRUPOS.bomba, pos, { gain: 0.55, ref: 6, delay: 0.3, envio: 0.08 });
+      if (d < 25) this._uno(['vaina_escopeta'], pos && { x: pos.x, y: pos.y - 1.2, z: pos.z }, { gain: 0.18, ref: 5, delay: 0.72 + Math.random() * 0.1, envio: 0 });
+    } else if (cfg.vaina && d < 25) {
+      // Vainas de latón rebotando en el asfalto (a lo sumo unas pocas a la vez).
+      const vivas = this.efectos.filter((v) => v.vaina && v.fin > now).length;
+      if (vivas < 4) {
+        const v = this._uno(GRUPOS.vaina, pos && { x: pos.x + 0.6, y: pos.y - 1.3, z: pos.z }, { gain: 0.14 + Math.random() * 0.06, ref: 5, delay: 0.35 + Math.random() * 0.25, rate: 0.9 + Math.random() * 0.3, envio: 0 });
+        if (v) v.vaina = true;
+      }
+    }
+    return true;
+  }
+
+  /** Impacto de bala: 'building' | 'ground' | 'character' (los de carros van por hit()). */
+  bulletImpact(kind, pos) {
+    if (!this.ctx || !pos || kind === 'vehicle' || !kind) return;
+    const now = this.ctx.currentTime;
+    // Los perdigones de la escopeta llegan juntos: no más de 3 impactos cada 40 ms.
+    this._impactos = (this._impactos ?? []).filter((t) => now - t < 0.04);
+    if (this._impactos.length >= 3) return;
+    this._impactos.push(now);
+    const r = 0.85 + Math.random() * 0.35;
+    if (kind === 'character') this._uno(GRUPOS.carne, pos, { gain: 0.55, ref: 6, rate: r, envio: 0.05 });
+    else if (kind === 'ground') this._uno(GRUPOS.concreto, pos, { gain: 0.4, ref: 6, rate: r * 0.8, envio: 0.1 });
+    else {
+      this._uno(GRUPOS.concreto, pos, { gain: 0.5, ref: 6, rate: r, envio: 0.12 });
+      if (Math.random() < 0.15) this._uno(GRUPOS.rebote, pos, { gain: 0.3, ref: 8, delay: 0.02, rate: 0.9 + Math.random() * 0.2, envio: 0.2 });
+    }
+  }
+
+  /**
+   * Sonidos de manejo del arma del jugador, leídos del inventario cada frame:
+   * cambio de arma (enfundar / desenfundar) y recarga (cargador fuera,
+   * dentro, corredera o cerrojo; cartucho por cartucho en la escopeta). Si la
+   * recarga se interrumpe, los sonidos pendientes se cancelan.
+   */
+  updateWeapon(inv) {
+    if (!this.ctx || !inv) return;
+    const st = this._arma;
+    if (!st || st.inv !== inv) {
+      this._arma = { inv, id: inv.currentId, rec: inv.reloading };
+      return;
+    }
+    if (inv.currentId !== st.id) {
+      this._cancelarRecarga();
+      this._cambioArma(st.id, inv.currentId);
+      st.id = inv.currentId;
+    }
+    if (inv.reloading > 0 && st.rec <= 0) this._recarga(inv);
+    else if (inv.reloading <= 0 && st.rec > 0.12) this._cancelarRecarga();
+    st.rec = inv.reloading;
+  }
+
+  _cambioArma(de, a) {
+    if (!this.banco.buffers.size) return this._blip(700, 0.04, 0.08, 'square');
+    const esArma = (id) => !!ARMAS_SFX[id];
+    if (esArma(de)) this._uno(['enfundar'], null, { gain: 0.3, envio: 0 });
+    if (esArma(a)) this._uno(GRUPOS.desenfundar, null, { gain: 0.4, delay: esArma(de) ? 0.14 : 0, envio: 0 });
+    else if (a === 'machete') this._uno(GRUPOS.silbido, null, { gain: 0.18, rate: 0.6, delay: 0.1, envio: 0 });
+  }
+
+  _recarga(inv) {
+    const w = inv.current;
+    const T = inv.reloading;
+    const vacia = inv.ammo.mag === 0;
+    const voces = [];
+    const add = (nombre, t, gain = 0.5) => {
+      const v = this._uno([nombre], null, { gain, delay: t, envio: 0.04 });
+      if (v) voces.push(v);
+    };
+    if (w.id === 'shotgun') {
+      const n = Math.min(4, w.mag - inv.ammo.mag, inv.ammo.reserve);
+      const fin = T - (vacia ? 0.6 : 0.25);
+      const paso = n > 0 ? Math.min(0.45, (fin - 0.15) / n) : 0;
+      for (let i = 0; i < n; i++) add('escopeta_cartucho', 0.15 + i * paso, 0.45);
+      if (vacia) {
+        const b = this.banco.elegir(GRUPOS.bomba);
+        if (b) voces.push(this._voz([{ buf: b, gain: 1 }], null, { gain: 0.5, delay: T - 0.5, envio: 0.04 }));
+      }
+    } else {
+      for (const [nombre, f, soloVacia] of RECARGAS[w.id] ?? []) if (!soloVacia || vacia) add(nombre, f * T);
+    }
+    if (!voces.length && !this.banco.buffers.size) this.ui('tick');
+    this._recargaVoces = voces;
+  }
+
+  _cancelarRecarga() {
+    const now = this.ctx.currentTime;
+    for (const v of this._recargaVoces ?? []) {
+      if (v.t0 > now) {
+        for (const s of v.srcs) {
+          try {
+            s.stop();
+          } catch {
+            /* nada */
+          }
+        }
+      }
+    }
+    this._recargaVoces = [];
   }
 
   setVolume(v) {
@@ -72,6 +327,7 @@ export class AudioSystem {
 
   gunshot(weaponId, pos) {
     if (!this.ctx) return;
+    if (this._disparoGrabado(weaponId, pos)) return;
     const t = this.ctx.currentTime;
     const cfg = {
       pistol: { f: 1800, dur: 0.18, vol: 0.9, boom: 110 },
@@ -111,12 +367,20 @@ export class AudioSystem {
     g.connect(d).connect(dg).connect(this.master);
   }
 
+  /** Gatillo en seco (arma vacía). */
   click() {
+    if (this.ctx && this._uno(['seco'], null, { gain: 0.55, rate: 0.97 + Math.random() * 0.06, envio: 0 })) return;
     this._blip(1200, 0.03, 0.2, 'square');
   }
 
-  swing() {
+  /** Golpe al aire: silbido grave y largo del machete, corto y suave del puño. */
+  swing(weaponId = 'fists', who = null) {
     if (!this.ctx) return;
+    this._golpe = { id: weaponId, t: this.ctx.currentTime };
+    const pos = who && who.x !== undefined ? { x: who.x, y: (who.y ?? 0) + 1.3, z: who.z } : null;
+    const mach = weaponId === 'machete';
+    const r = mach ? 0.72 + Math.random() * 0.12 : 1.15 + Math.random() * 0.15;
+    if (this._uno(GRUPOS.silbido, pos, { gain: mach ? 0.45 : 0.2, ref: 6, rate: r, envio: 0.03 })) return;
     const t = this.ctx.currentTime;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuf;
@@ -135,6 +399,15 @@ export class AudioSystem {
 
   hit(pos, soft = false) {
     if (!this.ctx) return;
+    if (soft) {
+      // Golpe cuerpo a cuerpo: tajo de machete o puñetazo (según el último swing).
+      const mach = this._golpe?.id === 'machete' && this.ctx.currentTime - this._golpe.t < 0.3;
+      const p = pos && { x: pos.x, y: pos.y + 1.2, z: pos.z };
+      if (this._uno(mach ? GRUPOS.tajo : GRUPOS.puno, p, { gain: mach ? 0.6 : 0.55, ref: 6, delay: 0.06, rate: 0.92 + Math.random() * 0.16, envio: 0.04 })) return;
+    } else if (this._uno(GRUPOS.metal, pos, { gain: 0.5, ref: 7, rate: 0.9 + Math.random() * 0.25, envio: 0.12 })) {
+      // Bala contra la lata de un carro.
+      return;
+    }
     this._blip(soft ? 180 : 320, 0.08, this._gainFor(pos, 6) * (soft ? 0.5 : 0.35), 'triangle');
   }
 

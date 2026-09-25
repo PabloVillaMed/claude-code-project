@@ -11,6 +11,18 @@ import { textTexture } from './textures.js';
 import { registerAssets } from './assetManifest.js';
 import { assets } from './assets.js';
 import { VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
+import { groundHeight, terrainHeight } from '../sim/terrain.js';
+
+// Las vías se dibujan un poco por encima del terreno (cityRenderer: `lift` de
+// _roads) y los andenes justo a la altura del sardinel (groundHeight). Las
+// llantas se apoyan en lo que se ve: debe coincidir con ese `lift`.
+export const ROAD_LIFT = 0.03;
+
+/** Altura de la superficie dibujada (asfalto o andén) en (x, z). */
+export function surfaceHeight(x, z) {
+  const g = groundHeight(x, z);
+  return g - terrainHeight(x, z) > 0.05 ? g : g + ROAD_LIFT;
+}
 
 const PAINTS = [0xc0c4c8, 0xf2f2f2, 0x9b1c1c, 0x111316, 0x1e3a6b, 0x4a4f55, 0x6b8f71, 0xb87333];
 
@@ -151,6 +163,41 @@ function hit(root, origin, dir) {
   return h.length ? h[0] : null;
 }
 
+/**
+ * Puntos de manejo de la moto medidos en el modelo ya escalado (espacio del
+ * vehículo, frente en -Z): superficie del asiento, puños del manubrio (los
+ * extremos del manubrio, por debajo de los espejos) y estriberas del piloto.
+ * El personaje (characterRig) pone ahí cadera, manos y pies.
+ */
+function motoRidePoints(body, seat, box) {
+  const h = hit(body, _v.set(0, box.max.y + 1, seat.z), new THREE.Vector3(0, -1, 0));
+  const seatY = h ? h.point.y : 0.93;
+  const p = new THREE.Vector3();
+  const grip = [null, null];
+  const peg = [null, null];
+  body.updateMatrixWorld(true);
+  body.traverse((o) => {
+    if (!o.isMesh) return;
+    const a = o.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) {
+      p.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
+      const s = p.x < 0 ? 0 : 1;
+      // Manubrio: delante del asiento, a la altura del tanque/tablero, sin los espejos (más altos).
+      if (p.z < seat.z - 0.3 && p.z > seat.z - 0.9 && p.y > seatY && p.y < seatY + 0.22 && (!grip[s] || Math.abs(p.x) > Math.abs(grip[s].x))) grip[s] = p.clone();
+      // Estriberas: lo más ancho a baja altura, cerca de la vertical del asiento.
+      if (Math.abs(p.z - seat.z) < 0.3 && p.y > 0.2 && p.y < 0.42 && (!peg[s] || Math.abs(p.x) > Math.abs(peg[s].x))) peg[s] = p.clone();
+    }
+  });
+  const inset = (v, d, fallback) => (v ? { x: v.x - Math.sign(v.x) * d, y: v.y, z: v.z } : fallback);
+  return {
+    seatY,
+    seatZ: seat.z,
+    // El puño ocupa los últimos ~12 cm del manubrio: la mano va en su centro.
+    grips: [inset(grip[0], 0.07, { x: -0.34, y: 1.07, z: -0.32 }), inset(grip[1], 0.07, { x: 0.34, y: 1.07, z: -0.32 })],
+    pegs: [inset(peg[0], 0.05, { x: -0.19, y: 0.32, z: 0.1 }), inset(peg[1], 0.05, { x: 0.19, y: 0.32, z: 0.1 })],
+  };
+}
+
 const templates = new Map();
 
 /**
@@ -212,7 +259,26 @@ function modelTemplate(type) {
       }
     });
     content.scale.set(cfg.uniform ? sL : sW, ws, ws);
-    return { content, pos: new THREE.Vector3(w.position.x * sW, r * ws, w.position.z * sL), front: w.name.startsWith('rueda_del') };
+    const pos = new THREE.Vector3(w.position.x * sW, r * ws, w.position.z * sL);
+    // Piezas que viran con esta rueda pero no giran (guardabarros y mordaza
+    // de la moto): nodo "horquilla_*" con el origen en el mismo eje.
+    const st = root.getObjectByName(w.name.replace('rueda_', 'horquilla_'));
+    let steer = null;
+    if (st) {
+      steer = new THREE.Group();
+      for (const c of st.children) steer.add(c.clone(true));
+      steer.traverse((o) => {
+        if (!o.isMesh) return;
+        const key = o.material.name;
+        if (MODEL_MATS[key]) o.material = withMaps(MODEL_MATS[key](), o.material, key);
+        o.castShadow = true;
+        o.receiveShadow = true;
+      });
+      steer.scale.set(sW, sH, sL);
+      // Mismo punto del modelo que el eje de la rueda (con la escala de la carrocería).
+      steer.position.set(st.position.x * sW - pos.x, st.position.y * sH - pos.y, st.position.z * sL - pos.z);
+    }
+    return { content, steer, pos, front: w.name.startsWith('rueda_del') };
   });
 
   // Techo: barrido de rayos hacia abajo por el eje central.
@@ -264,6 +330,7 @@ function modelTemplate(type) {
   // Puesto del conductor (lado izquierdo).
   if (cfg.seat) tpl.seat = { x: cfg.seat.x * W, y: roofY - cfg.seat.drop, z: cfg.seat.z * L };
   else tpl.seat = { ...(cfg.seatAbs ?? { x: 0, y: 0.34, z: 0.12 }) };
+  if (type === 'moto') tpl.ride = motoRidePoints(body, tpl.seat, box);
   templates.set(type, tpl);
   return tpl;
 }
@@ -424,6 +491,7 @@ export class VehicleView {
       const spin = new THREE.Group();
       spin.add(w.content.clone(true));
       pivot.add(spin);
+      if (w.steer) pivot.add(w.steer.clone(true));
       this.group.add(pivot);
       this.wheels.push(spin);
       if (w.front) this.frontPivots.push(pivot);
@@ -459,6 +527,8 @@ export class VehicleView {
       }
     }
     this.seat = { ...tpl.seat };
+    // Para el personaje que la maneja (characterRig lee group.userData.ride).
+    if (tpl.ride) this.group.userData.ride = { ...tpl.ride, speed: 0 };
   }
 
   _lights(width, L, frontY, rearY) {
@@ -646,10 +716,9 @@ export class VehicleView {
 
   /** Sincroniza con el estado de la simulación. */
   sync(v, dt, night, siren = false) {
-    this.group.position.set(v.x, v.y, v.z);
-    this.group.rotation.set(v.pitch + (v.bodyPitch ?? 0), v.heading, v.roll + (v.lean ?? 0) + (v.bodyRoll ?? 0));
+    this._fitGround(v, dt);
     for (const w of this.wheels) w.rotation.x = -v.wheelSpin;
-    for (const p of this.frontPivots) p.rotation.y = -v.steer;
+    if (this.group.userData.ride) this.group.userData.ride.speed = v.forwardSpeed;
     if (this.lights.head) this.lights.head.emissiveIntensity = 0.2 + night * 4;
     if (this.lights.tail) {
       const braking = v.throttle === 0 && Math.abs(v.forwardSpeed) > 0.5;
@@ -663,6 +732,85 @@ export class VehicleView {
       this.lights.bar[1].emissiveIntensity = siren ? (on ? 0.2 : 6) : 0.1;
     }
     if (v.destroyed && !this.burnt) this.burn();
+  }
+
+  /**
+   * Apoya las llantas en la superficie que se ve (asfalto con su `lift`,
+   * andén con su sardinel), también en las pendientes y con los vehículos
+   * parqueados (cuya física no corre): altura, cabeceo y alabeo salen de la
+   * superficie bajo cada rueda. El cabeceo/balanceo de la suspensión
+   * (bodyPitch/bodyRoll) mueve la carrocería y al conductor, no las ruedas; la
+   * inclinación de la moto en las curvas sí incluye las ruedas.
+   */
+  _fitGround(v, dt) {
+    const piv = this.wheels.map((w) => w.parent);
+    const n = piv.length;
+    const g = this.group;
+    if (!n) {
+      g.position.set(v.x, v.y, v.z);
+      g.rotation.set(v.pitch + (v.bodyPitch ?? 0), v.heading, v.roll + (v.lean ?? 0) + (v.bodyRoll ?? 0));
+      return;
+    }
+    if (!this._fit) {
+      this._fit = { h: new Float32Array(n), base: piv.map((p) => p.position.clone()), init: false, qa: new THREE.Quaternion(), qb: new THREE.Quaternion(), qs: new THREE.Quaternion(), e: new THREE.Euler(0, 0, 0, 'YXZ'), up: new THREE.Vector3(0, 1, 0) };
+    }
+    const F = this._fit;
+    const c = Math.cos(v.heading);
+    const sn = Math.sin(v.heading);
+    // Superficie bajo el punto de apoyo de cada rueda (x, z locales -> mundo).
+    let mx = 0;
+    let mz = 0;
+    let mh = 0;
+    const k = F.init ? 1 - Math.exp(-30 * dt) : 1;
+    for (let i = 0; i < n; i++) {
+      const b = F.base[i];
+      const wx = v.x + b.x * c + b.z * sn;
+      const wz = v.z - b.x * sn + b.z * c;
+      const h = surfaceHeight(wx, wz);
+      F.h[i] = Math.abs(h - F.h[i]) > 1 ? h : F.h[i] + (h - F.h[i]) * k;
+      mx += b.x;
+      mz += b.z;
+      mh += F.h[i];
+    }
+    F.init = true;
+    mx /= n;
+    mz /= n;
+    mh /= n;
+    // Plano por mínimos cuadrados: h = y0 + a·x + b·z (locales).
+    let sxx = 0;
+    let szz = 0;
+    let sxh = 0;
+    let szh = 0;
+    for (let i = 0; i < n; i++) {
+      const dx = F.base[i].x - mx;
+      const dz = F.base[i].z - mz;
+      const dh = F.h[i] - mh;
+      sxx += dx * dx;
+      szz += dz * dz;
+      sxh += dx * dh;
+      szh += dz * dh;
+    }
+    const a = sxx > 0.05 ? sxh / sxx : 0; // alabeo (moto: 0)
+    const bz = szz > 0.05 ? szh / szz : 0;
+    const pitch = Math.atan(-bz); // frente en -Z: sube si el frente está más alto
+    const roll = Math.atan(a);
+    const y0 = mh - a * mx - bz * mz;
+    g.position.set(v.x, y0, v.z);
+    // Suelo (+ inclinación de la moto) y, aparte, la suspensión.
+    const lean = v.lean ?? 0;
+    const e = F.e;
+    F.qa.setFromEuler(e.set(pitch, v.heading, roll + lean));
+    const bp = v.bodyPitch ?? 0;
+    const br = v.bodyRoll ?? 0;
+    g.rotation.set(pitch + bp, v.heading, roll + lean + br);
+    // Corrección de las ruedas: C = full⁻¹ · suelo (deshace la suspensión).
+    F.qb.copy(g.quaternion).invert().multiply(F.qa);
+    for (let i = 0; i < n; i++) {
+      const p = piv[i];
+      p.position.copy(F.base[i]).applyQuaternion(F.qb);
+      p.quaternion.copy(F.qb);
+    }
+    for (const p of this.frontPivots) p.quaternion.multiply(F.qs.setFromAxisAngle(F.up, -v.steer));
   }
 
   burn() {

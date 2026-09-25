@@ -12,19 +12,14 @@ import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterial
 import { GEO_REF, riverX, urbanAmount } from '../sim/geography.js';
 import { albedoAt } from './horizon.js';
 import { makeRng } from '../sim/rng.js';
-import {
-  GRID,
-  MAP_MAX_X,
-  MAP_MAX_Z,
-  MAP_MIN_X,
-  MAP_MIN_Z,
-  backdropHeight,
-  roadLine,
-  terrainHeight,
-} from '../sim/terrain.js';
+import { GRID, MAPA, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, RIVER, backdropHeight, terrainHeight } from '../sim/terrain.js';
+import { faceFrame } from '../sim/facades.js';
+import { pointAlong, polyArea } from '../sim/geom2d.js';
+import { densify, drapePolygon, drapeTris, orientedQuad, polylineFrames, polyWall, ribbon } from './drape.js';
+import { buildRoof, roofParapet } from './roofs.js';
+import { buildMetro } from './metro.js';
 
 const FACADE_M = 12; // metros que cubre una textura de fachada
-const PARAPET = 0.7;
 
 export class CityRenderer {
   constructor(scene, city, tex, quality) {
@@ -45,9 +40,10 @@ export class CityRenderer {
     this._backdrop();
     this._roads();
     this._blocks();
+    this._water();
     this._buildings();
     this._props();
-    this._metro();
+    this.metro = buildMetro(this);
   }
 
   // ---------------------------------------------------------------- materiales
@@ -85,7 +81,9 @@ export class CityRenderer {
           stucco: [photoFacade('painted_plaster_wall', t.facadeStucco[0]), photoFacade('beige_wall_001', t.facadeStucco[1])],
           concrete: P('concrete_wall_008', { uvMeters: 3, vertexColors: true }),
           roof: P('concrete_floor_02', { uvMeters: 6 }),
-          tiles: P('clay_roof_tiles_02', { uvMeters: 3, normalScale: 1.4 }),
+          tiles: P('clay_roof_tiles_02', { uvMeters: 3, normalScale: 1.4, vertexColors: true, extra: { side: THREE.DoubleSide } }),
+          zinc: P('corrugated_iron_02', { uvMeters: 3, vertexColors: true, extra: { metalness: 0.4, side: THREE.DoubleSide } }),
+          stone: P('concrete_wall_008', { uvMeters: 2, vertexColors: true }),
           metal: P('corrugated_iron_02', { uvMeters: 3, extra: { metalness: 0.45 } }),
           plain: P('painted_plaster_wall', { uvMeters: 4, vertexColors: true }),
           asphalt: P('asphalt_02', { uvMeters: 9, ...roadOpts }),
@@ -97,14 +95,15 @@ export class CityRenderer {
           terrain: P('leafy_grass', { uvMeters: 8, vertexColors: true }),
         }
       : {};
-    return {
+    const mats = {
       brick: facade(t.brick),
       stucco: facade(t.stucco),
       tower: towerMat,
       mural: t.mural.map((m) => std({ map: m, roughness: 0.85, vertexColors: true })),
       concrete: std({ map: t.concrete.map, normalMap: t.concrete.normalMap, roughness: 0.95, vertexColors: true }),
       roof: std({ map: t.roof.map, normalMap: t.roof.normalMap, roughness: 0.97 }),
-      tiles: std({ map: t.tiles.map, normalMap: t.tiles.normalMap, roughness: 0.8 }),
+      tiles: std({ map: t.tiles.map, normalMap: t.tiles.normalMap, roughness: 0.8, vertexColors: true, side: THREE.DoubleSide }),
+      zinc: std({ map: t.metal.map, normalMap: t.metal.normalMap, roughness: 0.5, metalness: 0.45, vertexColors: true, side: THREE.DoubleSide }),
       metal: std({ map: t.metal.map, normalMap: t.metal.normalMap, roughness: 0.45, metalness: 0.6 }),
       plain: std({ roughness: 0.85, vertexColors: true }),
       glossy: new THREE.MeshPhysicalMaterial({ roughness: 0.25, vertexColors: true, clearcoat: 0.6, clearcoatRoughness: 0.2 }),
@@ -125,6 +124,9 @@ export class CityRenderer {
       white: std({ color: 0xf2f2ee, roughness: 0.4 }),
       ...photoMats,
     };
+    // Culatas y cuartos de azotea: repello pintado con el color de la casa.
+    mats.gable = mats.plain;
+    return mats;
   }
 
   _mesh(geo, mat, { cast = true, receive = true, name } = {}) {
@@ -217,9 +219,6 @@ export class CityRenderer {
     const lightCol = [];
     let n = 0;
     let tries = 0;
-    // Distancia al eje de vía más cercano de la cuadrícula del barrio (que
-    // sigue más allá del mapa): las casas cercanas dejan libres las calles.
-    const offGrid = (v) => Math.abs((((v - roadLine(0, GRID.nx)) % GRID.pitch) + GRID.pitch) % GRID.pitch - GRID.pitch / 2);
     const nearShare = 0.55;
     while (n < count && tries < count * 8) {
       tries++;
@@ -230,11 +229,9 @@ export class CityRenderer {
       let x;
       let z;
       if (near) {
-        const a = rng.next() * Math.PI * 2;
-        const r = 380 + Math.sqrt(rng.next()) * 620;
-        x = Math.cos(a) * r;
-        z = Math.sin(a) * r;
-        if (GRID.pitch / 2 - offGrid(x) < 7 || GRID.pitch / 2 - offGrid(z) < 7) continue; // calle
+        // Franja de 600 m alrededor del mapa: los barrios vecinos siguen.
+        x = rng.range(inner.minX - 600, inner.maxX + 600);
+        z = rng.range(inner.minZ - 600, inner.maxZ + 600);
       } else {
         x = rng.range(-2400, 2400);
         z = rng.range(-2400, 2400);
@@ -242,7 +239,7 @@ export class CityRenderer {
       // Desde 10 m más allá del límite jugable: el barrio no termina en un potrero.
       if (x > inner.minX + 60 && x < inner.maxX - 60 && z > inner.minZ + 60 && z < inner.maxZ - 60) continue;
       // Río: franja sin casas.
-      if (Math.abs(x - riverX(z)) < 70) continue;
+      if (Math.abs(x - riverX(z)) < 45) continue;
       if (urban(x, z) < rng.next()) continue;
       const y = backdropHeight(x, z);
       const w = rng.range(7, 13);
@@ -281,6 +278,8 @@ export class CityRenderer {
     // Río Medellín: sigue su cauce real (gira un poco al norte).
     const rg = new GeoBuilder();
     for (let z = -2600; z < 2600; z += 40) {
+      // Dentro del mapa el río real lo dibuja _water().
+      if (z > inner.minZ - 40 && z < inner.maxZ) continue;
       const a0 = riverX(z);
       const a1 = riverX(z + 40);
       const y0 = backdropHeight(a0, z) + 1.2;
@@ -296,169 +295,213 @@ export class CityRenderer {
   }
 
   // ---------------------------------------------------------------- vías
-  _roads() {
-    const g = new GeoBuilder();
-    const gi = new GeoBuilder();
-    const H = GRID.asphaltHalf;
-    const lift = 0.03;
-    const step = 3;
-    const hf = (x, z) => terrainHeight(x, z) + lift;
-    for (const e of this.city.edges) {
-      const a = this.city.nodes[e.a];
-      const b = this.city.nodes[e.b];
-      const len = e.length - 2 * H;
-      const n = Math.ceil(len / step);
-      const base = g.vertexCount;
-      const dx = (b.x - a.x) / e.length;
-      const dz = (b.z - a.z) / e.length;
-      const rx = -dz;
-      const rz = dx;
-      for (let k = 0; k <= n; k++) {
-        const t = H + (len * k) / n;
-        const cx = a.x + dx * t;
-        const cz = a.z + dz * t;
-        for (let s = 0; s <= 2; s++) {
-          const off = -H + s * H;
-          const x = cx + rx * off;
-          const z = cz + rz * off;
-          g.vertex(x, hf(x, z), z, 0, 1, 0, s / 2, t / 9);
-        }
-      }
-      for (let k = 0; k < n; k++) {
-        for (let s = 0; s < 2; s++) {
-          const i0 = base + k * 3 + s;
-          const i1 = i0 + 1;
-          const i2 = i0 + 3;
-          const i3 = i2 + 1;
-          // Orientación para normal hacia arriba según el sentido de la arista.
-          g.idx.push(i0, i1, i2, i1, i3, i2);
-        }
-      }
-    }
-    for (const nd of this.city.nodes) {
-      if (!nd.active) continue;
-      gi.heightGrid(nd.x - H, nd.z - H, nd.x + H, nd.z + H, 3, hf, 9);
-    }
-    const geo = g.build();
-    geo.computeVertexNormals();
-    this._mesh(geo, this.materials.asphalt, { cast: false, name: 'vias' });
-    if (this.photo) this._roadMarkings();
-    this._mesh(gi.build(), this.materials.asphaltPlain, { cast: false, name: 'intersecciones' });
+  /** Radio de la "plaza" de asfalto de cada intersección. */
+  _nodeRadius(n) {
+    let r = 0;
+    for (const l of n.links) r = Math.max(r, this.city.edges[l.edge].width / 2);
+    return r;
   }
 
-  /** Línea central amarilla discontinua, bordes blancos y cebras peatonales. */
+  _roads() {
+    const g = new GeoBuilder();
+    const lift = 0.03;
+    const hf = (x, z) => terrainHeight(x, z) + lift;
+    // UV del mundo: los tramos que se traslapan en los cruces se ven iguales.
+    const uv = (s, o, x, z) => [x / 9, -z / 9];
+    const all = [...this.city.edges, ...this.city.paths.filter((p) => p.cls !== 'footway')];
+    for (const e of all) {
+      const hw = e.width / 2;
+      ribbon(g, e.pts, -hw, hw, hf, { step: 3, across: Math.max(1, Math.ceil(e.width / 4)), uv });
+    }
+    // Intersecciones: disco de asfalto que tapa las uniones.
+    const gi = new GeoBuilder();
+    for (const n of this.city.nodes) {
+      if (n.links.length < 2) continue;
+      const r = this._nodeRadius(n) * 1.08;
+      const k = 14;
+      const tris = [];
+      for (let i = 0; i < k; i++) {
+        const a0 = (i / k) * Math.PI * 2;
+        const a1 = ((i + 1) / k) * Math.PI * 2;
+        tris.push([[n.x, n.z], [n.x + Math.cos(a0) * r, n.z + Math.sin(a0) * r], [n.x + Math.cos(a1) * r, n.z + Math.sin(a1) * r]]);
+      }
+      drapeTris(gi, tris, (x, z) => terrainHeight(x, z) + lift + 0.004, { step: 3, uv: (x, z) => [x / 9, -z / 9] });
+    }
+    this._mesh(g.build(), this.materials.asphalt, { cast: false, name: 'vias' });
+    this._mesh(gi.build(), this.materials.asphaltPlain, { cast: false, name: 'intersecciones' });
+    if (this.photo) this._roadMarkings();
+  }
+
+  /** Línea central amarilla, bordes y carriles blancos y cebras en los cruces. */
   _roadMarkings() {
     const yellow = new GeoBuilder();
     const white = new GeoBuilder();
-    const H = GRID.asphaltHalf;
-    const lift = 0.045;
-    const hf = (x, z) => terrainHeight(x, z) + lift;
-    // Franja plana que sigue el terreno a lo largo de una arista.
-    const strip = (gb, a, dx, dz, t0, t1, off, w) => {
-      const rx = -dz;
-      const rz = dx;
-      const n = Math.max(1, Math.ceil((t1 - t0) / 3));
-      for (let k = 0; k < n; k++) {
-        const s0 = t0 + ((t1 - t0) * k) / n;
-        const s1 = t0 + ((t1 - t0) * (k + 1)) / n;
-        const p = (s, o) => {
-          const x = a.x + dx * s + rx * o;
-          const z = a.z + dz * s + rz * o;
-          return [x, hf(x, z), z];
-        };
-        const A = p(s0, off - w / 2);
-        const B = p(s0, off + w / 2);
-        const C = p(s1, off + w / 2);
-        const D = p(s1, off - w / 2);
-        // Normal hacia arriba independientemente del sentido.
-        const up = (B[0] - A[0]) * (D[2] - A[2]) - (B[2] - A[2]) * (D[0] - A[0]) < 0;
-        if (up) gb.quad(A, B, C, D, [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]]);
-        else gb.quad(A, D, C, B, [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]]);
+    const hf = (x, z) => terrainHeight(x, z) + 0.05;
+    // Franja pintada a lo largo de la arista entre s0 y s1 a distancia lateral `off`.
+    const strip = (gb, e, s0, s1, off, w) => {
+      if (s1 - s0 < 0.2) return;
+      const pts = [];
+      const n = Math.max(1, Math.ceil((s1 - s0) / 2.5));
+      for (let k = 0; k <= n; k++) {
+        const p = pointAlong(e.pts, e.cum, s0 + ((s1 - s0) * k) / n);
+        pts.push([p.x - p.dz * off, p.z + p.dx * off]);
       }
+      ribbon(gb, pts, -w / 2, w / 2, hf, { step: 3, uv: (s, o) => [o, s] });
     };
     for (const e of this.city.edges) {
-      const a = this.city.nodes[e.a];
-      const b = this.city.nodes[e.b];
-      const dx = (b.x - a.x) / e.length;
-      const dz = (b.z - a.z) / e.length;
-      const start = H + 1.5;
-      const end = e.length - H - 1.5;
-      // Línea central discontinua (3 m pintado, 3 m libre).
-      for (let t = start + 3.5; t < end - 3.5; t += 6) strip(yellow, a, dx, dz, t, Math.min(t + 3, end - 3.5), 0, 0.14);
-      // Bordes continuos.
-      for (const off of [-H + 0.35, H - 0.35]) strip(white, a, dx, dz, start, end, off, 0.12);
-      // Cebras en ambos extremos.
-      for (const [c0, dir] of [[H + 0.6, 1], [e.length - H - 0.6, -1]]) {
-        for (let k = -3; k <= 3; k++) {
-          const off = k * 1.15;
-          strip(white, a, dx, dz, c0, c0 + dir * 2.6, off, 0.55);
+      if (e.cls === 'service' || e.length < 8) continue;
+      const na = this.city.nodes[e.a];
+      const nb = this.city.nodes[e.b];
+      const start = (na.links.length > 1 ? this._nodeRadius(na) : 0) + 1.5;
+      const end = e.length - (nb.links.length > 1 ? this._nodeRadius(nb) : 0) - 1.5;
+      if (end - start < 4) continue;
+      const hw = e.width / 2;
+      const lanes = Math.max(1, e.lanes || 2);
+      if (!e.oneway && e.width >= 6) {
+        // Línea central discontinua (3 m pintado, 3 m libre); continua en vías grandes.
+        if (e.width >= 9) strip(yellow, e, start, end, 0, 0.14);
+        else for (let t = start + 1; t < end - 1; t += 6) strip(yellow, e, t, Math.min(t + 3, end - 1), 0, 0.14);
+      } else if (e.oneway && lanes >= 2) {
+        for (let k = 1; k < lanes; k++) {
+          const off = -hw + (e.width * k) / lanes;
+          for (let t = start + 1; t < end - 1; t += 8) strip(white, e, t, Math.min(t + 3, end - 1), off, 0.12);
         }
       }
+      // Bordes continuos en las vías principales.
+      if (e.width >= 8) for (const off of [-hw + 0.35, hw - 0.35]) strip(white, e, start, end, off, 0.12);
+      // Cebras en los extremos que llegan a un cruce.
+      if (e.cls.startsWith('trunk')) continue;
+      for (const [nd, c0, dir] of [
+        [na, start - 1.2, 1],
+        [nb, end + 1.2, -1],
+      ]) {
+        if (nd.links.length < 3) continue;
+        const a = dir > 0 ? c0 : c0 - 2.6;
+        for (let off = -hw + 0.6; off <= hw - 0.5; off += 1.15) strip(white, e, a, a + 2.6, off, 0.55);
+      }
     }
-    const paint = (color) =>
-      new THREE.MeshStandardMaterial({ color, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    const paint = (color) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this._mesh(yellow.build(), paint(0xe0b12a), { cast: false, name: 'linea-central' });
     this._mesh(white.build(), paint(0xe8e8e2), { cast: false, name: 'demarcacion' });
   }
 
   // ---------------------------------------------------------------- manzanas
   _blocks() {
-    const ring = new GeoBuilder();
+    const walk = new GeoBuilder();
+    const lots = new GeoBuilder();
+    const green = new GeoBuilder();
     const curb = new GeoBuilder();
-    const interiors = {};
     const hf = (x, z) => terrainHeight(x, z) + GRID.curb;
-    const sw = GRID.sidewalk;
-    const interiorMat = { parque: 'pavers', mirador: 'pavers', botanico: 'grass', moravia: 'grass', cancha: 'dryGrass', cementerio: 'grass', parqueadero: 'asphaltPlain' };
+    const hLot = (x, z) => terrainHeight(x, z) + GRID.curb + 0.01;
     for (const b of this.city.blocks) {
-      const { minX, maxX, minZ, maxZ } = b;
-      // Andén perimetral (4 franjas).
-      ring.heightGrid(minX, minZ, maxX, minZ + sw, 3, hf, 4);
-      ring.heightGrid(minX, maxZ - sw, maxX, maxZ, 3, hf, 4);
-      ring.heightGrid(minX, minZ + sw, minX + sw, maxZ - sw, 3, hf, 4);
-      ring.heightGrid(maxX - sw, minZ + sw, maxX, maxZ - sw, 3, hf, 4);
-      const key = interiorMat[b.type] ?? 'sidewalk';
-      interiors[key] ??= new GeoBuilder();
-      interiors[key].heightGrid(minX + sw, minZ + sw, maxX - sw, maxZ - sw, 4, hf, key === 'sidewalk' || key === 'pavers' ? 4 : 10);
-      // Sardinel: caras laterales del andén.
-      const edges = [
-        [maxX, minZ, 0, -1, maxX - minX],
-        [minX, maxZ, 0, 1, maxX - minX],
-        [minX, minZ, -1, 0, maxZ - minZ],
-        [maxX, maxZ, 1, 0, maxZ - minZ],
-      ];
-      for (const [sx, sz, nx, nz, len] of edges) {
-        const rx = nz;
-        const rz = -nx;
-        const segs = Math.ceil(len / 3);
-        for (let k = 0; k < segs; k++) {
-          const t0 = (len * k) / segs;
-          const t1 = (len * (k + 1)) / segs;
-          const ax = sx + rx * t0;
-          const az = sz + rz * t0;
-          const bx = sx + rx * t1;
-          const bz = sz + rz * t1;
-          const ya = terrainHeight(ax, az);
-          const yb = terrainHeight(bx, bz);
-          curb.quad(
-            [ax, ya - 0.05, az],
-            [bx, yb - 0.05, bz],
-            [bx, yb + GRID.curb, bz],
-            [ax, ya + GRID.curb, az],
-            [nx, 0, nz],
-            [
-              [t0 / 2, 0],
-              [t1 / 2, 0],
-              [t1 / 2, 0.1],
-              [t0 / 2, 0.1],
-            ],
-            [0.85, 0.83, 0.8],
-          );
-        }
+      const out = polyArea(b.curb) > 0 ? -1 : 1;
+      polyWall(curb, b.curb, out, (x, z) => terrainHeight(x, z) - 0.08, hf, { step: 3, uvScale: 2, color: [0.85, 0.83, 0.8] });
+      if (b.type !== 'residencial') {
+        // Separadores y orillas del río: prado.
+        drapePolygon(green, b.curb, hf, { step: 5, uv: (x, z) => [x / 10, -z / 10] });
+        continue;
+      }
+      // Andén: el contorno menos los lotes; los lotes son patios de concreto.
+      drapePolygon(walk, b.curb, hf, { step: 4, uv: (x, z) => [x / 4, -z / 4] }, b.lots);
+      for (const l of b.lots) drapePolygon(lots, l, hLot, { step: 5, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
+    }
+    this._mesh(walk.build(), this.materials.sidewalk, { cast: false, name: 'andenes' });
+    this._mesh(lots.build(), this.materials.concrete, { cast: false, name: 'patios' });
+    this._mesh(green.build(), this.materials.grass, { cast: false, name: 'prados' });
+    this._mesh(curb.build(), this.materials.concrete, { cast: false, name: 'sardineles' });
+  }
+
+  /** Zonas especiales del mapa: plaza del parque, jardines y canchas. */
+  _areas(byType) {
+    const hf = (lift) => (x, z) => terrainHeight(x, z) + GRID.curb + lift;
+    const plaza = new GeoBuilder();
+    for (const p of byType.plazaPoly ?? []) drapePolygon(plaza, p.poly, hf(0.02), { step: 4, uv: (x, z) => [x / 4, -z / 4] });
+    this._mesh(plaza.build(), this.materials.pavers, { cast: false, name: 'plaza' });
+    const garden = new GeoBuilder();
+    for (const p of byType.garden ?? []) if (p.poly) drapePolygon(garden, p.poly, hf(0.03), { step: 4, uv: (x, z) => [x / 10, -z / 10] });
+    this._mesh(garden.build(), this.materials.grass, { cast: false, name: 'jardines' });
+    for (const p of byType.fieldPoly ?? []) this._fieldPoly(p);
+  }
+
+  _fieldPoly(p) {
+    // Superficie: prado (o placa de concreto) en todo el lote y la cancha marcada encima.
+    const hf = (lift) => (x, z) => terrainHeight(x, z) + GRID.curb + lift;
+    if (p.poly) {
+      const g = new GeoBuilder();
+      drapePolygon(g, p.poly, hf(0.02), { step: 4, uv: (x, z) => [x / 10, -z / 10] });
+      this._mesh(g.build(), p.placa ? this.materials.concrete : this.materials.dryGrass, { cast: false });
+    }
+    const f = p.frame;
+    if (!f) return;
+    const g = new GeoBuilder();
+    const L = Math.max(f.hu, f.hv);
+    const long = f.hu >= f.hv;
+    const tris = [
+      [[f.x - f.ux * f.hu - f.nx * f.hv, f.z - f.uz * f.hu - f.nz * f.hv], [f.x + f.ux * f.hu - f.nx * f.hv, f.z + f.uz * f.hu - f.nz * f.hv], [f.x + f.ux * f.hu + f.nx * f.hv, f.z + f.uz * f.hu + f.nz * f.hv]],
+      [[f.x - f.ux * f.hu - f.nx * f.hv, f.z - f.uz * f.hu - f.nz * f.hv], [f.x + f.ux * f.hu + f.nx * f.hv, f.z + f.uz * f.hu + f.nz * f.hv], [f.x - f.ux * f.hu + f.nx * f.hv, f.z - f.uz * f.hu + f.nz * f.hv]],
+    ];
+    // UV: la textura de la cancha (vertical en el lienzo) va a lo largo del lado largo.
+    const uv = (x, z) => {
+      const u = ((x - f.x) * f.ux + (z - f.z) * f.uz) / f.hu;
+      const v = ((x - f.x) * f.nx + (z - f.z) * f.nz) / f.hv;
+      return long ? [(v + 1) / 2, (u + 1) / 2] : [(u + 1) / 2, (v + 1) / 2];
+    };
+    drapeTris(g, tris, hf(0.04), { step: 3, uv });
+    const tex = fieldTexture(p.placa);
+    const m = this._mesh(g.build(), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { cast: false });
+    m.name = 'cancha';
+    void L;
+  }
+
+  // ---------------------------------------------------------------- agua
+  _water() {
+    const water = new GeoBuilder();
+    const bank = new GeoBuilder();
+    const stone = new GeoBuilder();
+    if (RIVER.pts.length > 1) {
+      // Canal del río Medellín: taludes de concreto y lámina de agua (terreno.js cava el cauce).
+      const hw = RIVER.half;
+      ribbon(water, RIVER.pts, -hw - 1, hw + 1, (x, z) => backdropHeight(x, z) - RIVER.depth + 1.3, { step: 6, across: 4, uv: (s, o) => [o / 12, s / 12] });
+      for (const sgn of [-1, 1]) {
+        const o0 = sgn > 0 ? hw - 0.5 : -hw - RIVER.bank - 0.3;
+        const o1 = sgn > 0 ? hw + RIVER.bank + 0.3 : -hw + 0.5;
+        ribbon(bank, RIVER.pts, o0, o1, (x, z) => terrainHeight(x, z) + 0.22, { step: 5, across: 3, uv: (s, o) => [o / 3, s / 3], color: [0.78, 0.76, 0.72] });
       }
     }
-    this._mesh(ring.build(), this.materials.sidewalk, { cast: false, name: 'andenes' });
-    this._mesh(curb.build(), this.materials.concrete, { cast: false, name: 'sardineles' });
-    for (const [k, gb] of Object.entries(interiors)) this._mesh(gb.build(), this.materials[k], { cast: false, name: `interior-${k}` });
+    // Quebradas a cielo abierto: cauce angosto entre muros de piedra.
+    for (const w of this.city.water) {
+      if (/Medell/i.test(w.name)) continue;
+      const hw = w.kind === 'canal' ? 2.6 : 1.5;
+      ribbon(water, w.pts, -hw, hw, (x, z) => terrainHeight(x, z) + 0.2, { step: 3, uv: (s, o) => [o / 6, s / 6] });
+      for (const sgn of [-1, 1]) {
+        const o = sgn * (hw + 0.2);
+        const pts = w.pts;
+        // Muro: dos caras verticales y el remate.
+        for (const [a, b] of [
+          [o - 0.2, o - 0.2],
+          [o + 0.2, o + 0.2],
+        ]) {
+          void b;
+          const P = [];
+          for (const q of densify(pts, 3)) P.push(q);
+          const F = polylineFrames(P);
+          for (let i = 0; i < P.length - 1; i++) {
+            const x0 = P[i][0] + F[i].nx * a * F[i].miter;
+            const z0 = P[i][1] + F[i].nz * a * F[i].miter;
+            const x1 = P[i + 1][0] + F[i + 1].nx * a * F[i + 1].miter;
+            const z1 = P[i + 1][1] + F[i + 1].nz * a * F[i + 1].miter;
+            const nrm = [F[i].nx * Math.sign(a - o + 1e-9 * sgn), 0, F[i].nz * Math.sign(a - o + 1e-9 * sgn)];
+            const y0 = terrainHeight(x0, z0);
+            const y1 = terrainHeight(x1, z1);
+            orientedQuad(stone, [[x0, y0 - 0.1, z0], [x1, y1 - 0.1, z1], [x1, y1 + 0.8, z1], [x0, y0 + 0.8, z0]], nrm, [[i * 1.5, 0], [(i + 1) * 1.5, 0], [(i + 1) * 1.5, 0.45], [i * 1.5, 0.45]]);
+          }
+        }
+        ribbon(stone, pts, o - 0.2, o + 0.2, (x, z) => terrainHeight(x, z) + 0.8, { step: 3, uv: (s, q) => [q, s / 2] });
+      }
+    }
+    this._mesh(water.build(), this.materials.water, { cast: false, name: 'agua' }).receiveShadow = false;
+    this._mesh(bank.build(), this.materials.concrete, { cast: false, name: 'orillas' });
+    this._mesh(stone.build(), this.materials.stone ?? this.materials.concrete, { name: 'muros-quebrada' });
   }
 
   // ---------------------------------------------------------------- edificios
@@ -468,22 +511,16 @@ export class CityRenderer {
       if (!groups.has(key)) groups.set(key, new GeoBuilder());
       return groups.get(key);
     };
-    const roof = get('roof');
     const concrete = get('concrete');
-    const tiles = get('tiles');
-    const railing = get('darkMetal');
-    const tanks = [];
-    const rebar = [];
+    const out = { tanks: [], rebar: [] };
     const rng = makeRng(123);
     const murals = [];
 
     for (let bi = 0; bi < this.city.buildings.length; bi++) {
       const b = this.city.buildings[bi];
-      const { minX, maxX, minZ, maxZ, groundY, topY, baseY } = b;
+      const { groundY, topY, baseY } = b;
       // Casas del barrio: fachada modelada (facadeBuilder); el resto, caja texturizada.
       const layout = facadeLayout(b, bi);
-      const w = maxX - minX;
-      const d = maxZ - minZ;
       let matKey;
       let color = b.color;
       switch (b.style) {
@@ -496,6 +533,8 @@ export class CityRenderer {
         case 'pintada':
         case 'tienda':
         case 'hospital':
+        case 'institucional':
+        case 'iglesia':
           matKey = `stucco${rng.int(0, 1)}`;
           break;
         case 'museo':
@@ -505,79 +544,24 @@ export class CityRenderer {
         case 'taller':
           matKey = 'metal';
           break;
-        case 'explora':
-          matKey = 'glossy';
-          break;
         default:
           matKey = 'plain';
       }
       const g = get(matKey);
       const uOff = Math.floor(b.uvOffset * 4) / 4;
-      const faces = [
-        [maxX, minZ, 0, -1, w, 'N'],
-        [minX, maxZ, 0, 1, w, 'S'],
-        [minX, minZ, -1, 0, d, 'W'],
-        [maxX, maxZ, 1, 0, d, 'E'],
-      ];
       const isWall = b.style === 'muro';
-      const uvScale = matKey === 'plain' || matKey === 'glossy' ? 4 : matKey === 'metal' ? 3 : FACADE_M;
-      const parapet = b.roof === 'flat' && !isWall && !['explora', 'iglesia'].includes(b.style) ? PARAPET : 0;
-      for (const [x0, z0, nx, nz, len] of faces) {
+      const uvScale = matKey === 'plain' ? 4 : matKey === 'metal' ? 3 : FACADE_M;
+      const parapet = roofParapet(b);
+      for (const side of ['S', 'N', 'W', 'E']) {
+        const f = faceFrame(b, side);
         // Cimiento visible en la ladera (concreto) + fachada.
-        if (groundY - baseY > 0.05) concrete.wall(x0, z0, nx, nz, len, baseY, groundY, 3, [0.8, 0.78, 0.74]);
-        if (!layout) g.wall(x0, z0, nx, nz, len, groundY, topY + parapet, uvScale, color, uOff, groundY);
+        if (groundY - baseY > 0.05) concrete.wall(f.x0, f.z0, f.nx, f.nz, f.len, baseY, groundY, 3, [0.8, 0.78, 0.74]);
+        if (!layout) g.wall(f.x0, f.z0, f.nx, f.nz, f.len, groundY, topY + parapet, uvScale, color, uOff, groundY);
       }
       if (layout) this.facades.add(b, layout, parapet);
-      // Murales en culatas laterales de algunas casas (arte urbano).
-      if (b.style !== 'torre' && !isWall && rng.chance(0.05) && topY - groundY > 5) murals.push(b);
-
-      if (isWall || b.style === 'explora') {
-        const gg = isWall ? get('plain') : g;
-        gg.quad([minX, topY, maxZ], [maxX, topY, maxZ], [maxX, topY, minZ], [minX, topY, minZ], [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], color);
-        continue;
-      }
-      if (b.roof === 'tejas') {
-        this._gableRoof(tiles, concrete, b);
-      } else {
-        roof.quad([minX, topY, maxZ], [maxX, topY, maxZ], [maxX, topY, minZ], [minX, topY, minZ], [0, 1, 0], [[minX / 6, maxZ / 6], [maxX / 6, maxZ / 6], [maxX / 6, minZ / 6], [minX / 6, minZ / 6]]);
-        if (parapet) {
-          const t = 0.18;
-          const top = topY + parapet;
-          // Caras internas del muro de la terraza y remate.
-          roof.wall(minX + t, minZ + t, 0, 1, w - 2 * t, topY, top, 3);
-          roof.wall(maxX - t, maxZ - t, 0, -1, w - 2 * t, topY, top, 3);
-          roof.wall(minX + t, maxZ - t, 1, 0, d - 2 * t, topY, top, 3);
-          roof.wall(maxX - t, minZ + t, -1, 0, d - 2 * t, topY, top, 3);
-          concrete.quad([minX, top, maxZ], [maxX, top, maxZ], [maxX, top, maxZ - t], [minX, top, maxZ - t], [0, 1, 0], [[0, 0], [1, 0], [1, 0.05], [0, 0.05]], [0.85, 0.85, 0.82]);
-          concrete.quad([minX, top, minZ + t], [maxX, top, minZ + t], [maxX, top, minZ], [minX, top, minZ], [0, 1, 0], [[0, 0], [1, 0], [1, 0.05], [0, 0.05]], [0.85, 0.85, 0.82]);
-          concrete.quad([minX, top, maxZ - t], [minX + t, top, maxZ - t], [minX + t, top, minZ + t], [minX, top, minZ + t], [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], [0.85, 0.85, 0.82]);
-          concrete.quad([maxX - t, top, maxZ - t], [maxX, top, maxZ - t], [maxX, top, minZ + t], [maxX - t, top, minZ + t], [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], [0.85, 0.85, 0.82]);
-        }
-        if (b.tank) tanks.push({ x: minX + 1.4 + rng.next() * Math.max(0.1, w - 2.8), z: minZ + 1.4 + rng.next() * Math.max(0.1, d - 2.8), y: topY, blue: rng.chance(0.35) });
-        // Varillas a la vista para "el segundo piso que viene" (muy paisa).
-        if (b.floors <= 4 && rng.chance(0.35)) {
-          for (const [cx, cz] of [[minX + 0.25, minZ + 0.25], [maxX - 0.25, minZ + 0.25], [minX + 0.25, maxZ - 0.25], [maxX - 0.25, maxZ - 0.25]]) {
-            for (let k = 0; k < 4; k++) rebar.push(cx + (k % 2) * 0.1, topY + parapet, cz + (k >> 1) * 0.1, cx + (k % 2) * 0.1 + rng.range(-0.05, 0.05), topY + parapet + rng.range(0.8, 1.4), cz + (k >> 1) * 0.1);
-          }
-        }
-      }
-      // Balcones con baranda en la fachada principal.
-      if (b.balcony && b.front && !layout) this._balconies(concrete, railing, get('railingBars'), b);
-      if (b.tower) {
-        // Campanario: remate piramidal.
-        const cx = (minX + maxX) / 2;
-        const cz = (minZ + maxZ) / 2;
-        const h = 5;
-        const pts = [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]];
-        for (let k = 0; k < 4; k++) {
-          const [ax, az] = pts[k];
-          const [bx, bz] = pts[(k + 1) % 4];
-          const nx = (az + bz) / 2 - cz;
-          const nz = -((ax + bx) / 2 - cx);
-          const l = Math.hypot(nx, nz) || 1;
-          tiles.tri([bx, topY, bz], [ax, topY, az], [cx, topY + h, cz], [-nz / l, 0.5, nx / l], [[0, 0], [1, 0], [0.5, 1]]);
-        }
-      }
+      // Murales en culatas de algunas casas (arte urbano, como en Moravia).
+      if (b.style !== 'torre' && !isWall && !b.interior && rng.chance(b.informal ? 0.08 : 0.04) && topY - groundY > 5) murals.push(b);
+      buildRoof(b, get, rng, out);
     }
 
     this.facades.build(this.root);
@@ -590,23 +574,22 @@ export class CityRenderer {
       this._mesh(gb.build(), mat, { name: `edificios-${key}` });
     }
 
-    // Murales: planos pegados a las culatas.
+    // Murales: planos pegados a una culata.
     for (const b of murals) {
       const tex = new THREE.MeshStandardMaterial({ map: this.tex.mural[rng.int(0, 2)], roughness: 0.85 });
+      const f = faceFrame(b, rng.chance(0.5) ? 'W' : 'E');
       const h = Math.min(8, b.topY - b.groundY - 1);
-      const len = Math.min(10, b.maxZ - b.minZ - 1);
+      const len = Math.min(10, f.len - 1);
+      if (len < 3) continue;
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(len, h), tex);
-      const side = b.front === 'N' || b.front === 'S' ? (rng.chance(0.5) ? 'W' : 'E') : rng.chance(0.5) ? 'N' : 'S';
-      const cy = b.groundY + 1 + h / 2;
-      if (side === 'W') plane.position.set(b.minX - 0.03, cy, (b.minZ + b.maxZ) / 2), (plane.rotation.y = -Math.PI / 2);
-      else if (side === 'E') plane.position.set(b.maxX + 0.03, cy, (b.minZ + b.maxZ) / 2), (plane.rotation.y = Math.PI / 2);
-      else if (side === 'N') plane.position.set((b.minX + b.maxX) / 2, cy, b.minZ - 0.03), (plane.rotation.y = Math.PI);
-      else plane.position.set((b.minX + b.maxX) / 2, cy, b.maxZ + 0.03);
+      plane.position.set(f.x0 + f.rx * (f.len / 2) + f.nx * 0.03, b.groundY + 1 + h / 2, f.z0 + f.rz * (f.len / 2) + f.nz * 0.03);
+      plane.rotation.y = Math.atan2(f.nx, f.nz);
       plane.receiveShadow = true;
       this.root.add(plane);
     }
 
     // Tanques de agua (negros tipo Eternit o azules).
+    const { tanks, rebar } = out;
     if (tanks.length) {
       const geo = new THREE.CylinderGeometry(0.7, 0.75, 1.3, 14);
       geo.translate(0, 0.65, 0);
@@ -630,79 +613,13 @@ export class CityRenderer {
     }
   }
 
-  _gableRoof(tiles, walls, b) {
-    const { minX, maxX, minZ, maxZ, topY } = b;
-    const alongX = maxX - minX >= maxZ - minZ;
-    const rise = 1.6;
-    const o = 0.4; // alero
-    if (alongX) {
-      const zc = (minZ + maxZ) / 2;
-      const hy = topY + rise;
-      const s = Math.hypot(rise, (maxZ - minZ) / 2);
-      const ny = ((maxZ - minZ) / 2) / s;
-      const nz = rise / s;
-      tiles.quad([minX - o, topY - 0.2, maxZ + o], [maxX + o, topY - 0.2, maxZ + o], [maxX + o, hy, zc], [minX - o, hy, zc], [0, ny, nz], [[0, 0], [(maxX - minX) / 3, 0], [(maxX - minX) / 3, s / 3], [0, s / 3]]);
-      tiles.quad([maxX + o, topY - 0.2, minZ - o], [minX - o, topY - 0.2, minZ - o], [minX - o, hy, zc], [maxX + o, hy, zc], [0, ny, -nz], [[0, 0], [(maxX - minX) / 3, 0], [(maxX - minX) / 3, s / 3], [0, s / 3]]);
-      walls.tri([minX, topY, minZ], [minX, topY, maxZ], [minX, hy, zc], [-1, 0, 0], [[0, 0], [1, 0], [0.5, 0.5]], [0.9, 0.88, 0.84]);
-      walls.tri([maxX, topY, maxZ], [maxX, topY, minZ], [maxX, hy, zc], [1, 0, 0], [[0, 0], [1, 0], [0.5, 0.5]], [0.9, 0.88, 0.84]);
-    } else {
-      const xc = (minX + maxX) / 2;
-      const hy = topY + rise;
-      const s = Math.hypot(rise, (maxX - minX) / 2);
-      const ny = ((maxX - minX) / 2) / s;
-      const nx = rise / s;
-      tiles.quad([maxX + o, topY - 0.2, maxZ + o], [maxX + o, topY - 0.2, minZ - o], [xc, hy, minZ - o], [xc, hy, maxZ + o], [nx, ny, 0], [[0, 0], [(maxZ - minZ) / 3, 0], [(maxZ - minZ) / 3, s / 3], [0, s / 3]]);
-      tiles.quad([minX - o, topY - 0.2, minZ - o], [minX - o, topY - 0.2, maxZ + o], [xc, hy, maxZ + o], [xc, hy, minZ - o], [-nx, ny, 0], [[0, 0], [(maxZ - minZ) / 3, 0], [(maxZ - minZ) / 3, s / 3], [0, s / 3]]);
-      walls.tri([maxX, topY, minZ], [minX, topY, minZ], [xc, hy, minZ], [0, 0, -1], [[0, 0], [1, 0], [0.5, 0.5]], [0.9, 0.88, 0.84]);
-      walls.tri([minX, topY, maxZ], [maxX, topY, maxZ], [xc, hy, maxZ], [0, 0, 1], [[0, 0], [1, 0], [0.5, 0.5]], [0.9, 0.88, 0.84]);
-    }
-  }
-
-  _balconies(concrete, railing, bars, b) {
-    const { minX, maxX, minZ, maxZ, groundY } = b;
-    const depth = 0.9;
-    const along = b.front === 'N' || b.front === 'S';
-    const len = along ? maxX - minX : maxZ - minZ;
-    const bw = Math.min(4.2, len * 0.6);
-    const c0 = (along ? (minX + maxX) / 2 : (minZ + maxZ) / 2) - bw / 2;
-    const rh = 1.0;
-    const uMax = Math.round(bw / BAR_SPACING);
-    for (let f = 1; f < b.floors; f++) {
-      const y = groundY + f * 3;
-      let box;
-      if (b.front === 'N') box = [c0, minZ - depth, c0 + bw, minZ];
-      else if (b.front === 'S') box = [c0, maxZ, c0 + bw, maxZ + depth];
-      else if (b.front === 'W') box = [minX - depth, c0, minX, c0 + bw];
-      else box = [maxX, c0, maxX + depth, c0 + bw];
-      const [x0, z0, x1, z1] = box;
-      concrete.box(x0, y - 0.15, z0, x1, y, z1, 2, [0.85, 0.84, 0.8], false);
-      // Baranda: pasamanos (caja) y barrotes (plano recortado).
-      let a;
-      let c;
-      let n;
-      if (b.front === 'N') {
-        railing.box(x0, y + rh - 0.05, z0, x1, y + rh, z0 + 0.05);
-        [a, c, n] = [[x0, z0 + 0.02], [x1, z0 + 0.02], [0, 0, -1]];
-      } else if (b.front === 'S') {
-        railing.box(x0, y + rh - 0.05, z1 - 0.05, x1, y + rh, z1);
-        [a, c, n] = [[x1, z1 - 0.02], [x0, z1 - 0.02], [0, 0, 1]];
-      } else if (b.front === 'W') {
-        railing.box(x0, y + rh - 0.05, z0, x0 + 0.05, y + rh, z1);
-        [a, c, n] = [[x0 + 0.02, z1], [x0 + 0.02, z0], [-1, 0, 0]];
-      } else {
-        railing.box(x1 - 0.05, y + rh - 0.05, z0, x1, y + rh, z1);
-        [a, c, n] = [[x1 - 0.02, z0], [x1 - 0.02, z1], [1, 0, 0]];
-      }
-      bars.quad([a[0], y, a[1]], [c[0], y, c[1]], [c[0], y + rh, c[1]], [a[0], y + rh, a[1]], n, [[0, 0], [uMax, 0], [uMax, 1], [0, 1]]);
-    }
-  }
-
   // ---------------------------------------------------------------- utilería
   _props() {
     const props = this.city.props;
     const byType = {};
     for (const p of props) (byType[p.type] ??= []).push(p);
     // Modelos glTF (props.js) donde los hay; lo demás sigue procedural.
+    this._areas(byType);
     const done = buildModelProps(this, byType, { glowSprite });
     this._trees(done.trees);
     if (!done.lamps) this._lamps(byType.lamp ?? []);
@@ -720,7 +637,7 @@ export class CityRenderer {
     for (const p of byType.railing ?? []) this._railing(p);
     buildStreetFurniture(this, byType);
     this._tombs(byType.tomb ?? []);
-    this._flowers([...(byType.garden ?? [])]);
+    this._flowers((byType.garden ?? []).filter((g) => g.flowers && g.poly));
   }
 
   _trees(trees) {
@@ -1165,96 +1082,6 @@ export class CityRenderer {
     this.root.add(im);
   }
 
-  // ---------------------------------------------------------------- metro
-  _metro() {
-    const mt = this.city.metro;
-    if (!mt) return;
-    const conc = new THREE.MeshStandardMaterial({ color: 0xbdbab3, roughness: 0.85, map: this.tex.concrete.map, normalMap: this.tex.concrete.normalMap });
-    const len = mt.z1 - mt.z0;
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(9, 1.8, len), conc);
-    deck.position.set(mt.x, mt.deckY - 0.9, (mt.z0 + mt.z1) / 2);
-    deck.castShadow = deck.receiveShadow = true;
-    this.root.add(deck);
-    // Barandas del viaducto.
-    for (const dx of [-4.4, 4.4]) {
-      const w = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1, len), conc);
-      w.position.set(mt.x + dx, mt.deckY + 0.5, (mt.z0 + mt.z1) / 2);
-      this.root.add(w);
-    }
-    // Rieles.
-    for (const dx of [-2.4, -1.0, 1.0, 2.4]) {
-      const r = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, len), this.materials.darkMetal);
-      r.position.set(mt.x + dx, mt.deckY + 0.08, (mt.z0 + mt.z1) / 2);
-      this.root.add(r);
-    }
-    // Pilas.
-    const pillars = this.city.props.filter((p) => p.type === 'metroPillar');
-    const pgeo = new THREE.CylinderGeometry(0.9, 1.1, 1, 12);
-    pgeo.translate(0, 0.5, 0);
-    const im = new THREE.InstancedMesh(pgeo, conc, pillars.length);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const v = new THREE.Vector3();
-    const s = new THREE.Vector3();
-    pillars.forEach((p, i) => {
-      const y = terrainHeight(p.x, p.z) - 0.5;
-      m.compose(v.set(p.x, y, p.z), q, s.set(1, p.top - 1.8 - y, 1));
-      im.setMatrixAt(i, m);
-    });
-    im.castShadow = true;
-    this.root.add(im);
-    // Estación Universidad: plataformas, cubierta y letrero.
-    const st = new THREE.Group();
-    const plat = new THREE.Mesh(new THREE.BoxGeometry(18, 1.2, mt.stationLength), conc);
-    plat.position.set(0, -0.6, 0);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(20, 0.4, mt.stationLength + 6), new THREE.MeshStandardMaterial({ color: 0xdedede, roughness: 0.5, metalness: 0.3 }));
-    roof.position.y = 6.5;
-    st.add(plat, roof);
-    for (const dz of [-30, -10, 10, 30]) {
-      for (const dx of [-8.5, 8.5]) {
-        const c = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 6.5), this.materials.darkMetal);
-        c.position.set(dx, 3.25, dz);
-        st.add(c);
-      }
-    }
-    const signTex = textTexture('UNIVERSIDAD', { bg: '#0b5d3b', w: 1024, h: 200 });
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(10, 2), new THREE.MeshStandardMaterial({ map: signTex, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: 0.3 }));
-    sign.position.set(10.1, 5, 0);
-    sign.rotation.y = Math.PI / 2;
-    const logo = textTexture('METRO  ·  Línea A', { bg: '#0b5d3b', w: 1024, h: 200 });
-    const lg = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.8), new THREE.MeshStandardMaterial({ map: logo }));
-    lg.position.set(10.1, 1.2, 0);
-    lg.rotation.y = Math.PI / 2;
-    st.add(sign, lg);
-    st.position.set(mt.x, mt.deckY, mt.stationZ);
-    st.traverse((o) => {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    });
-    this.root.add(st);
-    // Tren de 3 vagones.
-    this.train = new THREE.Group();
-    const bodyMat = new THREE.MeshPhysicalMaterial({ color: 0xe9ecee, roughness: 0.25, metalness: 0.5, clearcoat: 0.5 });
-    const stripeMat = new THREE.MeshStandardMaterial({ color: 0x0f7a45 });
-    const glass = new THREE.MeshPhysicalMaterial({ color: 0x1a232b, roughness: 0.05, metalness: 0.2 });
-    for (let k = 0; k < 3; k++) {
-      const car = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(2.9, 3.2, 21), bodyMat);
-      body.position.y = 2.0;
-      const win = new THREE.Mesh(new THREE.BoxGeometry(2.95, 1.1, 19), glass);
-      win.position.y = 2.5;
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.96, 0.35, 21), stripeMat);
-      stripe.position.y = 1.2;
-      car.add(body, win, stripe);
-      car.position.z = (k - 1) * 21.6;
-      this.train.add(car);
-    }
-    this.train.traverse((o) => (o.castShadow = true));
-    this.train.position.set(mt.x - 1.7, mt.deckY, mt.z0);
-    this.root.add(this.train);
-    this.trainState = { z: mt.z0, dir: 1, wait: 0, speed: 0 };
-  }
-
   /** Detalle por instancia de árboles, postes y faroles según la cámara. */
   updateLod(camPos) {
     updatePropLod(this, camPos);
@@ -1265,30 +1092,7 @@ export class CityRenderer {
     for (const { m, max, base = 0 } of this.nightMaterials) m.emissiveIntensity = base + max * nightFactor;
     if (this.lampGlow) this.lampGlow.opacity = 0.55 * nightFactor;
     if (this.cityLights) this.cityLights.material.opacity = Math.min(1, nightFactor * 1.3);
-    // Tren: acelera, frena en la estación Universidad y se devuelve al final.
-    const mt = this.city.metro;
-    const ts = this.trainState;
-    if (!ts) return;
-    if (ts.wait > 0) {
-      ts.wait -= dt;
-      return;
-    }
-    const maxV = 16;
-    const target = ts.dir > 0 ? (ts.z < mt.stationZ - 1 ? mt.stationZ : mt.z1) : ts.z > mt.stationZ + 1 ? mt.stationZ : mt.z0;
-    const dist = Math.abs(target - ts.z);
-    const desired = Math.min(maxV, Math.sqrt(2 * 1.2 * dist));
-    ts.speed += Math.sign(desired - ts.speed) * Math.min(Math.abs(desired - ts.speed), 1.5 * dt);
-    ts.z += ts.dir * ts.speed * dt;
-    if (dist < 0.3) {
-      ts.z = target;
-      ts.speed = 0;
-      ts.wait = target === mt.stationZ ? 12 : 4;
-      if (target !== mt.stationZ) {
-        ts.dir *= -1;
-        this.train.position.x = mt.x + (ts.dir > 0 ? -1.7 : 1.7);
-      }
-    }
-    this.train.position.z = ts.z;
+    this.metro?.update(dt);
   }
 }
 
@@ -1343,4 +1147,53 @@ export function mergeGeos(geos) {
   const geo = out.build();
   geo.deleteAttribute('color');
   return geo;
+}
+
+const _fieldTex = {};
+/** Textura de cancha: fútbol en prado, o placa polideportiva de concreto. */
+function fieldTexture(placa) {
+  const key = placa ? 'placa' : 'futbol';
+  if (_fieldTex[key]) return _fieldTex[key];
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+  if (placa) {
+    ctx.fillStyle = '#5d7fa0';
+    ctx.fillRect(0, 0, 256, 512);
+    ctx.fillStyle = '#b5553f';
+    ctx.fillRect(14, 14, 228, 484);
+  } else {
+    ctx.fillStyle = '#3c7a2c';
+    ctx.fillRect(0, 0, 256, 512);
+    for (let k = 0; k < 8; k++) {
+      ctx.fillStyle = k % 2 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)';
+      ctx.fillRect(0, k * 64, 256, 64);
+    }
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(14, 14, 228, 484);
+  ctx.beginPath();
+  ctx.moveTo(14, 256);
+  ctx.lineTo(242, 256);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(128, 256, 40, 0, Math.PI * 2);
+  ctx.stroke();
+  if (placa) {
+    ctx.beginPath();
+    ctx.arc(128, 14, 90, 0, Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(128, 498, 90, Math.PI, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(68, 14, 120, 60);
+    ctx.strokeRect(68, 438, 120, 60);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _fieldTex[key] = tex;
+  return tex;
 }

@@ -2,18 +2,63 @@
 // Colombia), elección de giros, búsqueda de rutas y piloto automático para
 // el tráfico y la policía.
 
-import { GRID } from './terrain.js';
+import { pointAlong, projectOnPolyline } from './geom2d.js';
 import { clamp, dist2D, forwardX, forwardZ, wrapAngle, yawFromDir } from './math.js';
+
+// Las vías del mapa real son polilíneas (no rectas): cada arista guarda sus
+// puntos `pts` de a→b, las longitudes acumuladas `cum` y si es de una sola
+// vía (`oneway` 1 = solo a→b, -1 = solo b→a).
+
+/** Distancia del eje al centro del carril derecho de la vía. */
+export function laneOffset(edge) {
+  const lanes = Math.max(1, edge.lanes || 2);
+  if (edge.oneway) return lanes >= 2 ? edge.width / 2 - edge.width / (2 * lanes) : 0;
+  return clamp(edge.width / 4, 1.4, 3.2);
+}
+
+/** ¿Se puede circular por el enlace en ese sentido? */
+export function linkAllowed(graph, link) {
+  const e = graph.edges[link.edge];
+  return !e.oneway || e.oneway === link.dir;
+}
 
 export class RoadGraph {
   constructor(city) {
     this.nodes = city.nodes;
     this.edges = city.edges;
     this.active = city.nodes.filter((n) => n.active);
+    this.activeEdges = city.edges.filter((e) => e.active !== false);
+    // Índice espacial de aristas activas para nearestEdge.
+    this.cell = 40;
+    this.grid = new Map();
+    for (const e of this.activeEdges) {
+      const seen = new Set();
+      for (const [x, z] of densify(e.pts, this.cell / 2)) {
+        const k = this._key(Math.floor(x / this.cell), Math.floor(z / this.cell));
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (!this.grid.has(k)) this.grid.set(k, []);
+        this.grid.get(k).push(e);
+      }
+    }
+  }
+
+  _key(i, j) {
+    return i * 100003 + j;
   }
 
   node(id) {
     return this.nodes[id];
+  }
+
+  /** Enlace de `from` a `to` (el más corto si hay tramos paralelos). */
+  link(from, to) {
+    let best = null;
+    for (const l of this.nodes[from].links) {
+      if (l.node !== to) continue;
+      if (!best || this.edges[l.edge].length < this.edges[best.edge].length) best = l;
+    }
+    return best;
   }
 
   nearestNode(x, z) {
@@ -29,25 +74,36 @@ export class RoadGraph {
     return best;
   }
 
-  /** Arista más cercana y proyección del punto sobre ella. */
+  /** Arista más cercana y proyección del punto sobre ella ({edge, t, s, dist, x, z}). */
   nearestEdge(x, z) {
     let best = null;
-    for (const e of this.edges) {
-      const a = this.nodes[e.a];
-      const b = this.nodes[e.b];
-      const t = clamp(((x - a.x) * (b.x - a.x) + (z - a.z) * (b.z - a.z)) / (e.length * e.length), 0, 1);
-      const px = a.x + (b.x - a.x) * t;
-      const pz = a.z + (b.z - a.z) * t;
-      const d = dist2D(x, z, px, pz);
-      if (!best || d < best.dist) best = { edge: e, t, dist: d, x: px, z: pz };
+    const ci = Math.floor(x / this.cell);
+    const cj = Math.floor(z / this.cell);
+    for (let r = 0; r < 60; r++) {
+      const seen = new Set();
+      for (let i = ci - r; i <= ci + r; i++) {
+        for (let j = cj - r; j <= cj + r; j++) {
+          if (Math.max(Math.abs(i - ci), Math.abs(j - cj)) !== r) continue;
+          for (const e of this.grid.get(this._key(i, j)) ?? []) {
+            if (seen.has(e)) continue;
+            seen.add(e);
+            const p = projectOnPolyline(e.pts, e.cum, x, z);
+            if (!best || p.d < best.dist) best = { edge: e, t: p.s / (e.length || 1), s: p.s, dist: p.d, x: p.x, z: p.z };
+          }
+        }
+      }
+      // Una vez hallada una arista, basta revisar un anillo más.
+      if (best && best.dist < r * this.cell) break;
     }
     return best;
   }
 
-  /** Siguiente nodo al llegar a `at` viniendo de `from`, evitando la vuelta en U. */
+  /** Siguiente nodo al llegar a `at` viniendo de `from`, evitando la vuelta en U y el contravía. */
   pickNext(from, at, rand = Math.random) {
-    const links = this.nodes[at].links.filter((l) => l.node !== from);
-    if (links.length === 0) return from;
+    const all = this.nodes[at].links;
+    let links = all.filter((l) => l.node !== from && linkAllowed(this, l));
+    if (!links.length) links = all.filter((l) => l.node !== from);
+    if (!links.length) return from;
     return links[Math.floor(rand() * links.length)].node;
   }
 
@@ -59,7 +115,8 @@ export class RoadGraph {
     for (const l of links) {
       if (l.node === from && links.length > 1) continue;
       const n = this.nodes[l.node];
-      const d = dist2D(n.x, n.z, tx, tz);
+      // El contravía penaliza (la policía en persecución sí lo usa si toca).
+      const d = dist2D(n.x, n.z, tx, tz) + (linkAllowed(this, l) ? 0 : 60);
       if (d < bd) {
         bd = d;
         best = l.node;
@@ -68,8 +125,8 @@ export class RoadGraph {
     return best ?? from;
   }
 
-  /** Ruta más corta (Dijkstra) entre nodos; devuelve lista de ids. */
-  route(startId, goalId) {
+  /** Ruta más corta (Dijkstra) entre nodos; devuelve lista de ids. `strict` respeta el sentido de las vías. */
+  route(startId, goalId, strict = true) {
     const dist = new Map([[startId, 0]]);
     const prev = new Map();
     const open = new Set([startId]);
@@ -86,7 +143,9 @@ export class RoadGraph {
       open.delete(cur);
       if (cur === goalId) break;
       for (const l of this.nodes[cur].links) {
-        const nd = cd + this.edges[l.edge].length;
+        const ok = linkAllowed(this, l);
+        if (strict && !ok) continue;
+        const nd = cd + this.edges[l.edge].length * (ok ? 1 : 4);
         if (nd < (dist.get(l.node) ?? Infinity)) {
           dist.set(l.node, nd);
           prev.set(l.node, cur);
@@ -94,13 +153,13 @@ export class RoadGraph {
         }
       }
     }
-    if (!dist.has(goalId)) return null;
+    if (!dist.has(goalId)) return strict ? this.route(startId, goalId, false) : null;
     const path = [goalId];
     while (path[0] !== startId) path.unshift(prev.get(path[0]));
     return path;
   }
 
-  /** ¿Todos los nodos activos están conectados? */
+  /** ¿Todos los nodos activos están conectados (sin mirar el sentido)? */
   isConnected() {
     if (!this.active.length) return false;
     const seen = new Set([this.active[0].id]);
@@ -118,23 +177,55 @@ export class RoadGraph {
   }
 }
 
+function densify(pts, step) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, az] = pts[i - 1];
+    const [bx, bz] = pts[i];
+    const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / step));
+    for (let k = 1; k <= n; k++) out.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]);
+  }
+  return out;
+}
+
+/** Punto (en el sentido from→to) a la distancia s desde `from` sobre el eje. */
+function axisAt(graph, link, s) {
+  const e = graph.edges[link.edge];
+  const L = e.length;
+  const p = pointAlong(e.pts, e.cum, link.dir === 1 ? s : L - s);
+  return link.dir === 1 ? p : { ...p, dx: -p.dx, dz: -p.dz };
+}
+
 /** Punto sobre el carril derecho de la arista from->to a una fracción t. */
 export function lanePoint(graph, fromId, toId, t) {
-  const a = graph.node(fromId);
-  const b = graph.node(toId);
-  const dx = b.x - a.x;
-  const dz = b.z - a.z;
-  const len = Math.hypot(dx, dz) || 1;
-  // Derecha del sentido de marcha: (-dz, dx) normalizado… con yaw: right = (cos, -sin).
-  const yaw = yawFromDir(dx, dz);
-  const rx = Math.cos(yaw);
-  const rz = -Math.sin(yaw);
-  return {
-    x: a.x + dx * t + rx * GRID.laneOffset,
-    z: a.z + dz * t + rz * GRID.laneOffset,
-    yaw,
-    len,
-  };
+  const link = graph.link(fromId, toId);
+  if (!link) {
+    // Sin arista directa: recta entre nodos (no debería pasar).
+    const a = graph.node(fromId);
+    const b = graph.node(toId);
+    const yaw = yawFromDir(b.x - a.x, b.z - a.z);
+    return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t, yaw, len: Math.hypot(b.x - a.x, b.z - a.z) };
+  }
+  const e = graph.edges[link.edge];
+  const p = axisAt(graph, link, clamp(t, 0, 1) * e.length);
+  const yaw = yawFromDir(p.dx, p.dz);
+  // Derecha del sentido de marcha: right = (cos yaw, -sin yaw).
+  const off = laneOffset(e);
+  return { x: p.x + Math.cos(yaw) * off, z: p.z - Math.sin(yaw) * off, yaw, len: e.length };
+}
+
+/** Progreso (m desde `from`) de un punto sobre la arista from→to. */
+export function edgeProgress(graph, fromId, toId, x, z) {
+  const link = graph.link(fromId, toId);
+  if (!link) {
+    const a = graph.node(fromId);
+    const b = graph.node(toId);
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    return { s: ((x - a.x) * (b.x - a.x) + (z - a.z) * (b.z - a.z)) / len, len };
+  }
+  const e = graph.edges[link.edge];
+  const p = projectOnPolyline(e.pts, e.cum, x, z);
+  return { s: link.dir === 1 ? p.s : e.length - p.s, len: e.length };
 }
 
 /**
@@ -142,15 +233,11 @@ export function lanePoint(graph, fromId, toId, t) {
  * conducción para seguir el carril derecho y girar en las intersecciones.
  * `opts` = {cruise, blockedAhead (distancia a obstáculo o Infinity), rand, target?}
  */
-export function autopilot(graph, agent, v, opts) {
-  const a = graph.node(agent.from);
-  const b = graph.node(agent.to);
-  const ex = b.x - a.x;
-  const ez = b.z - a.z;
-  const elen = Math.hypot(ex, ez) || 1;
-  // Progreso a lo largo de la arista.
-  let t = ((v.x - a.x) * ex + (v.z - a.z) * ez) / (elen * elen);
-  const distToEnd = (1 - t) * elen;
+export function autopilot(graph, agent, v, opts, depth = 0) {
+  // Progreso a lo largo de la arista (polilínea).
+  const { s: prog, len: elen } = edgeProgress(graph, agent.from, agent.to, v.x, v.z);
+  const t = prog / elen;
+  const distToEnd = elen - prog;
 
   // Al acercarse al final, elegir el siguiente tramo.
   if (agent.next === undefined || agent.next === null) agent.next = chooseNext(graph, agent, opts);
@@ -161,7 +248,7 @@ export function autopilot(graph, agent, v, opts) {
     agent.from = agent.to;
     agent.to = agent.next;
     agent.next = null;
-    return autopilot(graph, agent, v, opts);
+    if (depth < 4) return autopilot(graph, agent, v, opts, depth + 1);
   }
 
   // Punto objetivo a cierta distancia adelante sobre el carril (más lejos
@@ -173,8 +260,7 @@ export function autopilot(graph, agent, v, opts) {
     target = lanePoint(graph, agent.from, agent.to, clamp(t + look / elen, 0, 1));
   } else {
     const rest = look - distToEnd;
-    const nb = graph.node(agent.next);
-    const nlen = Math.hypot(nb.x - b.x, nb.z - b.z) || 1;
+    const nlen = graph.link(agent.to, agent.next) ? graph.edges[graph.link(agent.to, agent.next).edge].length : 20;
     target = lanePoint(graph, agent.to, agent.next, clamp(rest / nlen, 0, 1));
   }
   const desiredYaw = yawFromDir(target.x - v.x, target.z - v.z);
@@ -232,14 +318,14 @@ function chooseNext(graph, agent, opts) {
 }
 
 function isTurn(graph, from, at, next) {
-  const a = graph.node(from);
-  const b = graph.node(at);
-  const c = graph.node(next);
-  const d1x = b.x - a.x;
-  const d1z = b.z - a.z;
-  const d2x = c.x - b.x;
-  const d2z = c.z - b.z;
-  return Math.abs(d1x * d2z - d1z * d2x) > 1e-3;
+  const l1 = graph.link(from, at);
+  const l2 = graph.link(at, next);
+  if (!l1 || !l2) return true;
+  const e1 = graph.edges[l1.edge];
+  const p1 = axisAt(graph, l1, e1.length - 0.01);
+  const p2 = axisAt(graph, l2, 0.01);
+  // Giro si cambia el rumbo más de ~25°.
+  return p1.dx * p2.dx + p1.dz * p2.dz < 0.9;
 }
 
 /**

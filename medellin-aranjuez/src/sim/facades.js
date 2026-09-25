@@ -91,6 +91,22 @@ export const CURTAIN_COLORS = [
  * afuera, dirección `r` a lo largo de la fachada y normal hacia la calle.
  */
 export function faceFrame(b, side) {
+  const f = b.frame;
+  if (f) {
+    // Rectángulo orientado: 'S' = frente (hacia la calle), 'N' = fondo,
+    // 'W' / 'E' = costados izquierdo / derecho vistos desde la calle.
+    const { x, z, nx, nz, ux, uz, hu, hv } = f;
+    switch (side) {
+      case 'S':
+        return { x0: x - ux * hu + nx * hv, z0: z - uz * hu + nz * hv, nx, nz, rx: ux, rz: uz, len: 2 * hu };
+      case 'N':
+        return { x0: x + ux * hu - nx * hv, z0: z + uz * hu - nz * hv, nx: -nx, nz: -nz, rx: -ux, rz: -uz, len: 2 * hu };
+      case 'W':
+        return { x0: x - ux * hu - nx * hv, z0: z - uz * hu - nz * hv, nx: -ux, nz: -uz, rx: nx, rz: nz, len: 2 * hv };
+      default:
+        return { x0: x + ux * hu + nx * hv, z0: z + uz * hu + nz * hv, nx: ux, nz: uz, rx: -nx, rz: -nz, len: 2 * hv };
+    }
+  }
   const w = b.maxX - b.minX;
   const d = b.maxZ - b.minZ;
   switch (side) {
@@ -135,7 +151,8 @@ function windowAttrs(rng, ground, informal, frame) {
  * Devuelve null si el estilo no se modela.
  */
 export function facadeLayout(b, idx) {
-  if (!MODELED_STYLES.has(b.style)) return null;
+  // Las casas del fondo de manzana no dan a la calle: caja de ladrillo simple.
+  if (!MODELED_STYLES.has(b.style) || b.interior) return null;
   const rng = makeRng(0x51ed + idx * 7919);
   const side = b.front ?? 'S';
   const f = faceFrame(b, side);

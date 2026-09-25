@@ -48,13 +48,13 @@ export const MODELS = [
 // ---------------------------------------------------------------- utilidades
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
 
-async function getJson(url) {
+export async function getJson(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.json();
 }
 
-async function downloadTo(url, file, size) {
+export async function downloadTo(url, file, size) {
   if (fs.existsSync(file) && (!size || fs.statSync(file).size === size)) return;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   for (let attempt = 0; ; attempt++) {
@@ -71,7 +71,7 @@ async function downloadTo(url, file, size) {
 }
 
 /** Descarga un modelo glTF de Poly Haven (con caché) y su ficha. */
-async function polyhaven(id, res = '1k') {
+export async function polyhaven(id, res = '1k') {
   const dir = path.join(CACHE, 'polyhaven', id, res);
   const infoFile = path.join(CACHE, 'polyhaven', id, 'info.json');
   const filesFile = path.join(CACHE, 'polyhaven', id, 'files.json');
@@ -100,7 +100,7 @@ function mat3Normal(m) {
   const det = a * A + b * B + c * C || 1;
   return [A / det, B / det, C / det, -(b * i - c * h) / det, (a * i - c * g) / det, -(a * h - b * g) / det, (b * f - c * e) / det, -(a * f - c * d) / det, (a * e - b * d) / det];
 }
-function makeTransform({ tx = 0, ty = 0, tz = 0, rotY = 0, s = 1, sy = s } = {}) {
+export function makeTransform({ tx = 0, ty = 0, tz = 0, rotY = 0, s = 1, sy = s } = {}) {
   const c = Math.cos(rotY);
   const n = Math.sin(rotY);
   // Primero traslada, luego rota en Y y escala.
@@ -136,7 +136,7 @@ function texInfo(material, slot) {
  * Lee un glTF y devuelve "partes" planas (una por primitiva) con la
  * geometría ya en espacio de mundo del archivo y la información de material.
  */
-async function readParts(gltfPath, filter = null) {
+export async function readParts(gltfPath, filter = null) {
   const doc = await io.read(gltfPath);
   const parts = [];
   for (const scene of doc.getRoot().listScenes()) {
@@ -220,11 +220,11 @@ async function readParts(gltfPath, filter = null) {
   return parts;
 }
 
-function trisOf(parts) {
+export function trisOf(parts) {
   return parts.reduce((s, p) => s + p.I.length / 3, 0);
 }
 
-function boundsOf(parts) {
+export function boundsOf(parts) {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const p of parts) {
@@ -238,7 +238,7 @@ function boundsOf(parts) {
   return { min, max };
 }
 
-function transformParts(parts, fn) {
+export function transformParts(parts, fn) {
   for (const p of parts) {
     for (let i = 0; i < p.P.length; i += 3) p.P.set(fn(p.P[i], p.P[i + 1], p.P[i + 2]), i);
     // Normales: solo rotación en Y (las escalas no uniformes que usamos son leves).
@@ -255,7 +255,7 @@ function transformParts(parts, fn) {
 }
 
 /** Fusiona partes que comparten material (una sola primitiva por material). */
-function mergeByMaterial(parts) {
+export function mergeByMaterial(parts) {
   const groups = new Map();
   for (const p of parts) {
     const k = p.material.name;
@@ -265,7 +265,7 @@ function mergeByMaterial(parts) {
   return [...groups.values()].map((list) => mergeList(list, list[0].material));
 }
 
-function mergeList(list, material) {
+export function mergeList(list, material) {
   let nv = 0;
   let ni = 0;
   for (const p of list) {
@@ -292,7 +292,7 @@ function mergeList(list, material) {
 }
 
 /** Quita vértices no referenciados. */
-function compact(part) {
+export function compact(part) {
   const map = new Int32Array(part.P.length / 3).fill(-1);
   let n = 0;
   for (const i of part.I) if (map[i] < 0) map[i] = n++;
@@ -316,7 +316,7 @@ function compact(part) {
  * Quita piezas sueltas pequeñas (restos de ramitas tras simplificar): se
  * unen vértices por posición y se descartan componentes con pocos triángulos.
  */
-function dropSmallComponents(part, minTris) {
+export function dropSmallComponents(part, minTris) {
   const nv = part.P.length / 3;
   const parent = new Int32Array(nv).map((_, i) => i);
   const find = (i) => {
@@ -345,7 +345,7 @@ function dropSmallComponents(part, minTris) {
 }
 
 /** Simplifica una parte hasta ~targetTris con meshoptimizer. */
-function simplifyPart(part, targetTris, { prune: doPrune = false } = {}) {
+export function simplifyPart(part, targetTris, { prune: doPrune = false } = {}) {
   const cur = part.I.length / 3;
   if (cur <= targetTris) return part;
   const target = Math.max(3, Math.floor(targetTris) * 3);
@@ -374,7 +374,7 @@ function simplifyPart(part, targetTris, { prune: doPrune = false } = {}) {
   return compact({ ...part, I: best });
 }
 
-function simplifyToBudget(parts, maxTris, opts) {
+export function simplifyToBudget(parts, maxTris, opts) {
   const total = trisOf(parts);
   if (total <= maxTris) return parts;
   let out = parts;
@@ -389,7 +389,7 @@ function simplifyToBudget(parts, maxTris, opts) {
 }
 
 // ---------------------------------------------------------------- texturas
-async function toWebp(img, size, { alpha = false, quality = 84, mode = null } = {}) {
+export async function toWebp(img, size, { alpha = false, quality = 84, mode = null } = {}) {
   let s = sharp(img).resize(size, size, { fit: 'inside', withoutEnlargement: true });
   if (mode === 'concrete') {
     // Poste de madera -> concreto gris claro (Medellín usa postes de concreto).
@@ -404,7 +404,7 @@ async function toWebp(img, size, { alpha = false, quality = 84, mode = null } = 
  * groups: [{ name, parts }] -> un nodo (con su malla) por grupo.
  * matOpts(material) -> { tex, alphaMode, emissive, concrete, ... }
  */
-async function writeGLB(file, groups, { tex = 512, extras = {}, matOverrides = () => ({}) } = {}) {
+export async function writeGLB(file, groups, { tex = 512, extras = {}, matOverrides = () => ({}) } = {}) {
   const doc = new Document();
   doc.createExtension(EXTTextureWebP).setRequired(false);
   const buffer = doc.createBuffer();
@@ -586,7 +586,7 @@ async function buildStreetLamp(spec) {
 }
 
 // ---------------------------------------------------------------- árboles
-function rngFrom(seed) {
+export function rngFrom(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -597,7 +597,7 @@ function rngFrom(seed) {
 }
 
 /** Recorta las hojas del atlas usando su mapa alpha (componentes conexas). */
-async function leafSprites(diffBuf, alphaBuf, maxSprites = 12) {
+export async function leafSprites(diffBuf, alphaBuf, maxSprites = 12) {
   const S = 1024;
   const diff = await sharp(diffBuf).resize(S, S).removeAlpha().raw().toBuffer();
   const alpha = await sharp(alphaBuf).resize(S, S).greyscale().raw().toBuffer();
@@ -663,7 +663,7 @@ async function leafSprites(diffBuf, alphaBuf, maxSprites = 12) {
 }
 
 /** Compone 4 racimos de hojas (atlas 2x2 de 512 px) con alpha. */
-async function clumpAtlas(sprites, spec, seed) {
+export async function clumpAtlas(sprites, spec, seed) {
   const T = 512;
   const A = 1024;
   const out = new Float32Array(A * A * 4);
@@ -782,7 +782,7 @@ async function clumpAtlas(sprites, spec, seed) {
  * para que la iluminación sea igual por ambos lados) en cada celda donde el
  * modelo original tiene hojas.
  */
-function foliageCards(leaves, spec, cell, maxCards, seed, sizeMul = 1.45) {
+export function foliageCards(leaves, spec, cell, maxCards, seed, sizeMul = 1.45) {
   const rnd = rngFrom(seed);
   const cells = new Map();
   let lo = [Infinity, Infinity, Infinity];
@@ -869,7 +869,7 @@ function foliageCards(leaves, spec, cell, maxCards, seed, sizeMul = 1.45) {
   return { P: new Float32Array(P), N: new Float32Array(N), U: new Float32Array(U), C: new Float32Array(C), I: new Uint32Array(I), count: list.length };
 }
 
-async function buildTree(spec) {
+export async function buildTree(spec) {
   const src = await polyhaven(spec.id, '1k');
   const parts = await readParts(src.gltfPath);
   const isLeaf = (p) => /leaves|leaf/.test(p.material.name);
@@ -906,6 +906,7 @@ async function buildTree(spec) {
   await downloadTo(diffUrl, diffFile);
   const sprites = await leafSprites(fs.readFileSync(diffFile), fs.readFileSync(alphaFile), spec.maxSprites ?? 12);
   const atlas = await clumpAtlas(sprites, spec, 1234);
+  fs.mkdirSync(CACHE, { recursive: true });
   fs.writeFileSync(path.join(CACHE, `${spec.out}_follaje.webp`), atlas);
   const leafMaterial = { name: 'follaje', color: [1, 1, 1, 1], alphaMode: 'MASK', alphaCutoff: 0.42, doubleSided: false, roughness: 0.8, metalness: 0, base: { image: atlas, mime: 'image/webp' } };
   const cardsNear = foliageCards(leaves, spec, spec.cell, spec.cards, 99);
@@ -919,7 +920,7 @@ async function buildTree(spec) {
     copa: { minY: +leafB.min[1].toFixed(2), radio: +(Math.max(leafB.max[0] - leafB.min[0], leafB.max[2] - leafB.min[2]) / 2).toFixed(2) },
   };
   const res = await writeGLB(
-    path.join(OUT, `${spec.out}.glb`),
+    path.join(spec.outDir ?? OUT, `${spec.out}.glb`),
     [
       { name: 'cerca', parts: [near, leafNear] },
       { name: 'lejos', parts: [far, leafFar] },
@@ -966,7 +967,10 @@ async function main() {
   console.log(`total ${(total / 1e6).toFixed(2)} MB`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Solo al ejecutarse directamente (vegetacion.mjs importa sus utilidades).
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

@@ -2,11 +2,28 @@
 // "limpiar el parche". Máquina de estados pura; el juego ejecuta los eventos.
 
 import { dist2D } from './math.js';
-import { GRID, roadLine } from './terrain.js';
 
 export function createMissionDefs(city) {
   const poi = (id) => city.pois.find((p) => p.id === id);
-  const node = (i, j) => ({ x: roadLine(i, GRID.nx), z: roadLine(j, GRID.nz) });
+  // Intersección activa (de 3+ vías si hay) más cercana a un punto.
+  const node = (x, z) => {
+    let best = null;
+    let bd = Infinity;
+    for (const n of city.nodes) {
+      if (!n.active) continue;
+      const d = dist2D(n.x, n.z, x, z) - (n.links.length >= 3 ? 25 : 0);
+      if (d < bd) {
+        bd = d;
+        best = n;
+      }
+    }
+    return { x: best.x, z: best.z };
+  };
+  // Pique: del taller a Moravia, la Caribe y de vuelta por San Cayetano.
+  const route = ['consuelo', 'moravia', 'metro', 'cancha', 'cayetano', 'comfama', 'taller'].map((id) => poi(id)).filter(Boolean).map((p) => node(p.x, p.z));
+  let raceLen = 0;
+  const start = poi('taller') ?? route[0];
+  route.forEach((c, k) => (raceLen += dist2D(c.x, c.z, k ? route[k - 1].x : start.x, k ? route[k - 1].z : start.z)));
   return {
     domicilio: {
       id: 'domicilio',
@@ -15,7 +32,7 @@ export function createMissionDefs(city) {
       reward: 900,
       stages: [
         { kind: 'goto', target: poi('museo'), radius: 4, text: 'Recoge el pedido en la Casa Museo Pedro Nel Gómez' },
-        { kind: 'goto', target: poi('metro'), radius: 5, text: 'Entrega el pedido en la Estación Universidad', timeLimit: 150 },
+        { kind: 'goto', target: poi('metro'), radius: 5, text: 'Entrega el pedido en la Estación Caribe del Metro', timeLimit: 150 },
       ],
     },
     carrera: {
@@ -24,19 +41,11 @@ export function createMissionDefs(city) {
       giver: 'taller',
       reward: 1600,
       spawnVehicle: 'moto',
-      timeLimit: 140,
-      stages: [
-        [8, 5],
-        [8, 2],
-        [5, 2],
-        [5, 0],
-        [2, 0],
-        [2, 5],
-        [4, 6],
-        [7, 6],
-      ].map(([i, j], k, arr) => ({
+      // Las calles reales dan vueltas: ~1,5× la distancia recta a 13 m/s.
+      timeLimit: Math.round((raceLen * 1.5) / 13 + 25),
+      stages: route.map((target, k, arr) => ({
         kind: 'checkpoint',
-        target: node(i, j),
+        target,
         radius: 9,
         requireVehicle: true,
         text: `Checkpoint ${k + 1}/${arr.length}`,
@@ -47,9 +56,9 @@ export function createMissionDefs(city) {
       title: 'Limpiar el parche',
       giver: 'cancha',
       reward: 2500,
-      spawnGang: { at: poi('cementerio'), count: 5 },
+      spawnGang: { at: poi('moravia'), count: 5 },
       stages: [
-        { kind: 'goto', target: poi('cementerio'), radius: 25, text: 'Ve al Cementerio San Pedro: el parche está azotando' },
+        { kind: 'goto', target: poi('moravia'), radius: 25, text: 'Sube al Morro de Moravia: el parche está azotando' },
         { kind: 'eliminate', text: 'Neutraliza al parche' },
       ],
     },

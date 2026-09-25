@@ -2,7 +2,8 @@
 // munición, salud/chaleco, minimapa giratorio con GPS, avisos y objetivos.
 // Estética sobria: mapa oscuro, íconos de silueta y tipografía condensada.
 
-import { GRID, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, terrainHeight } from '../sim/terrain.js';
+import { MAPA, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, RIVER, terrainHeight } from '../sim/terrain.js';
+import { frameCorners } from '../sim/geom2d.js';
 import { yawFromDir } from '../sim/math.js';
 import { WEAPONS } from '../sim/weapons.js';
 import { STAR_SVG, preloadWeaponIcons, weaponIconHtml } from './icons.js';
@@ -66,45 +67,71 @@ export class Hud {
         const x = px / MAP_SCALE + minX;
         const z = py / MAP_SCALE + minZ;
         const t = terrainHeight(x, z);
-        const k = Math.max(0, Math.min(1, (t + 30) / 70));
+        const k = Math.max(0, Math.min(1, (t + 60) / 210));
         ctx.fillStyle = `rgb(${24 + k * 12},${30 + k * 12},${28 + k * 10})`;
         ctx.fillRect(px, py, 6, 6);
       }
     }
-    // Vías.
-    ctx.strokeStyle = '#7d858c';
-    ctx.lineWidth = GRID.asphaltHalf * 2 * MAP_SCALE;
-    ctx.lineCap = 'square';
-    ctx.beginPath();
-    for (const e of city.edges) {
-      const a = city.nodes[e.a];
-      const b = city.nodes[e.b];
-      ctx.moveTo(X(a.x), Z(a.z));
-      ctx.lineTo(X(b.x), Z(b.z));
+    const poly = (pts) => {
+      ctx.beginPath();
+      pts.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z))));
+      ctx.closePath();
+    };
+    const line = (pts) => {
+      ctx.beginPath();
+      pts.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Z(z)) : ctx.moveTo(X(x), Z(z))));
+    };
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Río y quebradas.
+    ctx.strokeStyle = '#2d5566';
+    ctx.lineWidth = RIVER.half * 2 * MAP_SCALE;
+    if (RIVER.pts.length) {
+      line(RIVER.pts);
+      ctx.stroke();
     }
-    ctx.stroke();
-    // Manzanas.
-    const blockColor = { parque: '#35523a', botanico: '#2f4d33', moravia: '#34503a', cancha: '#36573a', cementerio: '#3a5040', mirador: '#40463f' };
+    ctx.lineWidth = 3 * MAP_SCALE;
+    for (const w of city.water) {
+      line(w.pts);
+      ctx.stroke();
+    }
+    // Manzanas (con su andén) y zonas verdes.
     for (const b of city.blocks) {
-      ctx.fillStyle = blockColor[b.type] ?? '#2c3236';
-      ctx.fillRect(X(b.minX), Z(b.minZ), (b.maxX - b.minX) * MAP_SCALE, (b.maxZ - b.minZ) * MAP_SCALE);
+      ctx.fillStyle = b.type === 'residencial' ? '#2c3236' : '#2f4432';
+      poly(b.curb);
+      ctx.fill();
+    }
+    for (const p of city.props) {
+      if (!p.poly || !['garden', 'plazaPoly', 'fieldPoly'].includes(p.type)) continue;
+      ctx.fillStyle = p.type === 'plazaPoly' ? '#46463e' : p.type === 'fieldPoly' ? '#36573a' : '#35523a';
+      poly(p.poly);
+      ctx.fill();
+    }
+    // Vías: más anchas y claras las principales.
+    const edges = [...city.edges].sort((p, q) => p.width - q.width);
+    for (const e of edges) {
+      ctx.strokeStyle = e.width >= 9 ? '#9aa1a6' : '#7d858c';
+      ctx.lineWidth = e.width * MAP_SCALE;
+      line(e.pts);
+      ctx.stroke();
     }
     // Edificios.
     for (const b of city.buildings) {
       const floors = (b.topY - b.groundY) / 3;
       const k = Math.min(1, floors / 8);
       const c = 58 + k * 22;
-      ctx.fillStyle = b.style === 'explora' ? '#8a3a33' : `rgb(${c},${c + 4},${c + 9})`;
-      ctx.fillRect(X(b.minX), Z(b.minZ), (b.maxX - b.minX) * MAP_SCALE, (b.maxZ - b.minZ) * MAP_SCALE);
+      ctx.fillStyle = `rgb(${c},${c + 4},${c + 9})`;
+      poly(frameCorners(b.frame));
+      ctx.fill();
     }
     // Metro (línea A).
-    const mt = city.metro;
     ctx.strokeStyle = '#3f9a67';
     ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(X(mt.x), Z(mt.z0));
-    ctx.lineTo(X(mt.x), Z(mt.z1));
-    ctx.stroke();
+    for (const l of MAPA.rail) {
+      if (l.kind !== 'subway') continue;
+      line(l.pts);
+      ctx.stroke();
+    }
     return c;
   }
 

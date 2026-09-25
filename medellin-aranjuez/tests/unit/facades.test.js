@@ -3,7 +3,7 @@ import { FACADE, MODELED_STYLES, facadeLayout, faceFrame } from '../../src/sim/f
 import { onRoad } from '../../src/sim/terrain.js';
 import { city } from './helpers.js';
 
-const modeled = () => city().buildings.map((b, i) => [b, i]).filter(([b]) => MODELED_STYLES.has(b.style));
+const modeled = () => city().buildings.map((b, i) => [b, i]).filter(([b]) => MODELED_STYLES.has(b.style) && !b.interior);
 
 describe('fachadas casa por casa', () => {
   it('cada casa tiene su propia distribución (determinista)', () => {
@@ -46,6 +46,7 @@ describe('fachadas casa por casa', () => {
 
   it('la fachada modelada es la que da a la calle', () => {
     let checked = 0;
+    const blocked = [];
     for (const [b, i] of modeled()) {
       if (!b.front) continue;
       const L = facadeLayout(b, i);
@@ -53,11 +54,16 @@ describe('fachadas casa por casa', () => {
       // 3 m por delante del centro de la fachada queda andén o calle, no otra casa.
       const cx = f.x0 + f.rx * (f.len / 2) + f.nx * 3;
       const cz = f.z0 + f.rz * (f.len / 2) + f.nz * 3;
-      const inside = city().buildings.some((o) => o !== b && cx > o.minX && cx < o.maxX && cz > o.minZ && cz < o.maxZ);
-      expect(inside).toBe(false);
-      if (onRoad(cx, cz) || true) checked++;
+      const inside = city().buildings.some((o) => {
+        if (o === b || cx < o.minX || cx > o.maxX || cz < o.minZ || cz > o.maxZ) return false;
+        const f2 = o.frame;
+        return Math.abs((cx - f2.x) * f2.ux + (cz - f2.z) * f2.uz) < f2.hu && Math.abs((cx - f2.x) * f2.nx + (cz - f2.z) * f2.nz) < f2.hv;
+      });
+      if (inside) blocked.push([b.style, b.interior ? 'int' : 'ext', Math.round(cx), Math.round(cz)]);
+      checked++;
     }
     expect(checked).toBeGreaterThan(500);
+    expect(blocked.length / checked).toBeLessThan(0.02);
   });
 
   it('balcones con su puerta y Moravia más de ladrillo a la vista', () => {

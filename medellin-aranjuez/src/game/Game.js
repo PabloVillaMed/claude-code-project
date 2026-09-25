@@ -27,13 +27,14 @@ import { World, VehicleEntity } from './world.js';
 import { Combat } from './combat.js';
 import { CameraRig } from './cameraRig.js';
 import { Pickups } from './pickups.js';
+import { Dialogue } from './dialogue.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
 
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -189,6 +190,7 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.audio = new AudioSystem();
     this.audio.volume = this.settings.volume;
+    this.audio.camera = this.camera;
     this.input = new Input(this.canvas);
     this.input.sensitivity = this.settings.sensitivity;
     this.input.invertY = this.settings.invertY;
@@ -203,6 +205,7 @@ export class Game {
     this.hud.showFps(this.settings.showFps);
     this.world = new World(this);
     this.pickups = new Pickups(this);
+    this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
     this.wheel = new WeaponWheel(this);
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     await step(0.92);
@@ -484,7 +487,7 @@ export class Game {
     if (!p.dead) {
       if (a.weaponSlot) p.inventory.selectSlot(a.weaponSlot);
       if (a.weaponCycle) p.inventory.cycle(a.weaponCycle);
-      if (a.reload && p.inventory.reload()) this.audio.ui('tick');
+      if (a.reload) p.inventory.reload();
     }
 
     if (p.dead) {
@@ -513,10 +516,18 @@ export class Game {
       lookX,
       lookY,
     });
+    // Cámara libre de depuración (__game.aerial).
+    if (this._aerial) {
+      const q = this._aerial;
+      this.camera.position.set(q[0], q[1], q[2]);
+      this.camera.lookAt(q[3], q[4], q[5]);
+    }
     this.audio.listener = { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z };
+    this.audio.updateWeapon(p.dead ? null : p.inventory);
 
     // Mundo vivo.
     this.world.update(dt, p);
+    this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
     this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
@@ -992,9 +1003,27 @@ export class Game {
     const g = this.world.graph;
     const a = g.nearestNode(p.x, p.z);
     const b = g.nearestNode(dest.x, dest.z);
-    const route = g.route(a.id, b.id);
+    // En carro respeta el sentido de las vías; a pie no.
+    const route = g.route(a.id, b.id, !!p.vehicle);
     this.hud.routeColor = this.target ? '#e8b64c' : '#b98ae8';
-    this.hud.route = route ? [{ x: p.x, z: p.z }, ...route.map((id) => g.node(id)), { x: dest.x, z: dest.z }] : null;
+    if (!route) {
+      this.hud.route = null;
+      return;
+    }
+    // La ruta sigue la forma real de cada vía (curvas incluidas).
+    const pts = [{ x: p.x, z: p.z }, g.node(route[0])];
+    for (let i = 1; i < route.length; i++) {
+      const l = g.link(route[i - 1], route[i]);
+      if (!l) {
+        pts.push(g.node(route[i]));
+        continue;
+      }
+      const e = g.edges[l.edge].pts;
+      const seq = l.dir === 1 ? e : [...e].reverse();
+      for (let k = 1; k < seq.length; k++) pts.push({ x: seq[k][0], z: seq[k][1] });
+    }
+    pts.push({ x: dest.x, z: dest.z });
+    this.hud.route = pts;
   }
 
   _streetName() {
@@ -1213,6 +1242,10 @@ export class Game {
         rc.setFromCamera(new THREE.Vector2(nx, ny), g.camera);
         const hits = rc.intersectObjects(g.scene.children, true).filter((h) => h.object.visible && h.object.name !== 'horizonte');
         return hits.slice(0, 4).map((h) => ({ name: h.object.name || h.object.parent?.name || h.object.type, dist: +h.distance.toFixed(1), point: h.point.toArray().map((v) => +v.toFixed(1)) }));
+      },
+      /** Cámara fija de depuración: aerial(x, y, z, tx, ty, tz); sin argumentos la suelta. */
+      aerial(...q) {
+        g._aerial = q.length === 6 ? q : null;
       },
       look(yaw, pitch = -0.12) {
         g.camRig.yaw = yaw;

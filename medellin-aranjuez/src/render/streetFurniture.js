@@ -5,17 +5,24 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CALLES, CARRERAS } from '../sim/cityLayout.js';
 import { GRID, terrainHeight } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
 import { canvas, toTexture } from './textures.js';
 import { slot } from './facadeTextures.js';
 
 // ------------------------------------------------------------------ textos
-const shortName = (n) => n.replace(/^Calle /, 'Cl ').replace(/^Carrera /, 'Cr ');
-const PLATE_NAMES = [...CALLES, ...CARRERAS];
+const shortName = (n) =>
+  n
+    .replace(/^Calle /, 'Cl ')
+    .replace(/^Carrera /, 'Cr ')
+    .replace(/^Transversal /, 'Tv ')
+    .replace(/^Diagonal /, 'Dg ')
+    .replace(/^Circular /, 'Cq ')
+    .replace(/^Avenida /, 'Av ');
+// Nombres de las placas: los de las vías reales de los cruces (se llenan al construir).
+let PLATE_NAMES = [];
 const PLATE_COLS = 4;
-const PLATE_ROWS = Math.ceil(PLATE_NAMES.length / PLATE_COLS);
+let PLATE_ROWS = 1;
 const VENDOR_SIGNS = ['MINUTOS $200', 'FRUTAS', 'MANGO BICHE', 'AREPAS', 'HELADOS', 'DULCES', 'PARADERO'];
 const VENDOR_KINDS = ['minutos', 'frutas', 'mangos', 'arepas', 'helados', 'dulces'];
 
@@ -36,7 +43,8 @@ function plateAtlas() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const [main, sub] = shortName(name).split(' (');
-    ctx.font = `bold ${sub ? 58 : 70}px "Segoe UI", Arial, sans-serif`;
+    const size = Math.min(sub ? 58 : 70, Math.floor(((W - 40) / Math.max(1, main.length)) * 1.8));
+    ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
     ctx.fillText(main, ox + W / 2, oy + (sub ? H * 0.4 : H / 2));
     if (sub) {
       ctx.font = 'bold 30px "Segoe UI", Arial, sans-serif';
@@ -142,13 +150,14 @@ function streetSign(bins, p) {
   const F = frame(p, 0);
   const pole = [0.3, 0.35, 0.32];
   bins.add('metal', CYL, M(F, 0, 1.45, 0, 0.035, 2.9, 0.035), pole);
-  const cl = slot(p.calle, PLATE_COLS, PLATE_ROWS);
-  const cr = slot(CALLES.length + p.carrera, PLATE_COLS, PLATE_ROWS);
-  // Placa de la calle (paralela a la calle) y de la carrera, legibles por ambos lados.
-  for (const [r, y, uv] of [[0, 2.72, cl], [Math.PI / 2, 2.5, cr]]) {
+  // Una placa por vía, paralela a ella y legible por ambos lados.
+  p.names.forEach((name, k) => {
+    const uv = slot(PLATE_NAMES.indexOf(name), PLATE_COLS, PLATE_ROWS);
+    const r = p.rots?.[k] ?? (k ? Math.PI / 2 : 0);
+    const y = 2.72 - k * 0.22;
     bins.add('plate', PLANE, M(F, Math.cos(r) * 0.36, y, -Math.sin(r) * 0.36, 0.68, 0.19, 1, r), [1, 1, 1], uv);
     bins.add('plate', PLANE, M(F, Math.cos(r) * 0.36, y, -Math.sin(r) * 0.36, 0.68, 0.19, 1, r + Math.PI), [1, 1, 1], uv);
-  }
+  });
 }
 
 function busStop(bins, p) {
@@ -235,6 +244,8 @@ function vendor(bins, p) {
 /** Construye placas, paraderos y venteros de la ciudad. */
 export function buildStreetFurniture(r, byType) {
   const bins = new Bins();
+  PLATE_NAMES = [...new Set((byType.streetSign ?? []).flatMap((p) => p.names))];
+  PLATE_ROWS = Math.max(1, Math.ceil(PLATE_NAMES.length / PLATE_COLS));
   for (const p of byType.streetSign ?? []) streetSign(bins, p);
   for (const p of byType.busStop ?? []) busStop(bins, p);
   for (const p of byType.vendor ?? []) vendor(bins, p);

@@ -1061,3 +1061,63 @@ h3 {
   flex-wrap: wrap;
   justify-content: center;
 }
+
+/* ---------------- Subtítulos de los diálogos de la calle ----------------
+   Abajo al centro, encima del objetivo; máximo dos líneas (dialogue.js quita
+   la más vieja) y se desvanecen al terminar la frase. */
+#subtitles {
+  position: absolute;
+  left: 50%;
+  bottom: 7.4em;
+  transform: translateX(-50%);
+  width: min(46em, 70vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3em;
+}
+
+#subtitles .sub {
+  max-width: 100%;
+  padding: 0.3em 0.9em 0.35em;
+  font-family: var(--hud-font);
+  font-size: 1.15em;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: center;
+  background: var(--panel-strong);
+  text-shadow: none;
+  animation: sub-in 0.18s ease-out;
+  transition: opacity 0.4s ease;
+}
+
+#subtitles .sub.out {
+  opacity: 0;
+}
+
+#subtitles .who {
+  margin-right: 0.5em;
+  font-family: var(--hud-cond);
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+#subtitles .sub.police .who {
+  color: #7fb2ff;
+}
+
+#subtitles .sub.radio {
+  font-style: italic;
+}
+
+#subtitles .sub.radio .who {
+  font-style: normal;
+  color: #9fc9a8;
+}
+
+@keyframes sub-in {
+  from { opacity: 0; transform: translateY(0.3em); }
+}

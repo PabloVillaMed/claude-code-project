@@ -1,123 +1,213 @@
-// Terreno de ladera inspirado en Aranjuez: el barrio sube desde el río (oeste)
-// hacia la montaña (este). Todo es analítico para que la física y el render
-// coincidan exactamente.
+// Terreno y calzadas del mapa real (de Moravia a Aranjuez): la elevación sale
+// del SRTM (rejilla de 10 m suavizada, ver scripts/mapa/construir.mjs) y las
+// calzadas de las vías de OpenStreetMap con su ancho. Todo es analítico y
+// determinista, así la física y el render coinciden exactamente.
+// Coordenadas: 1 unidad = 1 m, x = oriente, z = sur; y = altura − GEO_REF.
 
-import { valleyHeight } from './geography.js';
+import MAPA from '../data/mapa.json';
+import { GEO_REF, valleyHeight } from './geography.js';
+
+export { MAPA };
 
 export const GRID = {
-  nx: 9, // manzanas en X
-  nz: 9, // manzanas en Z
-  pitch: 70, // distancia entre ejes de vías (m)
-  asphaltHalf: 4.5, // media calzada (m) -> vía de 9 m, un carril por sentido
-  blockInset: 4.5, // la manzana empieza donde termina el asfalto
-  sidewalk: 2.5, // ancho del andén (m)
   curb: 0.15, // altura del sardinel/andén (m)
-  laneOffset: 2.25, // centro del carril respecto al eje de la vía
+  sidewalk: MAPA.sidewalk, // del sardinel a la línea de paramento (m)
+  ring: MAPA.ring, // centro del andén, por donde caminan los peatones (m)
+  laneWidth: 3.1, // ancho de referencia de un carril
 };
 
-/** Coordenada del eje de vía i (0..n). */
-export const roadLine = (i, n) => (i - n / 2) * GRID.pitch;
+export const MAP_MIN_X = MAPA.bounds.minX;
+export const MAP_MAX_X = MAPA.bounds.maxX;
+export const MAP_MIN_Z = MAPA.bounds.minZ;
+export const MAP_MAX_Z = MAPA.bounds.maxZ;
 
-export const MAP_MIN_X = roadLine(0, GRID.nx);
-export const MAP_MAX_X = roadLine(GRID.nx, GRID.nx);
-export const MAP_MIN_Z = roadLine(0, GRID.nz);
-export const MAP_MAX_Z = roadLine(GRID.nz, GRID.nz);
+/** Límite jugable: la región descargada. */
+export const PLAY_BOUNDS = { minX: MAP_MIN_X, maxX: MAP_MAX_X, minZ: MAP_MIN_Z, maxZ: MAP_MAX_Z };
 
-/** Límite jugable (un poco más allá de las vías exteriores). */
-export const PLAY_BOUNDS = {
-  minX: MAP_MIN_X - 30,
-  maxX: MAP_MAX_X + 30,
-  minZ: MAP_MIN_Z - 30,
-  maxZ: MAP_MAX_Z + 30,
-};
-
-// Morro de Moravia: una loma verde (jardín comunitario sobre el antiguo
-// basurero), al oeste de la Carrera 52, hacia el río.
-export const MORAVIA = { x: roadLine(0, GRID.nx) + 35, z: roadLine(3, GRID.nz) + 35, h: 9, r: 18 };
-
-/**
- * Altura del terreno natural en (x, z). Perfil según la elevación real (SRTM):
- * casi plano junto a Carabobo y Moravia (~5 %) y cada vez más empinado hacia
- * Manrique (~10 %), con poca variación norte-sur y ondulaciones suaves.
- */
-export function terrainHeight(x, z) {
-  const d = x - MAP_MIN_X;
-  let h =
-    d * 0.055 +
-    d * d * 0.00004 +
-    5.5 * Math.sin(z * 0.012 + 1.3) * Math.sin(x * 0.009) +
-    2.0 * Math.sin(x * 0.021 + z * 0.017) +
-    1.2 * Math.cos(z * 0.031 - x * 0.006);
-  const dx = x - MORAVIA.x;
-  const dz = z - MORAVIA.z;
-  h += MORAVIA.h * Math.exp(-(dx * dx + dz * dz) / (2 * MORAVIA.r * MORAVIA.r));
-  return h - 24;
+export function insideMap(x, z, margin = 0) {
+  return x >= MAP_MIN_X - margin && x <= MAP_MAX_X + margin && z >= MAP_MIN_Z - margin && z <= MAP_MAX_Z + margin;
 }
 
-/** Distancia desde (x) al eje de vía más cercano en un eje dado. */
-function distToNearestLine(v, n) {
-  const i = Math.round(v / GRID.pitch + n / 2);
-  const ic = Math.min(n, Math.max(0, i));
-  return Math.abs(v - roadLine(ic, n));
+// ------------------------------------------------------------------ terreno
+const T = MAPA.terrain;
+const HGT = Float32Array.from(T.dm, (v) => v / 10 - GEO_REF);
+const EDGE_BLEND = 180; // m: en el borde de la rejilla se funde con el valle
+
+function cell(i, j) {
+  i = i < 0 ? 0 : i >= T.nx ? T.nx - 1 : i;
+  j = j < 0 ? 0 : j >= T.nz ? T.nz - 1 : j;
+  return HGT[j * T.nx + i];
 }
 
-export function insideGrid(x, z) {
-  return x >= MAP_MIN_X && x <= MAP_MAX_X && z >= MAP_MIN_Z && z <= MAP_MAX_Z;
+// Catmull-Rom: continuo en pendiente (sin quiebres en los bordes de celda).
+function cr(p0, p1, p2, p3, t) {
+  return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 }
 
-/**
- * Manzanas fusionadas (sin vías internas). Cada una se expresa en índices de
- * manzana [ix0, iz0, ix1, iz1] inclusivos. El Jardín Botánico ocupa 2x2, al
- * este de la Carrera 52 y al lado de la estación Universidad (Calle 73).
- */
-export const MERGED_BLOCKS = [{ id: 'botanico', ix0: 1, iz0: 5, ix1: 2, iz1: 6 }];
-
-export function mergedRect(m) {
-  return {
-    minX: roadLine(m.ix0, GRID.nx) + GRID.blockInset,
-    maxX: roadLine(m.ix1 + 1, GRID.nx) - GRID.blockInset,
-    minZ: roadLine(m.iz0, GRID.nz) + GRID.blockInset,
-    maxZ: roadLine(m.iz1 + 1, GRID.nz) - GRID.blockInset,
-  };
+function gridHeight(x, z) {
+  const u = (x - T.x0) / T.step;
+  const v = (z - T.z0) / T.step;
+  const i = Math.floor(u);
+  const j = Math.floor(v);
+  const fu = u - i;
+  const fv = v - j;
+  const row = (jj) => cr(cell(i - 1, jj), cell(i, jj), cell(i + 1, jj), cell(i + 2, jj), fu);
+  return cr(row(j - 1), row(j), row(j + 1), row(j + 2), fv);
 }
-const MERGED_RECTS = MERGED_BLOCKS.map(mergedRect);
 
-/** ¿El punto está sobre una calzada (asfalto) de la cuadrícula? */
-export function onRoad(x, z) {
-  for (const r of MERGED_RECTS) {
-    if (x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ) return false;
+const GX0 = T.x0;
+const GZ0 = T.z0;
+const GX1 = T.x0 + (T.nx - 1) * T.step;
+const GZ1 = T.z0 + (T.nz - 1) * T.step;
+
+// ------------------------------------------------------------------ río
+// El río Medellín va canalizado: cauce de ~36 m con taludes de concreto.
+export const RIVER = { half: 18, bank: 6, depth: 4.2, pts: MAPA.water.find((w) => /Medell/i.test(w.name))?.pts ?? [] };
+const RIVER_SEGS = [];
+for (let k = 1; k < RIVER.pts.length; k++) {
+  const [ax, az] = RIVER.pts[k - 1];
+  const [bx, bz] = RIVER.pts[k];
+  RIVER_SEGS.push({ ax, az, dx: bx - ax, dz: bz - az, l2: (bx - ax) ** 2 + (bz - az) ** 2 || 1e-9, minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz) });
+}
+const RIVER_R = RIVER.half + RIVER.bank;
+
+/** Distancia al eje del río (Infinity si está lejos). */
+export function riverDistance(x, z) {
+  let best = Infinity;
+  for (const s of RIVER_SEGS) {
+    if (x < s.minX - RIVER_R || x > s.maxX + RIVER_R || z < s.minZ - RIVER_R || z > s.maxZ + RIVER_R) continue;
+    const t = Math.max(0, Math.min(1, ((x - s.ax) * s.dx + (z - s.az) * s.dz) / s.l2));
+    const d = Math.hypot(x - s.ax - s.dx * t, z - s.az - s.dz * t);
+    if (d < best) best = d;
   }
-  const inX = z >= MAP_MIN_Z - GRID.asphaltHalf && z <= MAP_MAX_Z + GRID.asphaltHalf;
-  const inZ = x >= MAP_MIN_X - GRID.asphaltHalf && x <= MAP_MAX_X + GRID.asphaltHalf;
-  return (
-    (inX && distToNearestLine(x, GRID.nx) <= GRID.asphaltHalf) ||
-    (inZ && distToNearestLine(z, GRID.nz) <= GRID.asphaltHalf)
-  );
+  return best;
 }
 
-/** ¿El punto está sobre la losa de una manzana (andén o interior)? */
-export function onBlock(x, z) {
-  return insideGrid(x, z) && !onRoad(x, z);
+function riverCarve(x, z) {
+  const d = riverDistance(x, z);
+  if (d >= RIVER_R) return 0;
+  if (d <= RIVER.half) return RIVER.depth;
+  const t = (RIVER_R - d) / RIVER.bank;
+  return RIVER.depth * t;
 }
 
-/** Altura del suelo caminable: terreno + andén si está sobre una manzana. */
-export function groundHeight(x, z) {
-  return terrainHeight(x, z) + (onBlock(x, z) ? GRID.curb : 0);
+function naturalHeight(x, z) {
+  // Distancia al borde de la rejilla medida hacia adentro.
+  const inside = Math.min(x - GX0, GX1 - x, z - GZ0, GZ1 - z);
+  if (inside >= EDGE_BLEND) return gridHeight(x, z);
+  if (inside <= 0) return valleyHeight(x, z);
+  const t = inside / EDGE_BLEND;
+  const w = t * t * (3 - 2 * t);
+  return gridHeight(x, z) * w + valleyHeight(x, z) * (1 - w);
+}
+
+/** Altura del terreno en (x, z) (con el cauce del río; los puentes lo cruzan a nivel). */
+export function terrainHeight(x, z) {
+  const h = naturalHeight(x, z);
+  const c = riverCarve(x, z);
+  if (c <= 0 || roadAt(x, z, 1.5)) return h;
+  return h - c;
+}
+
+/** Terreno de fondo (solo render): el mismo del mapa, que ya se funde con el valle. */
+export function backdropHeight(x, z) {
+  return naturalHeight(x, z);
+}
+
+// ------------------------------------------------------------------ calzadas
+// Índice espacial de tramos de calzada (cápsulas con el medio ancho de la vía).
+const CS = 24;
+const roadCells = new Map();
+const ROAD_SEGS = [];
+const key = (i, j) => i * 73856093 + j * 19349663;
+for (const [ei, e] of MAPA.edges.entries()) {
+  const hw = e.w / 2;
+  for (let k = 1; k < e.pts.length; k++) {
+    const [ax, az] = e.pts[k - 1];
+    const [bx, bz] = e.pts[k];
+    const seg = { ax, az, bx, bz, hw, edge: ei, dx: bx - ax, dz: bz - az };
+    seg.l2 = seg.dx * seg.dx + seg.dz * seg.dz || 1e-9;
+    ROAD_SEGS.push(seg);
+    const i0 = Math.floor((Math.min(ax, bx) - hw) / CS);
+    const i1 = Math.floor((Math.max(ax, bx) + hw) / CS);
+    const j0 = Math.floor((Math.min(az, bz) - hw) / CS);
+    const j1 = Math.floor((Math.max(az, bz) + hw) / CS);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const k2 = key(i, j);
+        let c = roadCells.get(k2);
+        if (!c) roadCells.set(k2, (c = []));
+        c.push(seg);
+      }
+    }
+  }
 }
 
 /**
- * Terreno de fondo (solo render): junto al mapa sigue la ladera del barrio y
- * se funde con la geografía del valle (sim/geography.js), la misma que usa el
- * horizonte lejano, para que el río y las laderas empaten sin escalones.
+ * Tramo de calzada bajo (x, z): {edge, t (0..1 del tramo), off (distancia al
+ * eje), seg} o null. `margin` amplía el ancho (p. ej. para el sardinel).
  */
-export function backdropHeight(x, z) {
-  // Dentro del área jugable (PLAY_BOUNDS) es exactamente el terreno del
-  // juego; la transición empieza después.
-  const ox = Math.max(0, PLAY_BOUNDS.minX - x, x - PLAY_BOUNDS.maxX);
-  const oz = Math.max(0, PLAY_BOUNDS.minZ - z, z - PLAY_BOUNDS.maxZ);
-  const out = Math.hypot(ox, oz);
-  if (out <= 0) return terrainHeight(x, z);
-  const t = Math.min(1, out / 350);
-  const w = t * t * (3 - 2 * t);
-  return terrainHeight(x, z) * (1 - w) + valleyHeight(x, z) * w;
+export function roadAt(x, z, margin = 0) {
+  const c = roadCells.get(key(Math.floor(x / CS), Math.floor(z / CS)));
+  if (!c) return null;
+  let best = null;
+  for (const s of c) {
+    const t = Math.max(0, Math.min(1, ((x - s.ax) * s.dx + (z - s.az) * s.dz) / s.l2));
+    const ex = x - s.ax - s.dx * t;
+    const ez = z - s.az - s.dz * t;
+    const d2 = ex * ex + ez * ez;
+    const r = s.hw + margin;
+    if (d2 <= r * r && (!best || d2 - s.hw * s.hw < best.m)) best = { edge: s.edge, seg: s, t, off: Math.sqrt(d2), m: d2 - s.hw * s.hw };
+  }
+  return best;
+}
+
+/** ¿El punto está sobre la calzada (asfalto) de alguna vía? */
+export function onRoad(x, z) {
+  return roadAt(x, z) !== null;
+}
+
+/** ¿El punto está sobre andén, lote o zona verde (todo lo que no es calzada) dentro del mapa? */
+export function onBlock(x, z) {
+  return insideMap(x, z) && !onRoad(x, z);
+}
+
+// ------------------------------------------------------------------ estructuras caminables
+// Plataformas, escaleras, rampas y puentes peatonales (p. ej. la estación del
+// metro). Cada una: {minX, maxX, minZ, maxZ, over, height(x, z) → y | null}.
+// `over` = se puede pasar por debajo (puentes): solo cuenta si se viene de arriba.
+const WALKABLES = [];
+
+export function addWalkable(w) {
+  WALKABLES.push(w);
+  return w;
+}
+
+export function clearWalkables() {
+  WALKABLES.length = 0;
+}
+
+/** Altura de la estructura caminable más alta bajo (x, z) alcanzable desde `y`. */
+export function walkableHeight(x, z, y = null) {
+  let best = null;
+  for (const w of WALKABLES) {
+    if (x < w.minX || x > w.maxX || z < w.minZ || z > w.maxZ) continue;
+    if (w.over && y === null) continue;
+    const h = w.height(x, z);
+    if (h === null) continue;
+    if (y !== null && h > y + 0.7) continue; // no se sube de un salto a un puente
+    if (best === null || h > best) best = h;
+  }
+  return best;
+}
+
+/**
+ * Altura del suelo caminable: terreno + andén si no es calzada, o la
+ * estructura sobre la que se está parado (y = altura actual de los pies).
+ */
+export function groundHeight(x, z, y = null) {
+  const g = terrainHeight(x, z) + (onRoad(x, z) ? 0 : GRID.curb);
+  if (!WALKABLES.length) return g;
+  const w = walkableHeight(x, z, y);
+  return w !== null && w > g ? w : g;
 }

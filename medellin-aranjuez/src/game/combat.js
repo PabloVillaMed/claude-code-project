@@ -60,6 +60,7 @@ export class Combat {
     const base = { x: dx / dl, y: dy / dl, z: dz / dl };
     g.effects.muzzleFlash(muzzle, base);
     g.audio.gunshot(w.id, muzzle);
+    g.events?.emit('shot', { x: muzzle.x, z: muzzle.z, by: 'player', weapon: w.id });
     for (const pel of shot.pellets) {
       const d = deviate(base, pel.dYaw, pel.dPitch);
       const hit = traceShot(muzzle, d, w.range, scene);
@@ -86,6 +87,7 @@ export class Combat {
     const pos = { x: hit.x, y: hit.y, z: hit.z };
     const dist = Math.hypot(hit.x - from.x, hit.y - from.y, hit.z - from.z);
     const dmg = computeDamage(w, dist, hit.headshot);
+    g.audio.bulletImpact(hit.kind, pos);
     if (attacker === 'player' && (hit.kind === 'character' || hit.kind === 'vehicle')) g.hud.hitmarker();
     if (hit.kind === 'character') {
       if (hit.ref === g.player) this.damagePlayer(dmg, from);
@@ -113,7 +115,7 @@ export class Combat {
     const az = attacker.z;
     const yaw = isPlayer ? attacker.state.yaw : attacker.sim.yaw;
     attacker.rig.punch();
-    g.audio.swing();
+    g.audio.swing(w.id, attacker);
     const fx = forwardX(yaw);
     const fz = forwardZ(yaw);
     if (isPlayer) {
@@ -158,8 +160,10 @@ export class Combat {
         g.pickups.drop(p.x, p.z, p.faction);
       }
       if (from) g.world.addThreat(p.x, p.z, 30);
+      g.events?.emit('pedKilled', { ped: p, attacker, how });
       return;
     }
+    g.events?.emit('pedHurt', { ped: p, attacker, how });
     if (attacker === 'player') {
       if (p.faction === 'civil') {
         p.sim.mode = 'flee';
@@ -231,9 +235,11 @@ export class Combat {
     g.effects.muzzleFlash(muzzle, d);
     g.effects.tracer(muzzle, new THREE.Vector3(hit.x, hit.y, hit.z));
     g.audio.gunshot(w.id, muzzle);
+    g.events?.emit('shot', { x: muzzle.x, z: muzzle.z, by: ped.faction, weapon: w.id });
     if (hit.kind === 'character' && hit.ref === player) {
       this.damagePlayer(computeDamage(w, dist, false) * (ped.faction === 'police' ? 0.55 : 0.5), eye);
       g.effects.impact({ x: hit.x, y: hit.y, z: hit.z }, hit.normal, 'blood');
+      if (player.inVehicle) g.audio.hit(hit); else g.audio.bulletImpact('character', hit);
       if (player.inVehicle) player.vehicle.state.health -= 8;
     } else {
       this._applyHit(hit, w, 'npc', muzzle);
@@ -244,6 +250,7 @@ export class Combat {
     const g = this.game;
     g.effects.explosion(pos);
     g.audio.explosion(pos);
+    g.events?.emit('explosion', { x: pos.x, z: pos.z });
     g.world.addThreat(pos.x, pos.z, 60, 1);
     const R = 9;
     for (const p of g.world.peds) {

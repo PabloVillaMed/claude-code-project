@@ -17,23 +17,28 @@ export const VALLEY_FLOOR = 1460;
 // Eje del río (este, en función del norte): baja casi recto de sur a norte
 // y en Bello gira hacia el nororiente (Copacabana).
 const RIVER = [
-  [-40000, -1800],
-  [-15000, -1400],
-  [-8000, -1250],
-  [0, -1000],
-  [6000, -700],
-  [10000, 800],
-  [16000, 4200],
-  [40000, 14000],
+  // [norte (m), este (m)] respecto al centro del mapa (entre Moravia y Aranjuez);
+  // cerca del mapa sigue el cauce real de OpenStreetMap (canal del río Medellín).
+  [-40000, -2100],
+  [-15000, -1800],
+  [-8000, -1550],
+  [-2000, -1000],
+  [0, -680],
+  [800, -330],
+  [4000, 300],
+  [10000, 1700],
+  [16000, 5000],
+  [40000, 15000],
 ];
 
 // Cerros: [este, norte, altura extra (m), radio (m)].
 const HILLS = [
-  [-3300, 1300, 160, 430], // Cerro El Volador (bosque, 1.628 m)
-  [-2600, 5200, 85, 300], // Cerro Nutibara (Pueblito Paisa)
-  [-2500, -11500, 1050, 1500], // Cerro Quitasol (Bello, 2.880 m)
-  [-9800, 2500, 320, 2600], // Cerro del Padre Amaya
-  [5200, 4000, 260, 1500], // Cerro Pan de Azúcar (suroriente)
+  // Posiciones respecto al centro del mapa (el Morro de Moravia ya viene en el SRTM).
+  [-2980, 900, 160, 430], // Cerro El Volador (bosque, 1.628 m)
+  [-2280, 4800, 85, 300], // Cerro Nutibara (Pueblito Paisa)
+  [-2180, -11900, 1050, 1500], // Cerro Quitasol (Bello, 2.880 m)
+  [-9480, 2100, 320, 2600], // Cerro del Padre Amaya
+  [5520, 3600, 260, 1500], // Cerro Pan de Azúcar (suroriente)
 ].map(([e, n, h, r]) => ({ x: e, z: n, h, r })); // n positivo = sur (z del juego)
 
 function lerpTable(t, v) {

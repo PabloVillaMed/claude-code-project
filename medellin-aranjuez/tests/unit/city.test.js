@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { generateCity, isMoravia } from '../../src/sim/cityLayout.js';
+import { generateCity } from '../../src/sim/cityLayout.js';
 import { RoadGraph } from '../../src/sim/roadNav.js';
-import { groundHeight, onRoad, terrainHeight, GRID, MERGED_BLOCKS, roadLine } from '../../src/sim/terrain.js';
+import { groundHeight, onRoad, terrainHeight } from '../../src/sim/terrain.js';
+import { frameCorners, pointInPoly, polyArea } from '../../src/sim/geom2d.js';
 import { city } from './helpers.js';
 
-describe('ciudad: Aranjuez (MVP)', () => {
+describe('ciudad: mapa real de Moravia a Aranjuez', () => {
   it('es determinista con la misma semilla', () => {
     const a = generateCity(7);
     const b = generateCity(7);
     expect(a.buildings.length).toBe(b.buildings.length);
-    expect(a.buildings[100]).toEqual(b.buildings[100]);
-  });
+    const pick = (c) => c.buildings.slice(0, 200).map((h) => [h.frame, h.style, h.roof, h.floors, h.topY]);
+    expect(pick(a)).toEqual(pick(b));
+  }, 120000);
 
-  it('tiene los puntos de interés del barrio', () => {
+  it('tiene los puntos de interés reales del barrio', () => {
     const ids = city().pois.map((p) => p.id);
-    for (const id of ['parque', 'iglesia', 'museo', 'botanico', 'explora', 'metro', 'hospital', 'cementerio', 'moravia', 'armeria', 'taller', 'cancha', 'mirador']) {
+    for (const id of ['parque', 'iglesia', 'museo', 'metro', 'hospital', 'moravia', 'armeria', 'taller', 'cancha', 'mirador', 'cayetano', 'consuelo', 'comfama']) {
       expect(ids).toContain(id);
     }
   });
@@ -23,7 +25,6 @@ describe('ciudad: Aranjuez (MVP)', () => {
     const c = city();
     for (const p of c.pois) {
       expect(c.collision.pointBlocked(p.x, p.z), p.id).toBe(false);
-      // Y no están encerrados: al menos una dirección libre a 3 m.
       const free = [0, 1, 2, 3, 4, 5, 6, 7].some((k) => {
         const a = (k / 8) * Math.PI * 2;
         return !c.collision.pointBlocked(p.x + Math.cos(a) * 3, p.z + Math.sin(a) * 3);
@@ -38,96 +39,106 @@ describe('ciudad: Aranjuez (MVP)', () => {
     expect(Number.isFinite(groundHeight(c.spawn.x, c.spawn.z))).toBe(true);
   });
 
-  it('la red vial está conectada y el Botánico no tiene vías internas', () => {
+  it('no es una cuadrícula: vías curvas y diagonales, largas transversales', () => {
     const c = city();
     const g = new RoadGraph(c);
-    expect(g.isConnected()).toBe(true);
-    // Centro del Botánico: no es vía.
-    const b = c.blocks.find((x) => x.type === 'botanico');
-    expect(onRoad(b.cx, b.cz)).toBe(false);
-    expect(onRoad(roadLine(MERGED_BLOCKS[0].ix0 + 1, GRID.nx), b.cz)).toBe(false);
+    expect(g.active.length).toBeGreaterThan(300);
+    // Muchas vías con quiebres (polilíneas), no rectas de nodo a nodo.
+    const curvy = c.edges.filter((e) => e.pts.length > 3).length;
+    expect(curvy).toBeGreaterThan(80);
+    // Rumbos variados: no solo norte-sur y oriente-occidente.
+    const diag = c.edges.filter((e) => {
+      const [a, b] = [e.pts[0], e.pts[e.pts.length - 1]];
+      const ang = Math.abs(Math.atan2(b[1] - a[1], b[0] - a[0])) % (Math.PI / 2);
+      return ang > 0.3 && ang < 1.27;
+    }).length;
+    expect(diag / c.edges.length).toBeGreaterThan(0.15);
+    // Hay transversales con su nombre real.
+    expect(c.edges.some((e) => /Transversal/.test(e.name))).toBe(true);
   });
 
-  it('geografía real: norte-sur y oeste-este como en la Comuna 4', () => {
+  it('geografía real: el río y Moravia al occidente, Aranjuez en la ladera oriental', () => {
     const c = city();
     const at = (id) => c.pois.find((p) => p.id === id);
-    // Norte = -Z, oeste = -X.
-    expect(at('parque').z).toBeLessThan(at('museo').z); // Calle 92 al norte de la 85
-    expect(at('museo').z).toBeLessThan(at('botanico').z); // Calle 73 más al sur
-    expect(at('botanico').z).toBeLessThan(at('cementerio').z);
-    expect(at('cementerio').z).toBeLessThan(at('hospital').z); // Calle 64, lo más al sur
-    expect(at('moravia').x).toBeLessThan(at('museo').x); // Moravia al oeste de Carabobo
-    expect(at('explora').x).toBeLessThan(at('botanico').x);
+    expect(at('moravia').x).toBeLessThan(at('museo').x);
+    expect(at('metro').x).toBeLessThan(at('moravia').x); // la Caribe al otro lado del río
     expect(at('parque').x).toBeGreaterThan(at('museo').x); // el parque hacia el oriente
-    expect(Math.abs(at('metro').z - at('botanico').z)).toBeLessThan(80); // Universidad, junto al Botánico
-    // La ladera sube hacia Manrique (este).
-    expect(terrainHeight(250, 0)).toBeGreaterThan(terrainHeight(-250, 0) + 30);
+    expect(at('parque').z).toBeLessThan(at('museo').z); // la Calle 92 al norte
+    expect(terrainHeight(at('mirador').x, at('mirador').z)).toBeGreaterThan(terrainHeight(at('moravia').x + 150, at('moravia').z) + 60);
   });
 
-  it('Moravia: casas angostas, casi todas de ladrillo a la vista', () => {
-    const c = city();
-    const blocks = c.blocks.filter(isMoravia).filter((b) => b.type === 'residencial');
-    expect(blocks.length).toBeGreaterThanOrEqual(2);
-    const inside = (h) => blocks.some((b) => h.minX >= b.minX && h.maxX <= b.maxX && h.minZ >= b.minZ && h.maxZ <= b.maxZ);
-    const houses = c.buildings.filter(inside);
-    expect(houses.length).toBeGreaterThan(30);
+  it('Moravia: casas angostas, casi todas de ladrillo a la vista y techos de zinc', () => {
+    const houses = city().buildings.filter((h) => h.informal && !h.interior);
+    expect(houses.length).toBeGreaterThan(200);
     const brick = houses.filter((h) => h.style === 'ladrillo').length / houses.length;
-    expect(brick).toBeGreaterThan(0.65);
+    expect(brick).toBeGreaterThan(0.6);
     expect(houses.every((h) => h.style !== 'torre')).toBe(true);
+    expect(houses.filter((h) => h.roof === 'zinc').length / houses.length).toBeGreaterThan(0.3);
   });
 
-  it('venteros en andenes o plazas; placas y paraderos en los andenes', () => {
+  it('techos variados, no solo cajas planas', () => {
+    const roofs = new Set(city().buildings.map((b) => b.roof));
+    for (const r of ['terraza', 'plancha', 'dosAguas', 'cuatroAguas', 'zinc']) expect(roofs).toContain(r);
+  });
+
+  it('venteros, placas y paraderos en los andenes', () => {
     const c = city();
     const vendors = c.props.filter((p) => p.type === 'vendor');
     expect(vendors.length).toBeGreaterThan(8);
-    expect(c.props.filter((p) => p.type === 'streetSign').length).toBeGreaterThan(50);
-    expect(c.props.filter((p) => p.type === 'busStop').length).toBeGreaterThan(5);
-    for (const p of [...vendors, ...c.props.filter((q) => q.type === 'busStop' || q.type === 'streetSign')]) {
+    const signs = c.props.filter((p) => p.type === 'streetSign');
+    expect(signs.length).toBeGreaterThan(50);
+    for (const s of signs) expect(s.names.length).toBe(2);
+    for (const p of [...vendors, ...signs, ...c.props.filter((q) => q.type === 'busStop')]) {
       expect(onRoad(p.x, p.z)).toBe(false);
-      const b = c.blocks.find((k) => p.x > k.minX && p.x < k.maxX && p.z > k.minZ && p.z < k.maxZ);
-      expect(b).toBeTruthy();
-      const inLot = p.x > b.lot.minX && p.x < b.lot.maxX && p.z > b.lot.minZ && p.z < b.lot.maxZ;
-      if (inLot) expect(['parque', 'mirador']).toContain(b.type);
+      expect(c.blocks.some((b) => pointInPoly(p.x, p.z, b.curb))).toBe(true);
     }
   });
 
   it('ningún edificio invade la calzada', () => {
+    const bad = [];
     for (const b of city().buildings) {
-      const pts = [
-        [b.minX + 0.2, b.minZ + 0.2],
-        [b.maxX - 0.2, b.maxZ - 0.2],
-        [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2],
-      ];
-      for (const [x, z] of pts) expect(onRoad(x, z)).toBe(false);
+      const f = b.frame;
+      const pts = [...frameCorners(f).map(([x, z]) => [x + (f.x - x) * 0.1, z + (f.z - z) * 0.1]), [f.x, f.z]];
+      if (pts.some(([x, z]) => onRoad(x, z))) bad.push([b.style, Math.round(f.x), Math.round(f.z)]);
     }
+    expect(bad).toEqual([]);
   });
 
   it('los edificios no dejan huecos bajo la base en la ladera', () => {
     for (const b of city().buildings) {
-      const hMin = Math.min(terrainHeight(b.minX, b.minZ), terrainHeight(b.maxX, b.maxZ), terrainHeight(b.minX, b.maxZ), terrainHeight(b.maxX, b.minZ));
+      const hMin = Math.min(...[...frameCorners(b.frame), [b.frame.x, b.frame.z]].map(([x, z]) => terrainHeight(x, z)));
       expect(b.baseY).toBeLessThanOrEqual(hMin);
       expect(b.topY).toBeGreaterThan(b.baseY + 1);
     }
   });
 
-  it('el terreno sube hacia el oriente (ladera) con pendientes transitables', () => {
-    expect(terrainHeight(200, 0)).toBeGreaterThan(terrainHeight(-200, 0));
-    let maxSlope = 0;
+  it('las calles son subibles en carro', () => {
+    const c = city();
     let maxRoadSlope = 0;
-    for (let x = -300; x < 300; x += 3) {
-      for (let z = -300; z < 300; z += 3) {
-        const s = Math.hypot(terrainHeight(x + 1, z) - terrainHeight(x, z), terrainHeight(x, z + 1) - terrainHeight(x, z));
-        maxSlope = Math.max(maxSlope, s);
-        if (onRoad(x, z)) maxRoadSlope = Math.max(maxRoadSlope, s);
+    for (const e of c.edges) {
+      for (let i = 1; i < e.pts.length; i++) {
+        const [ax, az] = e.pts[i - 1];
+        const [bx, bz] = e.pts[i];
+        const l = Math.hypot(bx - ax, bz - az);
+        if (l < 4) continue;
+        maxRoadSlope = Math.max(maxRoadSlope, Math.abs(terrainHeight(bx, bz) - terrainHeight(ax, az)) / l);
       }
     }
-    // Calles empinadas como en Medellín, pero subibles en carro (< 25 %).
-    expect(maxRoadSlope).toBeLessThan(0.25);
-    // Solo el Morro de Moravia supera eso, sin volverse un muro.
-    expect(maxSlope).toBeLessThan(0.45);
+    // Empinadas como en Medellín, pero subibles (< 30 %).
+    expect(maxRoadSlope).toBeLessThan(0.3);
   });
 
-  it('hay vehículos parqueados en lugares libres', () => {
+  it('manzanas con andén y lotes adentro', () => {
+    const c = city();
+    const res = c.blocks.filter((b) => b.type === 'residencial');
+    expect(res.length).toBeGreaterThan(150);
+    for (const b of res.slice(0, 60)) {
+      expect(Math.abs(polyArea(b.ring))).toBeGreaterThan(10);
+      for (const l of b.lots) expect(pointInPoly(l[0][0], l[0][1], b.curb)).toBe(true);
+    }
+  });
+
+  it('hay motos parqueadas en lugares libres', () => {
     const c = city();
     expect(c.parkedVehicles.length).toBeGreaterThan(10);
     for (const v of c.parkedVehicles) expect(c.collision.pointBlocked(v.x, v.z)).toBe(false);

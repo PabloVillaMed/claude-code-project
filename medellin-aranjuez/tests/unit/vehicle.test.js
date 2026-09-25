@@ -207,8 +207,12 @@ describe('vehículos', () => {
   it('en Aranjuez: conducir por la Carrera y chocar contra una manzana no deja el carro dentro', () => {
     const c = city();
     const env = cityEnv();
-    // Arranca en la vía x=0 hacia el este, directo contra la manzana del frente.
-    const v = createVehicleState('sedan', 0, 35 - 70 * 0, -Math.PI / 2, groundHeight);
+    // Arranca en una vía cerca de San Cayetano, de frente contra la fachada más cercana.
+    const b = c.buildings.filter((h) => !h.interior && Math.hypot(h.frame.x - 52, h.frame.z + 115) < 200)[0];
+    const f = b.frame;
+    const sx = f.x + f.nx * (f.hv + 9);
+    const sz = f.z + f.nz * (f.hv + 9);
+    const v = createVehicleState('sedan', sx, sz, Math.atan2(f.nx, f.nz), groundHeight);
     simulate(v, drive({ throttle: 1 }), 12, env, 1 / 60);
     const corners = [
       [v.x, v.z],

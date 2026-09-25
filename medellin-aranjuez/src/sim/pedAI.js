@@ -3,34 +3,32 @@
 // son hostiles (policía, pandilla).
 
 import { clamp, dampAngle, dist2D, forwardX, forwardZ, yawFromDir } from './math.js';
-import { GRID } from './terrain.js';
 
 export const PED = { walk: 1.35, run: 5.2, radius: 0.35 };
 
-/** Esquinas del anillo peatonal de una manzana en sentido horario. */
+// El andén de cada manzana es un polígono (`block.ring`, línea por donde se
+// camina); los peatones van de vértice en vértice y cruzan la calle en los
+// vértices que tienen cruce (`block.cross`: índice → [{block, i}]).
+
+/** Vértices del anillo peatonal de una manzana. */
 export function ringCorners(block) {
-  const r = block.ring;
-  return [
-    { x: r.minX, z: r.minZ },
-    { x: r.maxX, z: r.minZ },
-    { x: r.maxX, z: r.maxZ },
-    { x: r.minX, z: r.maxZ },
-  ];
+  return block.ring.map(([x, z]) => ({ x, z }));
 }
 
 export function createPed(block, rng, opts = {}) {
-  const corners = ringCorners(block);
-  const c = rng.int(0, 3);
-  const a = corners[c];
-  const b = corners[(c + 1) % 4];
+  const r = block.ring;
+  const n = r.length;
+  const c = rng.int(0, n - 1);
+  const [ax, az] = r[c];
+  const [bx, bz] = r[(c + 1) % n];
   const t = rng.next();
   return {
-    x: a.x + (b.x - a.x) * t,
-    z: a.z + (b.z - a.z) * t,
+    x: ax + (bx - ax) * t,
+    z: az + (bz - az) * t,
     yaw: 0,
     speed: 0,
     block,
-    corner: (c + 1) % 4,
+    corner: (c + 1) % n,
     dir: rng.chance(0.5) ? 1 : -1,
     mode: 'walk',
     timer: rng.range(4, 20),
@@ -80,12 +78,12 @@ export function stepPed(p, dt, world) {
 
   switch (p.mode) {
     case 'walk': {
-      const corners = ringCorners(p.block);
-      const c = corners[p.corner];
-      const d = goToward(p, c.x, c.z, p.walkSpeed, dt);
+      const ring = p.block.ring;
+      const [cx, cz] = ring[p.corner % ring.length];
+      const d = goToward(p, cx, cz, p.walkSpeed, dt);
       if (d < 0.3) {
         // En la esquina: seguir o cruzar la calle hacia la manzana vecina.
-        if (world.rand() < 0.3) {
+        if (p.block.cross?.has(p.corner) && world.rand() < 0.35) {
           const cross = crossingTarget(p, world);
           if (cross) {
             p.mode = 'cross';
@@ -93,7 +91,7 @@ export function stepPed(p, dt, world) {
             break;
           }
         }
-        p.corner = (p.corner + p.dir + 4) % 4;
+        p.corner = (p.corner + p.dir + ring.length) % ring.length;
       }
       p.timer -= dt;
       if (p.timer <= 0) {
@@ -175,13 +173,13 @@ export function stepPed(p, dt, world) {
 
 /** Tras huir, volver a la manzana más cercana y seguir caminando. */
 export function rejoinSidewalk(p, world) {
-  const b = world.blockAt(p.x, p.z) ?? nearestBlock(world.blocks, p.x, p.z);
+  let b = world.blockAt(p.x, p.z);
+  if (!b?.ring) b = nearestBlock(world.blocks, p.x, p.z);
   p.block = b;
-  const corners = ringCorners(b);
   let best = 0;
   let bd = Infinity;
-  corners.forEach((c, i) => {
-    const d = dist2D(c.x, c.z, p.x, p.z);
+  b.ring.forEach(([x, z], i) => {
+    const d = dist2D(x, z, p.x, p.z);
     if (d < bd) {
       bd = d;
       best = i;
@@ -193,48 +191,31 @@ export function rejoinSidewalk(p, world) {
 }
 
 export function nearestBlock(blocks, x, z) {
-  let best = blocks[0];
+  let best = null;
   let bd = Infinity;
   for (const b of blocks) {
-    const d = dist2D(b.cx, b.cz, x, z);
-    if (d < bd) {
-      bd = d;
-      best = b;
-    }
-  }
-  return best;
-}
-
-/** Busca la esquina de la manzana vecina al otro lado de la calle. */
-function crossingTarget(p, world) {
-  const corners = ringCorners(p.block);
-  const c = corners[p.corner];
-  const across = GRID.asphaltHalf * 2 + GRID.sidewalk + 0.2;
-  const options = [];
-  for (const [dx, dz] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]) {
-    const tx = c.x + dx * across;
-    const tz = c.z + dz * across;
-    const b = world.blockAt(tx, tz);
-    if (!b || b === p.block) continue;
-    const bc = ringCorners(b);
-    let ci = 0;
-    let bd = Infinity;
-    bc.forEach((k, i) => {
-      const d = dist2D(k.x, k.z, tx, tz);
+    if (!b.ring) continue;
+    if (x < b.minX - bd || x > b.maxX + bd || z < b.minZ - bd || z > b.maxZ + bd) continue;
+    for (const [vx, vz] of b.ring) {
+      const d = dist2D(vx, vz, x, z);
       if (d < bd) {
         bd = d;
-        ci = i;
+        best = b;
       }
-    });
-    if (bd < 2) options.push({ x: bc[ci].x, z: bc[ci].z, block: b, corner: ci });
+    }
   }
-  if (!options.length) return null;
-  return options[Math.floor(world.rand() * options.length)];
+  return best ?? blocks[0];
+}
+
+/** Cruce desde la esquina actual hacia la manzana vecina al otro lado de la calle. */
+function crossingTarget(p, world) {
+  const opts = p.block.cross?.get(p.corner);
+  if (!opts?.length) return null;
+  const o = opts[Math.floor(world.rand() * opts.length)];
+  const b = world.blocks[o.block];
+  if (!b?.ring) return null;
+  const [x, z] = b.ring[o.i];
+  return { x, z, block: b, corner: o.i };
 }
 
 /** Dirección en la que mira el peatón (para disparos de la IA). */

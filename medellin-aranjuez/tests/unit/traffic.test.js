@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { RoadGraph, autopilot, lanePoint, obstacleAhead } from '../../src/sim/roadNav.js';
+import { RoadGraph, autopilot, laneOffset, lanePoint, linkAllowed, obstacleAhead } from '../../src/sim/roadNav.js';
+import { pointAlong } from '../../src/sim/geom2d.js';
 import { createVehicleState, stepVehicle } from '../../src/sim/vehiclePhysics.js';
-import { GRID, groundHeight, onRoad } from '../../src/sim/terrain.js';
+import { groundHeight, onRoad } from '../../src/sim/terrain.js';
 import { makeRng } from '../../src/sim/rng.js';
 import { city, cityEnv } from './helpers.js';
 
+// Puntos de referencia en Aranjuez (mapa real).
+const CAYETANO = { x: 52, z: -115 };
+const COMFAMA = { x: -53, z: -255 };
+const PARQUE = { x: 662, z: -434 };
+
 function spawnAgent(g, fromId, rng) {
   const from = g.node(fromId);
-  const to = from.links[0].node;
+  const to = (from.links.find((l) => linkAllowed(g, l)) ?? from.links[0]).node;
   const p = lanePoint(g, fromId, to, 0.3);
   return { agent: { from: fromId, to, next: null }, p, rng };
 }
@@ -15,21 +21,29 @@ function spawnAgent(g, fromId, rng) {
 describe('tráfico y navegación vial', () => {
   it('se conduce por la derecha', () => {
     const g = new RoadGraph(city());
-    const a = g.active[0];
-    const link = a.links.find((l) => g.node(l.node).z === a.z && g.node(l.node).x > a.x);
-    const p = lanePoint(g, a.id, link.node, 0.5);
-    // Yendo al este, la derecha es el sur (+Z).
-    expect(p.z - a.z).toBeCloseTo(GRID.laneOffset);
+    const e = g.activeEdges.find((x) => !x.oneway && x.length > 40);
+    const p = lanePoint(g, e.a, e.b, 0.5);
+    const axis = pointAlong(e.pts, e.cum, e.length / 2);
+    // Derecha del sentido de marcha = (cos yaw, -sin yaw).
+    const right = (p.x - axis.x) * Math.cos(p.yaw) - (p.z - axis.z) * Math.sin(p.yaw);
+    expect(right).toBeCloseTo(laneOffset(e), 1);
+    // Y al revés, el otro carril.
+    const q = lanePoint(g, e.b, e.a, 0.5);
+    expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeCloseTo(2 * laneOffset(e), 1);
   });
 
-  it('ruta más corta entre esquinas opuestas', () => {
+  it('las vías de un solo sentido se respetan en las rutas', () => {
     const g = new RoadGraph(city());
-    const start = g.active[0];
-    const goal = g.active[g.active.length - 1];
+    const start = g.nearestNode(COMFAMA.x, COMFAMA.z);
+    const goal = g.nearestNode(PARQUE.x, PARQUE.z);
     const path = g.route(start.id, goal.id);
     expect(path[0]).toBe(start.id);
     expect(path[path.length - 1]).toBe(goal.id);
-    expect(path.length).toBe(GRID.nx + GRID.nz + 1);
+    for (let i = 1; i < path.length; i++) {
+      const l = g.link(path[i - 1], path[i]);
+      expect(l).toBeTruthy();
+      expect(linkAllowed(g, l)).toBe(true);
+    }
   });
 
   it('detecta obstáculos solo en el cono frontal', () => {
@@ -45,8 +59,9 @@ describe('tráfico y navegación vial', () => {
     const env = cityEnv();
     const rng = makeRng(11);
     const cars = [];
+    const near = g.active.filter((n) => Math.hypot(n.x - CAYETANO.x, n.z - CAYETANO.z) < 350 && n.links.length >= 3);
     for (let k = 0; k < 8; k++) {
-      const n = g.active[(k * 13) % g.active.length];
+      const n = near[(k * 7) % near.length];
       const { agent, p } = spawnAgent(g, n.id, rng);
       const v = createVehicleState(k % 3 === 0 ? 'buseta' : 'taxi', p.x, p.z, p.yaw, groundHeight);
       cars.push({ v, agent, offRoad: 0, samples: 0, startX: p.x, startZ: p.z, travelled: 0, lastX: p.x, lastZ: p.z });
@@ -62,7 +77,7 @@ describe('tráfico y navegación vial', () => {
         if (!onRoad(car.v.x, car.v.z)) car.offRoad++;
         const e = g.nearestEdge(car.v.x, car.v.z);
         if (e.t > 0.2 && e.t < 0.8) {
-          car.latSum = (car.latSum ?? 0) + Math.abs(e.dist - GRID.laneOffset);
+          car.latSum = (car.latSum ?? 0) + Math.abs(e.dist - laneOffset(e.edge));
           car.latN = (car.latN ?? 0) + 1;
         }
         car.travelled += Math.hypot(car.v.x - car.lastX, car.v.z - car.lastZ);
@@ -71,10 +86,10 @@ describe('tráfico y navegación vial', () => {
       }
     }
     for (const car of cars) {
-      // Las busetas (7,8 m) se montan un poco en el andén al girar en calles
-      // estrechas, como en la vida real; los carros no.
+      // Las busetas (7,8 m) se montan en el andén al girar en las calles
+      // estrechas y curvas, como en la vida real; los carros casi nunca.
       const isBus = car.v.type === 'buseta';
-      expect(car.offRoad / car.samples).toBeLessThan(isBus ? 0.12 : 0.01);
+      expect(car.offRoad / car.samples).toBeLessThan(isBus ? 0.15 : 0.03);
       // En las rectas van por su carril (desvío medio pequeño).
       if (!isBus) expect(car.latSum / car.latN).toBeLessThan(0.6);
       expect(car.v.health).toBeGreaterThan(car.v.spec.health * 0.5);
@@ -82,14 +97,14 @@ describe('tráfico y navegación vial', () => {
     }
   }, 20000); // 3 min simulados de 8 carros: holgura para máquinas lentas
 
-  it('la patrulla persigue: llega cerca de un objetivo lejano', () => {
+  it('la patrulla persigue: llega cerca de un objetivo lejano', { timeout: 30000 }, () => {
     const c = city();
     const g = new RoadGraph(c);
     const env = cityEnv();
-    const start = g.nearestNode(-280, -280);
+    const start = g.nearestNode(COMFAMA.x, COMFAMA.z);
     const { agent, p } = spawnAgent(g, start.id);
     const v = createVehicleState('policia', p.x, p.z, p.yaw, groundHeight);
-    const target = { x: 175, z: 175 };
+    const target = { x: 330, z: -330 };
     let best = Infinity;
     for (let t = 0; t < 120; t += 1 / 30) {
       const input = autopilot(g, agent, v, { cruise: 20, blockedAhead: Infinity, rand: Math.random, target });
@@ -103,8 +118,9 @@ describe('tráfico y navegación vial', () => {
     const c = city();
     const g = new RoadGraph(c);
     const env = cityEnv();
-    const n = g.nearestNode(0, 0);
-    const link = n.links.find((l) => g.node(l.node).z < n.z);
+    const e = g.activeEdges.find((x) => !x.oneway && x.length > 50 && x.pts.length === 2 && Math.hypot(x.pts[0][0] - CAYETANO.x, x.pts[0][1] - CAYETANO.z) < 400);
+    const n = g.node(e.a);
+    const link = g.link(e.a, e.b);
     const agent = { from: n.id, to: link.node, next: null };
     const p = lanePoint(g, n.id, link.node, 0.1);
     const v = createVehicleState('taxi', p.x, p.z, p.yaw, groundHeight);

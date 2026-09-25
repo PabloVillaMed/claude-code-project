@@ -155,18 +155,15 @@ describe('movilidad a pie', () => {
     }
   });
 
-  it('en Aranjuez: recorre una ruta por calles entre dos puntos de interés', () => {
+  it('en Aranjuez: recorre una calle real de punta a punta', () => {
     const c = city();
     const env = cityEnv();
-    // Ruta por el centro: andén -> vía al sureste -> vía hacia el norte.
-    const s = createPlayerState(0, 30.5, groundHeight);
-    const waypoints = [
-      { x: 0, z: 30.5 },
-      { x: 35, z: 35 },
-      { x: 35, z: 0 },
-    ];
+    // Por el eje de una vía larga y curva cerca de San Cayetano.
+    const e = c.edges.find((x) => x.active && x.pts.length >= 4 && x.length > 80 && Math.hypot(x.pts[0][0] - 52, x.pts[0][1] + 115) < 500);
+    const waypoints = e.pts.map(([x, z]) => ({ x, z }));
+    const s = createPlayerState(waypoints[0].x, waypoints[0].z, groundHeight);
     for (const wp of waypoints) {
-      for (let t = 0; t < 30; t += 1 / 60) {
+      for (let t = 0; t < 60; t += 1 / 60) {
         const dx = wp.x - s.pos.x;
         const dz = wp.z - s.pos.z;
         if (Math.hypot(dx, dz) < 0.6) break;

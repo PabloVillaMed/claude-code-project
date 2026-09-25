@@ -182,6 +182,7 @@ function loadSettingsUi() {
   $('set-fov').value = s.fov;
   $('set-invert').checked = s.invertY;
   $('set-fps').checked = s.showFps;
+  $('set-subs').checked = s.subtitles !== false;
   $('set-dynres').checked = s.dynamicRes !== false;
   $('set-bright').value = s.brightness ?? 1;
   $('set-bright-val').textContent = `${Math.round((s.brightness ?? 1) * 100)} %`;
@@ -226,6 +227,7 @@ function applySettings() {
   s.fov = +$('set-fov').value;
   s.invertY = $('set-invert').checked;
   s.showFps = $('set-fps').checked;
+  s.subtitles = $('set-subs').checked;
   s.dynamicRes = $('set-dynres').checked;
   s.brightness = +$('set-bright').value;
   $('set-bright-val').textContent = `${Math.round(s.brightness * 100)} %`;
@@ -238,7 +240,7 @@ function applySettings() {
   game.hud.showFps(s.showFps);
   saveSettings(s);
 }
-for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
+for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
 
 // ---------------------------------------------------------------- carga
 $('menu-main').classList.add('hidden');

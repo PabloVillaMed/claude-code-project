@@ -55,7 +55,7 @@ describe('misiones', () => {
     const ms = new MissionSystem(createMissionDefs(c));
     const ev = ms.start('parche');
     expect(ev.find((e) => e.type === 'spawnGang').count).toBe(5);
-    const cem = c.pois.find((p) => p.id === 'cementerio');
+    const cem = c.pois.find((p) => p.id === 'moravia');
     ms.update(0.1, { x: cem.x, z: cem.z, gangAlive: 5 });
     expect(ms.update(0.1, { x: cem.x, z: cem.z, gangAlive: 2 })).toEqual([]);
     expect(types(ms.update(0.1, { x: cem.x, z: cem.z, gangAlive: 0 }))).toContain('complete');

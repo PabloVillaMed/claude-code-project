@@ -181,6 +181,16 @@ function ik2(upper, fore, hand, target, pole, weight) {
   pointBone(fore, T2.sub(E2).normalize(), weight);
 }
 
+// Huesos que las capas por código (apuntar, golpe, conducir, muerte) giran
+// encima de la animación. Ver SkinnedRig.animate: se restauran a la pose
+// del mezclador antes de cada actualización.
+const CODE_BONES = [
+  'Bip01_Pelvis', 'Bip01_Spine', 'Bip01_Spine1', 'Bip01_Spine2', 'Bip01_Neck', 'Bip01_Head',
+  'Bip01_L_Clavicle', 'Bip01_L_UpperArm', 'Bip01_L_Forearm', 'Bip01_L_Hand',
+  'Bip01_R_Clavicle', 'Bip01_R_UpperArm', 'Bip01_R_Forearm', 'Bip01_R_Hand',
+  'Bip01_L_Thigh', 'Bip01_L_Calf', 'Bip01_L_Foot', 'Bip01_R_Thigh', 'Bip01_R_Calf', 'Bip01_R_Foot',
+];
+
 // Nodos de la mezcla de locomoción: [clip, velocidad en el juego (m/s)].
 const LOCO = [
   ['walk', 1.35],
@@ -247,6 +257,9 @@ export class SkinnedRig {
     this.driveBlend = 0;
     this.lean = 0;
     this.sitHip = (tpl.clips.sit?.clip.tracks.find((t) => t.name === 'Bip01.position')?.values[1] ?? 0.53) * s;
+    this.codeBones = CODE_BONES.map((n) => this.bones[n]).filter(Boolean);
+    this.animPose = this.codeBones.map((b) => b.quaternion.clone());
+    this.footDown = 0;
   }
 
   setWeapon(id) {
@@ -342,6 +355,15 @@ export class SkinnedRig {
     set('crouch', this.w.crouch, this.t.crouch);
     set('sit', this.w.sit, 0);
     for (const [name] of LOCO) set(name, name === 'sprint' ? this.w.sprint + this.w.air : this.w[name], this.phase * (A[name]?.getClip().duration ?? 1));
+    // El mezclador de three.js solo escribe un hueso si su valor cambió desde
+    // la actualización anterior. Con una pose quieta (sentado en la moto o el
+    // carro, con la cadera en el cuadro 0 de "sit") deja de escribirlos, y las
+    // rotaciones relativas de las capas por código (inclinar el torso, abrir
+    // las piernas) se acumulaban cuadro a cuadro: tras unos segundos el
+    // motociclista quedaba acostado hacia atrás o retorcido. Por eso se
+    // devuelve cada hueso a la pose animada antes de mezclar.
+    const cb = this.codeBones;
+    for (let i = 0; i < cb.length; i++) cb[i].quaternion.copy(this.animPose[i]);
     // En el aire: cuadro de zancada del sprint (piernas abiertas), congelado.
     if (this.w.air > 0.05 && A.sprint) A.sprint.time = 0.25 * A.sprint.getClip().duration;
     // Agachado caminando: un poco del ciclo de caminar sobre el agachado.
@@ -351,6 +373,7 @@ export class SkinnedRig {
       this.phase = (this.phase + (step * speed) / 1.2) % 1;
     }
     this.mixer.update(0);
+    for (let i = 0; i < cb.length; i++) this.animPose[i].copy(cb[i].quaternion);
 
     // Sentado: cadera sobre el asiento. world.js/Game ponen la raíz en
     // asiento - 0.5 (+0.35 en moto); en carro se sube un poco para que se
@@ -358,8 +381,7 @@ export class SkinnedRig {
     const db = this.driveBlend;
     // Sentado: en moto, en carro o en una silla plástica frente a la tienda.
     const seatHip = driving === 'moto' ? 0.55 : driving === 'chair' ? 0.47 : 0.64;
-    this.model.position.y = (seatHip - this.sitHip) * db;
-    this.model.position.z = 0;
+    this.model.position.set(0, (seatHip - this.sitHip) * db, 0);
 
     // Inclinación al correr / muerte (cae de espaldas).
     const d = this.deadBlend;
@@ -369,9 +391,13 @@ export class SkinnedRig {
     // ---------------------------------------------- capas por código
     const a = this.aimBlend;
     const needArms = a > 0.01 || this.punchTimer > 0 || (db > 0.01 && driving !== 'chair') || d > 0.01;
+    // Moto: puntos del modelo (asiento, puños, estriberas) y velocidad (vehicleMesh).
+    const ride = driving === 'moto' ? this.root.parent?.userData.ride : null;
+    this.footDown = damp(this.footDown, ride && Math.abs(ride.speed) < 0.8 ? 1 : 0, 5, step);
     if (needArms) {
       this.root.updateMatrixWorld(true);
-      if (db > 0.01 && driving !== 'chair') this._driveArms(driving === 'moto', db * (1 - a));
+      if (ride && db > 0.01) this._rideMoto(ride, db, a);
+      else if (db > 0.01 && driving !== 'chair') this._driveArms(driving === 'moto', db * (1 - a));
       if (a > 0.01 && d < 0.5) this._aimArms(st.aimPitch ?? 0, a);
       if (this.punchTimer > 0) this._punchArm();
       if (d > 0.01) this._limp(d);
@@ -497,6 +523,82 @@ export class SkinnedRig {
         b.getWorldQuaternion(_q2);
         setWorldQuat(b, _q.multiply(_q2), 1);
       }
+    }
+  }
+
+  /**
+   * Postura de moto de calle (Pulsar 135): sentado sobre el asiento, torso
+   * algo inclinado hacia adelante, manos en los puños, rodillas contra el
+   * tanque y pies en las estriberas; detenido, el pie izquierdo al piso.
+   * `ride` (espacio del vehículo, frente en -Z): seatY, seatZ, grips[izq, der],
+   * pegs[izq, der], speed. `w`: peso de la postura; `aim`: el brazo derecho
+   * lo lleva la mira (disparo desde la moto).
+   */
+  _rideMoto(ride, w, aim) {
+    const B = this.bones;
+    if (!B.Bip01_Pelvis || !B.Bip01_L_Thigh) return;
+    const veh = this.root.parent;
+    const toW = (p, out = new THREE.Vector3()) => veh.localToWorld(out.set(p.x, p.y, p.z));
+    const { flat: fwd, right, q } = this._frame();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+
+    // 1. Cadera sobre el asiento (la articulación queda ~9 cm sobre el cojín).
+    const pel = veh.worldToLocal(B.Bip01_Pelvis.getWorldPosition(new THREE.Vector3()));
+    const tgt = new THREE.Vector3(0, ride.seatY + 0.09 * (this.scale / 0.97), ride.seatZ - 0.02);
+    this.model.position.add(tgt.sub(pel).multiplyScalar(w));
+    this.model.updateMatrixWorld(true);
+
+    // 2. Torso inclinado hacia el manubrio (~20° de la cadera al cuello); la cabeza mira al frente.
+    const spine = B.Bip01_Spine ?? B.Bip01_Spine1;
+    const neck = B.Bip01_Neck ?? B.Bip01_Head;
+    if (spine && neck) {
+      const s0 = spine.getWorldPosition(new THREE.Vector3());
+      const cur = neck.getWorldPosition(new THREE.Vector3()).sub(s0).normalize();
+      const want = up.clone().multiplyScalar(Math.cos(0.5)).addScaledVector(fwd, Math.sin(0.5));
+      spine.getWorldQuaternion(_q2);
+      setWorldQuat(spine, _q.setFromUnitVectors(cur, want).multiply(_q2), w);
+      if (B.Bip01_Head) {
+        B.Bip01_Head.getWorldQuaternion(_q2);
+        setWorldQuat(B.Bip01_Head, _q.setFromAxisAngle(right, 0.3 * w).multiply(_q2), 1);
+      }
+    }
+
+    // 3. Manos en los puños: la muñeca un poco detrás y encima del centro del puño.
+    for (const [side, s, wt] of [
+      ['L', -1, w],
+      ['R', 1, w * (1 - aim)],
+    ]) {
+      if (wt < 0.01) continue;
+      const g = ride.grips[s < 0 ? 0 : 1];
+      const wrist = toW(g).addScaledVector(fwd, -0.06).addScaledVector(up, 0.03).addScaledVector(right, -s * 0.01);
+      const pole = right.clone().multiplyScalar(s * 0.8).addScaledVector(up, -0.5).addScaledVector(fwd, -0.4);
+      ik2(B[`Bip01_${side}_UpperArm`], B[`Bip01_${side}_Forearm`], B[`Bip01_${side}_Hand`], wrist, pole, wt);
+      // Dedos hacia adelante y abajo, envolviendo el puño.
+      pointBone(B[`Bip01_${side}_Hand`], fwd.clone().addScaledVector(up, -0.55).addScaledVector(right, s * 0.15).normalize(), wt);
+    }
+
+    // 4. Piernas: pies en las estriberas, rodillas contra el tanque. Detenido,
+    // el pie izquierdo baja al piso junto a la moto.
+    for (const [side, s] of [
+      ['L', -1],
+      ['R', 1],
+    ]) {
+      const thigh = B[`Bip01_${side}_Thigh`];
+      const calf = B[`Bip01_${side}_Calf`];
+      const foot = B[`Bip01_${side}_Foot`];
+      if (!thigh || !calf || !foot) continue;
+      const peg = ride.pegs[s < 0 ? 0 : 1];
+      // Tobillo sobre la estribera (el metatarso apoya en ella).
+      const ankle = toW(peg).addScaledVector(up, 0.07).addScaledVector(fwd, -0.06);
+      let pole = fwd.clone().addScaledVector(right, -s * 0.12).addScaledVector(up, 0.2);
+      const down = s < 0 ? this.footDown : 0;
+      if (down > 0.01) {
+        const ground = toW({ x: peg.x - 0.2, y: 0.08, z: peg.z - 0.12 });
+        ankle.lerp(ground, down);
+        pole = pole.lerp(right.clone().multiplyScalar(s * 0.6).add(fwd), down);
+      }
+      ik2(thigh, calf, foot, ankle, pole, w);
+      pointBone(foot, fwd.clone().addScaledVector(up, down > 0.5 ? -0.15 : -0.35).normalize(), w);
     }
   }
 

@@ -6,7 +6,8 @@ import { dist2D, forwardX, forwardZ, yawFromDir } from '../sim/math.js';
 import { groundHeight, onRoad } from '../sim/terrain.js';
 import { createVehicleState, stepVehicle, vehicleObb, exitPoint, emptyDriveInput } from '../sim/vehiclePhysics.js';
 import { RoadGraph, autopilot, lanePoint, obstacleAhead } from '../sim/roadNav.js';
-import { createPed, stepPed, PED } from '../sim/pedAI.js';
+import { createPed, nearestBlock, stepPed, PED } from '../sim/pedAI.js';
+import { pointInPoly } from '../sim/geom2d.js';
 import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
@@ -159,12 +160,33 @@ export class World {
   }
 
   _indexBlocks() {
-    return this.city.blocks;
+    // Rejilla de 50 m → manzanas cuyo contorno la toca.
+    const cell = 50;
+    const grid = new Map();
+    for (const b of this.city.blocks) {
+      for (let i = Math.floor(b.minX / cell); i <= Math.floor(b.maxX / cell); i++) {
+        for (let j = Math.floor(b.minZ / cell); j <= Math.floor(b.maxZ / cell); j++) {
+          const k = `${i},${j}`;
+          if (!grid.has(k)) grid.set(k, []);
+          grid.get(k).push(b);
+        }
+      }
+    }
+    return { cell, grid };
   }
 
+  /** Manzana (con andén) que contiene el punto, o null si está en la calzada. */
   blockAt(x, z) {
-    for (const b of this.blockIndex) if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) return b;
+    const { cell, grid } = this.blockIndex;
+    for (const b of grid.get(`${Math.floor(x / cell)},${Math.floor(z / cell)}`) ?? []) {
+      if (b.ring && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && pointInPoly(x, z, b.curb)) return b;
+    }
     return null;
+  }
+
+  /** Manzanas con andén a menos de `r` m (por caja) del punto. */
+  blocksNear(x, z, r) {
+    return this.city.blocks.filter((b) => b.ring && b.type !== 'rio' && x > b.minX - r && x < b.maxX + r && z > b.minZ - r && z < b.maxZ + r);
   }
 
   // ------------------------------------------------------------- población
@@ -180,8 +202,9 @@ export class World {
   spawnTraffic(px, pz, minD = 70, maxD = 200, type = null) {
     // Posición aleatoria sobre una arista, lejos del jugador.
     for (let tries = 0; tries < 20; tries++) {
-      const e = this.graph.edges[Math.floor(this.rng.next() * this.graph.edges.length)];
-      const forward = this.rng.chance(0.5);
+      const e = this.graph.activeEdges[Math.floor(this.rng.next() * this.graph.activeEdges.length)];
+      if (e.cls === 'service') continue;
+      const forward = e.oneway ? e.oneway === 1 : this.rng.chance(0.5);
       const from = forward ? e.a : e.b;
       const to = forward ? e.b : e.a;
       const t = this.rng.range(0.2, 0.8);
@@ -203,10 +226,10 @@ export class World {
   }
 
   spawnPed(px, pz, minD = 35, maxD = 110, opts = {}) {
+    const near = this.blocksNear(px, pz, maxD);
+    if (!near.length) return null;
     for (let tries = 0; tries < 20; tries++) {
-      const b = this.city.blocks[Math.floor(this.rng.next() * this.city.blocks.length)];
-      const d = dist2D(b.cx, b.cz, px, pz);
-      if (d > maxD + 40) continue;
+      const b = near[Math.floor(this.rng.next() * near.length)];
       const sim = createPed(b, this.rng, opts.sim);
       const dp = dist2D(sim.x, sim.z, px, pz);
       if (dp < minD || dp > maxD) continue;
@@ -219,7 +242,7 @@ export class World {
   }
 
   spawnPedAt(x, z, opts = {}) {
-    const b = this.blockAt(x, z) ?? this.city.blocks[0];
+    const b = this.blockAt(x, z) ?? nearestBlock(this.city.blocks, x, z);
     const sim = createPed(b, this.rng, opts.sim);
     sim.x = x;
     sim.z = z;
@@ -778,9 +801,10 @@ export class World {
 
   lanePointNear(x, z) {
     const e = this.graph.nearestEdge(x, z);
-    const a = this.graph.node(e.edge.a);
-    const b = this.graph.node(e.edge.b);
-    const p = lanePoint(this.graph, e.edge.a, e.edge.b, e.t);
-    return { ...p, from: a.id, to: b.id };
+    const rev = e.edge.oneway === -1;
+    const from = rev ? e.edge.b : e.edge.a;
+    const to = rev ? e.edge.a : e.edge.b;
+    const p = lanePoint(this.graph, from, to, rev ? 1 - e.t : e.t);
+    return { ...p, from, to };
   }
 }

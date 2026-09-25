@@ -161,7 +161,7 @@ function substep(s, input, dt, env) {
   s.pos.z = nz;
 
   // --- Integración vertical y suelo ---
-  const ground = env.groundHeight(nx, nz);
+  const ground = env.groundHeight(nx, nz, s.pos.y);
   s.pos.y += s.vel.y * dt;
   if (s.onGround) {
     // Pegarse al suelo en bajadas y subir andenes / pendientes.

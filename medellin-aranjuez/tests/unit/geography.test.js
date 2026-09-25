@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GEO_REF, riverX, urbanAmount, valleyAsl, valleyHeight } from '../../src/sim/geography.js';
-import { MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, PLAY_BOUNDS, backdropHeight, terrainHeight } from '../../src/sim/terrain.js';
+import { MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, PLAY_BOUNDS, RIVER, backdropHeight, riverDistance, terrainHeight } from '../../src/sim/terrain.js';
 
 const deg = (r) => (r * 180) / Math.PI;
 /** Ángulo máximo de elevación del horizonte en un rumbo (0 = norte, 90 = oriente), visto desde el centro. */
@@ -20,9 +20,9 @@ describe('geografía del valle de Aburrá', () => {
     const river = valleyAsl(riverX(0), 0);
     expect(river).toBeGreaterThan(1440);
     expect(river).toBeLessThan(1480);
-    // El barrio (centro del mapa) está entre el río y la montaña.
-    expect(valleyAsl(0, 0)).toBeGreaterThan(river + 30);
-    expect(valleyAsl(0, 0)).toBeLessThan(1600);
+    // Aranjuez (oriente del mapa) está entre el río y la montaña.
+    expect(valleyAsl(500, -300)).toBeGreaterThan(river + 30);
+    expect(valleyAsl(500, -300)).toBeLessThan(1650);
   });
 
   it('cordillera occidental y oriental a alturas reales', () => {
@@ -34,8 +34,8 @@ describe('geografía del valle de Aburrá', () => {
     expect(valleyAsl(2500, -300)).toBeLessThan(2100);
     expect(valleyAsl(6500, 0)).toBeGreaterThan(2250);
     // El Volador sobresale del fondo del valle y es verde.
-    expect(valleyAsl(-3300, 1300) - valleyAsl(-3300, 2600)).toBeGreaterThan(90);
-    expect(urbanAmount(-3300, 1300)).toBe(0);
+    expect(valleyAsl(-2980, 900) - valleyAsl(-2980, 2200)).toBeGreaterThan(90);
+    expect(urbanAmount(-2980, 900)).toBe(0);
   });
 
   it('el horizonte se ve como desde el barrio: montañas a lado y lado, el valle abierto al sur', () => {
@@ -72,7 +72,10 @@ describe('geografía del valle de Aburrá', () => {
   });
 
   it('el fondo cercano empata con el mapa sin escalones y se funde con el valle', () => {
+    // (salvo en el cauce del río, que la física cava y el fondo no)
+    const dry = (x, z) => riverDistance(x, z) > RIVER.half + RIVER.bank;
     for (let z = MAP_MIN_Z; z <= MAP_MAX_Z; z += 35) {
+      if (!dry(MAP_MIN_X, z) || !dry(MAP_MAX_X, z)) continue;
       expect(backdropHeight(MAP_MIN_X, z)).toBeCloseTo(terrainHeight(MAP_MIN_X, z), 6);
       expect(backdropHeight(MAP_MAX_X, z)).toBeCloseTo(terrainHeight(MAP_MAX_X, z), 6);
       // Lejos del mapa es exactamente la geografía del valle (la del horizonte).
@@ -80,7 +83,7 @@ describe('geografía del valle de Aburrá', () => {
     }
     // En toda el área jugable el suelo dibujado es el mismo de la física.
     for (let x = PLAY_BOUNDS.minX; x <= PLAY_BOUNDS.maxX; x += 13) {
-      for (const z of [PLAY_BOUNDS.minZ, 0, PLAY_BOUNDS.maxZ]) expect(backdropHeight(x, z)).toBe(terrainHeight(x, z));
+      for (const z of [PLAY_BOUNDS.minZ, 0, PLAY_BOUNDS.maxZ]) if (dry(x, z)) expect(backdropHeight(x, z)).toBe(terrainHeight(x, z));
     }
     // Sin saltos: la pendiente del fondo es razonable en todo el borde.
     for (let x = MAP_MIN_X - 600; x < MAP_MIN_X; x += 5) {

@@ -310,15 +310,21 @@ function build(buckets, { crease = 35, textured = new Set() } = {}) {
     }
     return matCache.get(name);
   };
+  // Origen de cada rueda en su eje; "horquilla_<x>" (piezas que viran con la
+  // rueda <x> sin girar: guardabarros, mordaza) comparte el origen de "rueda_<x>".
+  const centers = new Map();
+  for (const [part, meshes] of parts) {
+    if (!part.startsWith('rueda')) continue;
+    const b = new THREE.Box3();
+    for (const [, g] of meshes) b.union(g.boundingBox);
+    centers.set(part, b.getCenter(new THREE.Vector3()).add(off));
+  }
   for (const [part, meshes] of parts) {
     const node = new THREE.Group();
     node.name = part;
     const center = new THREE.Vector3();
-    if (part.startsWith('rueda')) {
-      const b = new THREE.Box3();
-      for (const [, g] of meshes) b.union(g.boundingBox);
-      b.getCenter(center).add(off);
-    }
+    if (part.startsWith('rueda')) center.copy(centers.get(part));
+    else if (part.startsWith('horquilla_')) center.copy(centers.get(part.replace('horquilla_', 'rueda_')) ?? center);
     for (const [mat, g] of meshes) {
       g.translate(off.x - center.x, off.y - center.y, off.z - center.z);
       const mesh = new THREE.Mesh(g, material(mat, !!g.attributes.color));
@@ -384,6 +390,91 @@ async function write(scene, name, textures = {}) {
   console.log(`${name}.glb`, (fs.statSync(out).size / 1024).toFixed(0), 'KB', st.tris, 'triángulos', st.meshes, 'mallas', st.size.join(' x '), 'm');
   console.log('   ruedas', st.wheels.join(' '));
   return { name, bytes: fs.statSync(out).size, ...st };
+}
+
+/** Clave de un triángulo por sus vértices (igual en dos pasadas de `collect` con la misma matriz). */
+const triKey = (tri) => tri.p.map((p) => `${p.x.toFixed(5)},${p.y.toFixed(5)},${p.z.toFixed(5)}`).join('|');
+
+/**
+ * Triángulos (por triKey) de las piezas que giran con cada rueda: piezas
+ * conectadas (vértices compartidos) dentro del cilindro de la rueda que dan
+ * la vuelta completa alrededor del eje, o que están pegadas a él.
+ */
+function spinningPieces(scene, pre, wheels) {
+  const tris = [];
+  collect(scene, pre, (mesh, mat, tri) => {
+    for (const w of wheels) {
+      if (tri.p.every((p) => Math.abs(p.x) < w.hw + 0.012 && Math.hypot(p.z - w.c.z, p.y - w.c.y) < w.r + 0.01)) {
+        tris.push({ tri, w });
+        break;
+      }
+    }
+    return null;
+  });
+  // Unión-búsqueda por vértice (posición cuantizada a 0.1 mm).
+  const parent = new Map();
+  const find = (k) => {
+    while (parent.get(k) !== k) {
+      parent.set(k, parent.get(parent.get(k)));
+      k = parent.get(k);
+    }
+    return k;
+  };
+  const vk = (p) => `${Math.round(p.x * 1e4)},${Math.round(p.y * 1e4)},${Math.round(p.z * 1e4)}`;
+  for (const { tri } of tris) {
+    const ks = tri.p.map(vk);
+    for (const k of ks) if (!parent.has(k)) parent.set(k, k);
+    for (let i = 1; i < 3; i++) {
+      const a = find(ks[0]);
+      const b = find(ks[i]);
+      if (a !== b) parent.set(b, a);
+    }
+  }
+  const pieces = new Map();
+  for (const t of tris) {
+    const root = find(vk(t.tri.p[0]));
+    if (!pieces.has(root)) pieces.set(root, { tris: [], w: t.w, bins: new Set(), rmax: 0 });
+    const pc = pieces.get(root);
+    pc.tris.push(t.tri);
+    for (const p of t.tri.p) {
+      const dz = p.z - t.w.c.z;
+      const dy = p.y - t.w.c.y;
+      const r = Math.hypot(dz, dy);
+      pc.rmax = Math.max(pc.rmax, r);
+      if (r > 0.02) pc.bins.add(Math.floor(((Math.atan2(dy, dz) + Math.PI) / (2 * Math.PI)) * 36) % 36);
+    }
+  }
+  const out = new Set();
+  const resumen = {};
+  const main = new Map(); // pieza giratoria más grande de cada rueda (la llanta)
+  for (const pc of pieces.values()) {
+    // Redonda y centrada en el eje (la cadena también rodea el eje, pero es alargada).
+    const b = new THREE.Box3();
+    for (const t of pc.tris) for (const p of t.p) b.expandByPoint(p);
+    const dy = b.max.y - b.min.y;
+    const dz = b.max.z - b.min.z;
+    const round = Math.abs(dy - dz) < 0.12 * Math.max(dy, dz) && Math.abs((b.min.y + b.max.y) / 2 - pc.w.c.y) < 0.06 && Math.abs((b.min.z + b.max.z) / 2 - pc.w.c.z) < 0.06;
+    const spins = (pc.bins.size >= 30 && round) || pc.rmax < 0.06;
+    if (spins && pc.rmax > 0.2) {
+      // La llanta es la pieza giratoria de mayor diámetro (la que toca el piso).
+      pc.box = new THREE.Box3();
+      for (const t of pc.tris) for (const p of t.p) pc.box.expandByPoint(p);
+      const d = (b) => b.max.z - b.min.z;
+      if (!main.has(pc.w.part) || d(pc.box) > d(main.get(pc.w.part).box)) main.set(pc.w.part, pc);
+    }
+    const k = `${pc.w.part} ${spins ? 'gira' : 'fija'}`;
+    resumen[k] = (resumen[k] ?? 0) + pc.tris.length;
+    if (process.env.DEBUG_MOTO && pc.tris.length > 20) {
+      const b = new THREE.Box3();
+      for (const t of pc.tris) for (const p of t.p) b.expandByPoint(p);
+      console.log(k, pc.tris.length, 'bins', pc.bins.size, 'rmax', pc.rmax.toFixed(3), 'min', b.min.toArray().map((v) => v.toFixed(3)).join(','), 'max', b.max.toArray().map((v) => v.toFixed(3)).join(','));
+    }
+    if (spins) for (const t of pc.tris) out.add(triKey(t));
+  }
+  console.log('moto piezas de rueda (triángulos):', JSON.stringify(resumen));
+  const boxes = new Map();
+  for (const [part, pc] of main) boxes.set(part, pc.box);
+  return { keys: out, boxes };
 }
 
 /** Rueda por cuadrante (frente en -Z, izquierda en -X). */
@@ -563,13 +654,35 @@ async function moto() {
     console.log('moto rueda', k, 'centro', c.toArray().map((v) => v.toFixed(3)).join(','), 'radio', r.toFixed(3), 'ancho', (hw * 2).toFixed(3));
     return { part: `rueda_${k}`, c, r, hw };
   });
+  // Dentro del cilindro de cada rueda no todo gira: el guardabarros, la
+  // mordaza del freno y la punta de la horquilla (o el guardacadena atrás)
+  // quedan quietos. Se separan por piezas conectadas: solo gira la pieza que
+  // da la vuelta completa alrededor del eje (llanta, rin, disco, piñón) o la
+  // que está pegada al eje (tapas); lo demás de la rueda delantera va en
+  // "horquilla_del" (vira con la dirección, sin girar) y lo de atrás, en la
+  // carrocería.
+  // El eje estimado con los triángulos de caucho queda corrido unos cm: se
+  // corrige con la caja de la llanta completa (primera pasada) y se repite.
+  let spin = spinningPieces(scene, pre, wheels);
+  for (const w of wheels) {
+    const b = spin.boxes.get(w.part);
+    if (!b) continue;
+    w.r = (b.max.z - b.min.z) / 2;
+    w.c.set(0, b.min.y + w.r, (b.min.z + b.max.z) / 2);
+    console.log('moto eje corregido', w.part, w.c.toArray().map((v) => v.toFixed(3)).join(','), 'radio', w.r.toFixed(3));
+  }
+  spin = spinningPieces(scene, pre, wheels);
+  const spinning = spin.keys;
   const buckets = collect(scene, pre, (mesh, mat, tri) => {
     if (mat === 'glass') return { part: 'carroceria', mat: 'vidrio' };
     const color = px.get(mat)(triUV(tri));
     const c = centroid(tri);
     for (const w of wheels) {
       const inside = tri.p.every((p) => Math.abs(p.x) < w.hw + 0.012 && Math.hypot(p.z - w.c.z, p.y - w.c.y) < w.r + 0.01);
-      if (inside) return { part: w.part, mat: 'detalle', color };
+      if (!inside) continue;
+      if (spinning.has(triKey(tri))) return { part: w.part, mat: 'detalle', color };
+      if (w.part === 'rueda_del') return mat === 'plastico_0' && Math.max(...color) < 80 ? { part: 'horquilla_del', mat: 'pintura' } : { part: 'horquilla_del', mat: 'detalle', color };
+      break;
     }
     // Carenaje, tanque, colín y guardabarros: base oscura de "plastico_0"
     // (las calcomanías blancas y naranjas se conservan).

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
 import { photoMaterial, PHOTO_TEXTURES } from './photoMaterials.js';
 import { CURTAIN_COLORS, FACADE, FRAME_COLORS, METAL_COLORS, SHOPS, ZOCALO_COLORS, faceFrame } from '../sim/facades.js';
-import { GRID, MAP_MIN_X, MAP_MIN_Z } from '../sim/terrain.js';
+import { MAP_MIN_X, MAP_MIN_Z } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
 import {
   AWNING_SLOTS,
@@ -33,7 +33,7 @@ import {
   wallDirt,
 } from './facadeTextures.js';
 
-const CHUNK = GRID.pitch * 3;
+const CHUNK = 150; // m por lado de cada trozo de detalle
 // Materiales de detalle: se ocultan de lejos.
 const DETAIL = new Set(['detail', 'grille']);
 // Materiales que no proyectan sombra (planos finos o hundidos en el muro).
@@ -193,10 +193,18 @@ export class FacadeBuilder {
     // Cuadrilátero plano sobre la fachada (u, v en metros; off hacia la calle).
     const fq = (g, u0, u1, v0, v1, off, uv, color) => face(g, [P(u0, v0, off), P(u1, v0, off), P(u1, v1, off), P(u0, v1, off)], N, uv ?? [[(uOff + u0), v0], [(uOff + u1), v0], [(uOff + u1), v1], [(uOff + u0), v1]], color);
     // Caja en coordenadas de fachada.
+    // Caja orientada en coordenadas de fachada (u a lo largo, v alto, off hacia la calle).
     const fbox = (g, u0, u1, v0, v1, o0, o1, color, uvScale = 1) => {
-      const a = P(u0, v0, o0);
-      const c = P(u1, v1, o1);
-      g.box(Math.min(a[0], c[0]), Math.min(a[1], c[1]), Math.min(a[2], c[2]), Math.max(a[0], c[0]), Math.max(a[1], c[1]), Math.max(a[2], c[2]), uvScale, color, false);
+      const k = 1 / uvScale;
+      const du = (u1 - u0) * k;
+      const dv = (v1 - v0) * k;
+      const dd = (o1 - o0) * k;
+      face(g, [P(u0, v0, o1), P(u1, v0, o1), P(u1, v1, o1), P(u0, v1, o1)], N, [[0, 0], [du, 0], [du, dv], [0, dv]], color);
+      face(g, [P(u1, v0, o0), P(u0, v0, o0), P(u0, v1, o0), P(u1, v1, o0)], [-N[0], 0, -N[2]], [[0, 0], [du, 0], [du, dv], [0, dv]], color);
+      face(g, [P(u1, v0, o1), P(u1, v0, o0), P(u1, v1, o0), P(u1, v1, o1)], R, [[0, 0], [dd, 0], [dd, dv], [0, dv]], color);
+      face(g, [P(u0, v0, o0), P(u0, v0, o1), P(u0, v1, o1), P(u0, v1, o0)], L_, [[0, 0], [dd, 0], [dd, dv], [0, dv]], color);
+      face(g, [P(u0, v1, o1), P(u1, v1, o1), P(u1, v1, o0), P(u0, v1, o0)], UP, [[0, 0], [du, 0], [du, dd], [0, dd]], color);
+      face(g, [P(u0, v0, o0), P(u1, v0, o0), P(u1, v0, o1), P(u0, v0, o1)], DOWN, [[0, 0], [du, 0], [du, dd], [0, dd]], color);
     };
     // Muro con huecos: franjas verticales entre los bordes de los huecos.
     const wallWithHoles = (g, holes, vMin, vMax, off, color) => {
