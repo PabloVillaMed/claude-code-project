@@ -1,22 +1,56 @@
 name: Medellín Aranjuez
 
+# Pensado para gastar pocos minutos y poco almacenamiento de GitHub:
+#  - En los pull requests solo corren las pruebas unitarias (Ubuntu, ~3 min);
+#    un push nuevo cancela la corrida anterior del mismo PR.
+#  - Las pruebas e2e y el build de Windows (que cuenta doble en minutos y sube
+#    ~200 MB) solo corren a mano: Actions → "Medellín Aranjuez" → Run workflow.
+#  - Los artefactos duran 2 días (el almacenamiento de Actions tiene cupo).
+
 on:
-  push:
-    paths:
-      - 'medellin-aranjuez/**'
-      - '.github/workflows/medellin-aranjuez.yml'
   pull_request:
     paths:
       - 'medellin-aranjuez/**'
+      - '.github/workflows/medellin-aranjuez.yml'
   workflow_dispatch:
+    inputs:
+      e2e:
+        description: 'Correr las pruebas e2e (Playwright)'
+        type: boolean
+        default: false
+      windows:
+        description: 'Build de Windows (zip portable) + prueba de humo'
+        type: boolean
+        default: false
+
+concurrency:
+  group: medellin-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
     working-directory: medellin-aranjuez
 
 jobs:
-  pruebas:
-    name: Pruebas (unitarias + e2e)
+  unitarias:
+    name: Pruebas unitarias
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: medellin-aranjuez/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm test
+
+  e2e:
+    name: Pruebas e2e
+    if: github.event_name == 'workflow_dispatch' && inputs.e2e
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -26,13 +60,15 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: medellin-aranjuez/package-lock.json
-      - run: npm ci
-      - run: npm test
+      - run: npm ci --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 
   windows:
-    name: Build Windows 11 (instalador, portable y zip)
+    name: Build Windows (zip portable)
+    if: github.event_name == 'workflow_dispatch' && inputs.windows
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -42,17 +78,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: medellin-aranjuez/package-lock.json
-      - run: npm ci
-      - run: npm test
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - run: npx electron-builder --win nsis portable zip --x64 --publish never
+      - run: npx electron-builder --win zip --x64 --publish never
       - name: Prueba de humo del .exe empaquetado
         run: node scripts/electron-smoke.mjs release/win-unpacked/MedellinAranjuez.exe electron-smoke.png
       - uses: actions/upload-artifact@v4
         with:
           name: MedellinAranjuez-Windows
           path: |
-            medellin-aranjuez/release/*.exe
             medellin-aranjuez/release/*.zip
             medellin-aranjuez/electron-smoke.png
           if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
