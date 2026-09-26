@@ -28,6 +28,7 @@ import { Combat } from './combat.js';
 import { CameraRig } from './cameraRig.js';
 import { Pickups } from './pickups.js';
 import { Dialogue } from './dialogue.js';
+import { StoryDirector } from './storyDirector.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
 
@@ -215,6 +216,7 @@ export class Game {
     this.world = new World(this);
     this.pickups = new Pickups(this);
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
+    this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
     this.wheel = new WeaponWheel(this);
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     await step(0.92);
@@ -340,7 +342,9 @@ export class Game {
     this.missions.completed.clear();
     this.stats = { kills: 0, missions: 0, distance: 0, playTime: 0 };
     this.env.setTime(16.5);
+    this.storyDir.story.restore({ chapter: 'cap1', step: -1 });
     if (save) {
+      this.storyDir.restore(save.story);
       p.money = save.money ?? 500;
       p.health = save.health ?? 100;
       p.armor = save.armor ?? 0;
@@ -368,9 +372,11 @@ export class Game {
     if (this.opts.autotest) {
       this.hud.show(true);
       this.hud.big('ARANJUEZ', 'Comuna 4 · Medellín', 'gold', 3);
-    } else this._startIntro();
+      if (!save) this.storyDir.story.start();
+    } else if (!save) this.storyDir.playIntro();
+    else this._startIntro();
     setTimeout(() => {
-      if (this.state === 'playing') {
+      if (this.state === 'playing' && !this.storyDir.cinematic) {
         this.hud.help('Explora el barrio: los <b class="hl">puntos dorados</b> del minimapa son lugares por descubrir y las misiones <b class="hl">!</b> dan plata. <kbd>F</kbd> para subirte a un carro o moto, <kbd>M</kbd> mapa, <kbd>F1</kbd> controles.', 9);
       }
     }, 3200);
@@ -388,6 +394,7 @@ export class Game {
       stats: this.stats,
       time: this.env.timeOfDay,
       pos: { x: p.x, z: p.z },
+      story: this.storyDir.serialize(),
     };
     safeStorage(() => localStorage.setItem(SAVE_KEY, JSON.stringify(data)));
   }
@@ -544,6 +551,12 @@ export class Game {
 
   updatePlaying(dt, realDt, a) {
     const p = this.player;
+    // Cinemática de la historia: la cámara y los actores los mueve el director.
+    if (this.storyDir.cinematic) {
+      this.storyDir.updateCinematic(realDt, a);
+      this.world.update(dt, this.storyDir.cinematic?.focus ?? p);
+      return;
+    }
     this.stats.playTime += realDt;
     if (a.pause) return this.pause();
     if (a.map) return this.openMap();
@@ -619,6 +632,7 @@ export class Game {
     this._ambientAudio(dt);
     this.pickups.update(dt, p);
     this._updateMissions(dt);
+    this.storyDir.update(realDt);
     this._updatePois(realDt, a);
     this._updateGps(realDt);
 
@@ -951,6 +965,7 @@ export class Game {
       switch (e.type) {
         case 'start':
           this.hud.big(e.mission.title.toUpperCase(), 'Misión', 'gold', 2.5);
+          this.storyDir.onMissionStart(e.mission.id);
           this.audio.ui('ok');
           break;
         case 'objective':
@@ -1032,6 +1047,8 @@ export class Game {
   }
 
   _interactPrompt(poi) {
+    const sp = this.storyDir.prompt(poi);
+    if (sp) return sp;
     const m = this.missions.available(poi.id);
     if (poi.id === 'armeria') return 'Presiona <kbd>E</kbd> para comprar armas, munición y chaleco.';
     if (poi.type === 'food') return `Presiona <kbd>E</kbd> para pedir en <b>${poi.name}</b>${m && !this.missions.completed.has(m.id) ? ' (tienen un encargo para vos)' : ''}.`;
@@ -1043,6 +1060,7 @@ export class Game {
 
   interact(poi) {
     const p = this.player;
+    if (this.storyDir.onInteract(poi)) return;
     if (poi.id === 'armeria' || poi.type === 'food') return this.openShop(poi);
     if (poi.id === 'hospital') {
       if (p.health >= 100) return this.hud.toast('Estás sano, parce.');
@@ -1279,6 +1297,14 @@ export class Game {
       },
       get frames() {
         return g.frameCount ?? 0;
+      },
+      /** Historia: paso actual, y la cinemática de entrada a pedido (pruebas/capturas). */
+      story() {
+        const d = g.storyDir;
+        return { step: d.story.current?.id ?? null, done: d.story.done, cinematic: !!d.cinematic, shot: d.cinematic?.i ?? -1 };
+      },
+      playIntro() {
+        g.storyDir.playIntro();
       },
       /** Estado de la iluminación nocturna y de las marcas de llanta (pruebas). */
       lights() {

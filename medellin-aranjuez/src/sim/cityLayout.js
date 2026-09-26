@@ -1101,6 +1101,19 @@ export const LOCAL_SPOTS = [
     ],
   },
   { id: 'carniceria90', name: 'Carnicería La 90', at: [-140, -90] },
+  // La tienda de la abuela del protagonista (historia, capítulo 1).
+  {
+    id: 'abuela',
+    name: 'Tienda Doña Rosa',
+    kind: 'tienda',
+    near: ['parque', 34, 30],
+    desc: 'La tienda de tu abuela, a una cuadra del parque: tinto, pan y la cuenta fiada del barrio.',
+    menu: [
+      { id: 'tinto', name: 'Tinto de la abuela', desc: 'Con panela, como siempre', price: 5, heal: 10 },
+      { id: 'pandequeso', name: 'Pan de queso', desc: 'Del que trae el panadero en la mañana', price: 15, heal: 15 },
+      { id: 'gaseosa', name: 'Gaseosa', desc: 'Bien fría', price: 15, heal: 10 },
+    ],
+  },
 ];
 
 /** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */
@@ -1144,7 +1157,7 @@ function placeLocales(ctx) {
     }
     if (!best) continue;
     best.style = 'tienda';
-    best.local = { name: L.name, kind: kinds.get(L.name) ?? 'cafeteria' };
+    best.local = { name: L.name, kind: kinds.get(L.name) ?? L.kind ?? 'cafeteria' };
     if (!L.menu) continue;
     const f = best.frame;
     city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'food', menu: L.menu, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });

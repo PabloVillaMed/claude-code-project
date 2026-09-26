@@ -1632,3 +1632,102 @@ body.menu-open .menu-main-panel .menu-buttons button:not(.hidden) {
   border-bottom: 2px solid #111;
   transform: translateY(-1px) rotate(-45deg);
 }
+
+/* ================= Cinemáticas de la historia ================= */
+#cine {
+  position: fixed;
+  inset: 0;
+  z-index: 31; /* sobre el velo negro: los títulos se leen en los fundidos */
+  pointer-events: none;
+  display: none;
+}
+#cine.on {
+  display: block;
+}
+#cine-sub {
+  position: absolute;
+  left: 50%;
+  bottom: calc(11vh + 1.2em);
+  transform: translateX(-50%);
+  width: min(52em, 80vw);
+  text-align: center;
+}
+#cine-sub .line {
+  display: inline-block;
+  padding: 0.35em 1em 0.4em;
+  font-family: var(--hud-font);
+  font-size: clamp(15px, 1.35vw, 22px);
+  font-weight: 500;
+  line-height: 1.35;
+  color: #f4f1ea;
+  background: rgba(0, 0, 0, 0.55);
+  animation: sub-in 0.2s ease-out;
+}
+#cine-sub .who {
+  margin-right: 0.6em;
+  font-family: var(--hud-cond);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#cine-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-family: var(--hud-cond);
+  font-size: clamp(40px, 6.5vw, 96px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.7);
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+#cine-title.show {
+  opacity: 1;
+}
+#cine-title small,
+#cine-title em {
+  display: block;
+  font-family: var(--hud-font);
+  font-size: 0.24em;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+#cine-title small {
+  margin-bottom: 0.4em;
+}
+#cine-title em {
+  margin-top: 0.6em;
+  color: #d8d2c4;
+  letter-spacing: 0.2em;
+}
+#cine .cine-skip {
+  position: absolute;
+  right: 2.2em;
+  bottom: calc(11vh - 2.2em);
+  font-family: var(--hud-cond);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+#objective .story-tag {
+  display: inline-block;
+  margin-right: 0.5em;
+  padding: 0 0.45em;
+  font-family: var(--hud-cond);
+  font-size: 0.8em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #111;
+  background: var(--accent);
+}

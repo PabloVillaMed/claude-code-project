@@ -25,7 +25,7 @@ export const FACADE = {
 
 // Nombres genéricos de negocios de barrio (inventados, sin marcas).
 export const SHOPS = [
-  ['Tienda Doña Rosa', 'tienda'],
+  ['Tienda Doña Marta', 'tienda'],
   ['Tienda Mi Barrio', 'tienda'],
   ['Minimercado La 92', 'tienda'],
   ['Miscelánea La Esquina', 'tienda'],
@@ -71,6 +71,7 @@ export const LOCALES = [
   ['Fritanga El Paisa', 'cafeteria', 'Chicharrón · Morcilla · Chorizo'],
   ['Billares La 92', 'billares', 'Cerveza fría · Parqués'],
   ['Carnicería La 90', 'carniceria', 'Res · Cerdo · Pollo'],
+  ['Tienda Doña Rosa', 'tienda', 'Víveres · Tinto · Se fía'],
 ];
 
 /** Todos los avisos pintados, en el orden del atlas de letreros. */

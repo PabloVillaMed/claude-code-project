@@ -24,10 +24,12 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { LINES, VOICES } from '../../src/game/dialogueLines.js';
+import { STORY_CAST, STORY_LINES, STORY_STYLE } from '../../src/game/storyLines.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 const CACHE = path.join(ROOT, '.cache/voces');
 const OUT = path.join(ROOT, 'public/sounds/voces');
+const OUT_STORY = path.join(ROOT, 'public/sounds/historia'); // líneas de la historia (storyLines.js)
 const SLR72 = 'https://www.openslr.org/resources/72';
 const CHATTERBOX_VERSION = '0.1.7';
 const TORCH_VERSION = '2.6.0';
@@ -348,7 +350,32 @@ async function main() {
       filters.push(`aresample=${RATE}`);
       const procKey = sha(JSON.stringify([rawKey, filters, st.level, BITRATE, VERSION]));
       const out = path.join(CACHE, 'raw', `${rawKey}.wav`);
-      items.push({ name, line, vid, syn: { ...syn, ref: CAST[vid].ref, out }, filters, level: st.level, procKey });
+      items.push({ name, line, vid, syn: { ...syn, ref: CAST[vid].ref, out }, filters, level: st.level, procKey, file: path.join(OUT, `${name}.ogg`) });
+    }
+  }
+  // Historia: una voz por línea (la del personaje), actuación según su estilo.
+  const storyItems = [];
+  if (!ONLY || ONLY.includes('historia')) {
+    fs.mkdirSync(OUT_STORY, { recursive: true });
+    for (const line of STORY_LINES) {
+      const vid = STORY_CAST[line.who].voice;
+      const st = STORY_STYLE[line.style ?? 'normal'];
+      const name = `historia-${line.id}`;
+      const syn = {
+        engine: `chatterbox-tts ${CHATTERBOX_VERSION}`,
+        clips: CAST[vid].clips,
+        text: ttsText(line.tts ?? line.text),
+        exaggeration: st.exag,
+        cfg: st.cfg,
+        temperature: TEMPERATURE,
+        seed: RESEED[name] ?? parseInt(sha(name).slice(0, 7), 16),
+      };
+      const rawKey = sha(JSON.stringify(syn));
+      const filters = ['highpass=f=70', `aresample=${RATE}`];
+      const procKey = sha(JSON.stringify([rawKey, filters, st.level, BITRATE, VERSION]));
+      const it = { name, line, vid, syn: { ...syn, ref: CAST[vid].ref, out: path.join(CACHE, 'raw', `${rawKey}.wav`) }, filters, level: st.level, procKey, file: path.join(OUT_STORY, `${line.id}.ogg`) };
+      items.push(it);
+      storyItems.push(it);
     }
   }
 
@@ -365,7 +392,7 @@ async function main() {
   const tmpF32 = path.join(CACHE, 'proc.f32');
   const tmpPcm = path.join(CACHE, 'proc.pcm');
   for (const it of items) {
-    const out = path.join(OUT, `${it.name}.ogg`);
+    const out = it.file;
     const st = stamps[it.name];
     if (!FORCE && st?.key === it.procKey && fs.existsSync(out)) continue;
     run(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', it.syn.out, '-af', it.filters.join(','), '-ac', '1', '-f', 'f32le', tmpF32]);
@@ -384,6 +411,14 @@ async function main() {
   fs.writeFileSync(stampsFile, JSON.stringify(stamps, null, 1));
   fs.rmSync(tmpF32, { force: true });
   fs.rmSync(tmpPcm, { force: true });
+
+  // Manifiesto de la historia (duración de cada línea).
+  if (storyItems.length) {
+    const files = {};
+    for (const it of storyItems) if (stamps[it.name] && fs.existsSync(it.file)) files[it.line.id] = stamps[it.name].seconds;
+    fs.writeFileSync(path.join(OUT_STORY, 'manifest.json'), `${JSON.stringify({ version: VERSION, engine: `chatterbox-tts ${CHATTERBOX_VERSION} (OpenSLR 72)`, codec: `opus ${BITRATE}`, files })}\n`);
+    console.log(`Historia: ${Object.keys(files).length}/${storyItems.length} líneas`);
+  }
 
   // 4) Limpieza de archivos que ya no corresponden a ninguna línea y manifiesto.
   const wanted = new Set();
