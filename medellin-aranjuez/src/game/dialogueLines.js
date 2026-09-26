@@ -2,7 +2,8 @@
 // vecinos sentados frente a las tiendas, pregones de los venteros, reacciones
 // y policía. Es solo datos (sin DOM): lo usan el juego (src/game/dialogue.js,
 // subtítulos) y el generador de voces (scripts/assets/voces.mjs, que produce
-// public/sounds/voces/<id>-<voz>.ogg con Piper TTS).
+// public/sounds/voces/<id>-<voz>.ogg con Chatterbox, clonando hablantes
+// colombianos de OpenSLR 72).
 //
 // Cada línea: { id, cat, text, voices, tts?, hours?, kind?, conv?, role? }
 //   text   lo que se muestra en el subtítulo
@@ -13,23 +14,21 @@
 //   conv/role (charlas) número de conversación y quién habla: 'A' o 'B'
 
 /**
- * Voces sintéticas. model: voz de Piper (rhasspy/piper-voices); pitch en
- * semitonos (mueve también los formantes: más grave = persona "más grande");
- * speed > 1 habla más rápido; radio: filtro de radioteléfono.
- * Los modelos de España se fonetizan con 'es-419' (seseo: "grasias", no
- * "grazias"), que suena mucho más cerca del acento de Medellín.
+ * Voces del barrio. Cada una clona a un hablante colombiano real de OpenSLR 72
+ * (el reparto está en CAST de scripts/assets/voces.mjs); radio: filtro de
+ * radioteléfono.
  */
 export const VOICES = {
-  h1: { label: 'Señor mayor', gender: 'm', model: 'es_ES-davefx-medium', espeak: 'es-419', pitch: -1.5, speed: 0.92, old: true },
-  h2: { label: 'Pelado', gender: 'm', model: 'es_MX-ald-medium', pitch: 0.4, speed: 1.06 },
-  h3: { label: 'Señor', gender: 'm', model: 'es_ES-sharvard-medium', speaker: 0, espeak: 'es-419', pitch: 0, speed: 1 },
-  m1: { label: 'Señora mayor', gender: 'f', model: 'es_MX-claude-high', pitch: -2.2, speed: 0.93, old: true },
-  m2: { label: 'Muchacha', gender: 'f', model: 'es_MX-claude-high', pitch: 0.6, speed: 1.05 },
-  m3: { label: 'Señora', gender: 'f', model: 'es_ES-sharvard-medium', speaker: 1, espeak: 'es-419', pitch: -0.4, speed: 1 },
-  p1: { label: 'Policía', gender: 'm', model: 'es_ES-davefx-medium', espeak: 'es-419', pitch: 0.3, speed: 1.08 },
-  p2: { label: 'Policía', gender: 'm', model: 'es_MX-ald-medium', pitch: -1.6, speed: 1.04 },
-  r1: { label: 'Central', gender: 'f', model: 'es_MX-claude-high', pitch: -0.6, speed: 1.08, radio: true },
-  r2: { label: 'Patrulla', gender: 'm', model: 'es_ES-sharvard-medium', speaker: 0, espeak: 'es-419', pitch: -0.8, speed: 1.08, radio: true },
+  h1: { label: 'Señor mayor', gender: 'm' },
+  h2: { label: 'Pelado', gender: 'm' },
+  h3: { label: 'Señor', gender: 'm' },
+  m1: { label: 'Señora mayor', gender: 'f' },
+  m2: { label: 'Muchacha', gender: 'f' },
+  m3: { label: 'Señora', gender: 'f' },
+  p1: { label: 'Policía', gender: 'm' },
+  p2: { label: 'Policía', gender: 'm' },
+  r1: { label: 'Central', gender: 'f', radio: true },
+  r2: { label: 'Patrulla', gender: 'm', radio: true },
 };
 
 /** Voces de la gente del barrio, por género (el orden alterna h/m a propósito). */

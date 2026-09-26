@@ -5,7 +5,7 @@
 //
 // Solo LEE el estado del juego (peatones, jugador, nivel de búsqueda) y
 // escucha los eventos de game.events (disparos, heridos, muertos); no cambia
-// la IA. Las voces son archivos Opus generados offline con Piper TTS
+// la IA. Las voces son archivos Opus generados offline con Chatterbox
 // (scripts/assets/voces.mjs); si faltan, igual se muestran los subtítulos.
 
 import { LINES, VOICES, CIVIL_BY_GENDER, POLICE_VOICES, CONVERSATIONS, voiceFile } from './dialogueLines.js';

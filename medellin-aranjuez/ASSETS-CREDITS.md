@@ -115,18 +115,38 @@ generada en el juego (`src/game/sfxArmas.js`).
 ## Voces de los diálogos de la calle
 
 Las frases (texto propio, en español de Medellín, en `src/game/dialogueLines.js`)
-se sintetizaron offline con [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)
-1.8 (herramienta usada solo para generar los audios; no se incluye en el juego)
-con `scripts/assets/voces.mjs`, y se procesaron con ffmpeg (tono, ecualización,
-filtro de radio) a Opus mono. Modelos de [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices)
-(repositorio MIT); la licencia de cada voz es la de su conjunto de datos, según su MODEL_CARD.
+se sintetizaron offline con [Chatterbox Multilingual](https://github.com/resemble-ai/chatterbox)
+(`chatterbox-tts` 0.1.7, pesos [ResembleAI/chatterbox](https://huggingface.co/ResembleAI/chatterbox),
+© Resemble AI, licencia MIT; herramienta usada solo para generar los audios, no
+se incluye en el juego) con `scripts/assets/voces.mjs` y
+`scripts/assets/voces_chatterbox.py`, clonando (zero-shot, a partir de ~10 s de
+grabación) la voz de hablantes colombianos reales del corpus OpenSLR 72. Luego se
+procesaron con ffmpeg (paso alto, filtro de radio en r1/r2, recorte y nivel) a
+Opus mono. Chatterbox marca sus salidas con una marca de agua inaudible (Perth).
+
+Los audios `public/sounds/voces/*.ogg` son una obra derivada de las grabaciones
+de referencia y se distribuyen bajo la misma licencia **CC BY-SA 4.0**.
 
 | Recurso | Ruta en el proyecto | Fuente | Autor | Licencia |
 |---|---|---|---|---|
-| Voz sintética "claude" (es_MX, high): señora mayor, muchacha y central de radio (voces m1, m2, r1) | `public/sounds/voces/*-m1.ogg`, `*-m2.ogg`, `*-r1.ogg` | [piper-voices es_MX/claude/high](https://huggingface.co/rhasspy/piper-voices/tree/main/es/es_MX/claude/high) · datos: [HirCoir/Piper-TTS-Spanish](https://huggingface.co/spaces/HirCoir/Piper-TTS-Spanish) | HirCoir | Apache-2.0 |
-| Voz sintética "ald" (es_MX, medium): pelado y policía (voces h2, p2) | `public/sounds/voces/*-h2.ogg`, `*-p2.ogg` | [piper-voices es_MX/ald/medium](https://huggingface.co/rhasspy/piper-voices/tree/main/es/es_MX/ald/medium) · datos: [Ald_Mexican_Spanish_speech_dataset](https://huggingface.co/datasets/rmcpantoja/Ald_Mexican_Spanish_speech_dataset) | rmcpantoja (Aldo) | Unlicense (dominio público) |
-| Voz sintética "davefx" (es_ES, medium, fonetizada con seseo): señor mayor y policía (voces h1, p1) | `public/sounds/voces/*-h1.ogg`, `*-p1.ogg` | [piper-voices es_ES/davefx/medium](https://huggingface.co/rhasspy/piper-voices/tree/main/es/es_ES/davefx/medium) · datos: [OHF-Voice/voice-datasets](https://github.com/OHF-Voice/voice-datasets) | davefx; modelo de Michael Hansen (rhasspy) | CC0 |
-| Voz sintética "sharvard" (es_ES, medium, 2 hablantes, fonetizada con seseo): señor, señora y patrulla por radio (voces h3, m3, r2) | `public/sounds/voces/*-h3.ogg`, `*-m3.ogg`, `*-r2.ogg` | [piper-voices es_ES/sharvard/medium](https://huggingface.co/rhasspy/piper-voices/tree/main/es/es_ES/sharvard/medium) · datos: [Sharvard corpus](https://datashare.ed.ac.uk/handle/10283/574) | V. Aubanel, M. L. García Lecumberri, M. Cooke (Sharvard corpus); modelo de Michael Hansen (rhasspy) | CC BY 3.0 |
+| Modelo de TTS Chatterbox Multilingual (síntesis y clonación de voz) | — (solo generación) | [resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox) · [ResembleAI/chatterbox](https://huggingface.co/ResembleAI/chatterbox) | Resemble AI | MIT |
+| "Crowdsourced high-quality Colombian Spanish speech data set" (OpenSLR 72): voces de referencia de 10 hablantes anónimos | `public/sounds/voces/*.ogg` (voces clonadas) | [openslr.org/72](https://www.openslr.org/72/) | Google (A. E. Guevara-Rukoz, I. Demirsahin, F. He, S.-H. C. Chu, S. Sarin, K. Pipatsrisawat, A. Gutkin, A. Butryna, O. Kjartansson, "Crowdsourcing Latin American Spanish for Low-Resource Text-to-Speech", LREC 2020) | CC BY-SA 4.0 |
+
+Reparto (voz del juego → hablante de OpenSLR 72; las grabaciones exactas usadas
+como referencia están en `CAST` de `scripts/assets/voces.mjs`):
+
+| Voz | Papel | Hablante OpenSLR 72 |
+|---|---|---|
+| h1 | Señor mayor | `com_07049` |
+| h2 | Pelado | `com_08784` |
+| h3 | Señor | `com_09334` |
+| m1 | Señora mayor | `cof_03034` |
+| m2 | Muchacha | `cof_07049` |
+| m3 | Señora | `cof_00610` |
+| p1 | Policía | `com_03397` |
+| p2 | Policía | `com_06136` |
+| r1 | Central (radio) | `cof_07508` |
+| r2 | Patrulla (radio) | `com_08421` |
 
 ## Datos geográficos
 
