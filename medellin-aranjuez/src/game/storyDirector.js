@@ -273,6 +273,39 @@ export class StoryDirector {
     const walkB = { x: P.x + F.ux * side * 2.2, z: P.z + F.uz * side * 2.2 };
     const stand = { x: this.seat.x + F.nx * 1.6 + F.ux * side * 1.3, z: this.seat.z + F.nz * 1.6 + F.uz * side * 1.3 };
     const faceAbuela = yawTo(this.seat.x - stand.x, this.seat.z - stand.z);
+    // Llegada por la estación Caribe: el final del puente y la escalera que
+    // baja a Moravia (marco local de la estación: a = a lo largo, c = a lo ancho).
+    const S = city.metro?.geo;
+    const east = S?.bridges?.find((b) => b.sgn > 0);
+    let metroShot;
+    if (east?.stair) {
+      const stq = east.stair;
+      const cm = (stq.c0 + stq.c1) / 2;
+      const Wp = (a, cc) => {
+        const [x, z] = S.frame.W(a, cc);
+        return { x, z };
+      };
+      const path = [Wp(0, cm - 5), Wp(0, cm), Wp(stq.a0 + 0.3, cm), Wp(stq.a1 + 0.4, cm), Wp(stq.a1 + 4.5, cm)];
+      const eye = Wp(stq.a1 + 7.5, cm - 5.5);
+      const L = path.reduce((acc, q, i) => acc + (i ? dist2D(q.x, q.z, path[i - 1].x, path[i - 1].z) : 0), 0);
+      metroShot = {
+        minDur: L / 1.5 + 0.8,
+        hour: 17.4,
+        lines: ['intro-01'],
+        actor: { path, speed: 1.5, yHint: S.yC },
+        cam: (u, a) => ({ pos: [eye.x, groundHeight(eye.x, eye.z) + 1.7, eye.z], look: [a.x, a.y + 1.3, a.z] }),
+        focus: path[path.length - 1],
+      };
+    } else {
+      metroShot = {
+        minDur: 7,
+        hour: 17.4,
+        lines: ['intro-01'],
+        actor: { from: { x: metro.x - mdx * 2, z: metro.z - mdz * 2 }, to: { x: metro.x + mdx * 9, z: metro.z + mdz * 9 } },
+        cam: (u, a) => ({ pos: [metro.x + mdx * 12 - mdz * 5, groundHeight(metro.x, metro.z) + 2.2, metro.z + mdz * 12 + mdx * 5], look: [a.x, a.y + 1.3, a.z] }),
+        focus: metro,
+      };
+    }
     const shots = [
       {
         // El valle desde el oriente, a la hora dorada.
@@ -285,15 +318,8 @@ export class StoryDirector {
         },
         focus: mirador,
       },
-      {
-        // Llega en el metro: baja del puente de la estación Caribe.
-        minDur: 7,
-        hour: 17.4,
-        lines: ['intro-01'],
-        actor: { from: { x: metro.x - mdx * 2, z: metro.z - mdz * 2 }, to: { x: metro.x + mdx * 9, z: metro.z + mdz * 9 } },
-        cam: (u, a) => ({ pos: [metro.x + mdx * 16 - mdz * 7, groundHeight(metro.x, metro.z) + 3.2, metro.z + mdz * 16 + mdx * 7], look: [a.x, a.y + 1.4 + (1 - u) * 1.5, a.z] }),
-        focus: metro,
-      },
+      // Llega en el metro: baja del puente de la estación Caribe.
+      metroShot,
       {
         // Por la cuadra de la abuela, cámara que lo sigue de lado.
         minDur: 7.5,
@@ -400,19 +426,36 @@ export class StoryDirector {
     let speed = 0;
     let yaw = rig.root.rotation.y;
     if (act) {
-      const L = dist2D(act.from.x, act.from.z, act.to.x, act.to.z);
-      const wd = act.walkDur ?? Math.max(0.1, L / WALK);
-      const u = Math.min(1, c.t / wd);
-      ax = act.from.x + (act.to.x - act.from.x) * u;
-      az = act.from.z + (act.to.z - act.from.z) * u;
-      speed = u < 1 ? L / wd : 0;
-      yaw = u < 1 && L > 0.05 ? yawTo(act.to.x - act.from.x, act.to.z - act.from.z) : (act.face ?? yaw);
-      const ay = groundHeight(ax, az);
+      const path = act.path ?? [act.from, act.to];
+      const seg = [];
+      let L = 0;
+      for (let i = 1; i < path.length; i++) {
+        const l = dist2D(path[i].x, path[i].z, path[i - 1].x, path[i - 1].z);
+        seg.push(l);
+        L += l;
+      }
+      const wd = act.walkDur ?? Math.max(0.1, L / (act.speed ?? WALK));
+      let s = Math.min(1, c.t / wd) * L;
+      let i = 0;
+      while (i < seg.length - 1 && s > seg[i]) s -= seg[i++];
+      const k = seg[i] > 0 ? Math.min(1, s / seg[i]) : 1;
+      const A = path[i];
+      const B = path[i + 1];
+      ax = A.x + (B.x - A.x) * k;
+      az = A.z + (B.z - A.z) * k;
+      const moving = c.t < wd && L > 0.05;
+      speed = moving ? L / wd : 0;
+      yaw = moving ? yawTo(B.x - A.x, B.z - A.z) : (act.face ?? yaw);
+      // Sobre puentes y escaleras: la superficie caminable bajo la altura anterior.
+      c.ay = c.i === c.ayShot ? c.ay : (act.yHint ?? groundHeight(ax, az));
+      c.ayShot = c.i;
+      const ay = groundHeight(ax, az, c.ay + 0.6);
+      c.ay = ay;
       rig.root.position.set(ax, ay, az);
       rig.root.rotation.y = yaw;
       rig.animate(dt, { speed, onGround: true, aimPitch: 0 });
     }
-    const actor = { x: ax, y: groundHeight(ax, az), z: az };
+    const actor = { x: ax, y: act ? c.ay : groundHeight(ax, az), z: az };
     // Diálogo: una línea tras otra, con una pausa corta.
     const lines = shot.lines ?? [];
     if (c.lineIdx < lines.length && (!c.speech || c.speech.done)) {

@@ -26,7 +26,7 @@ for (const at of times) {
   await page.waitForTimeout(700); // transiciones CSS de fundidos y títulos
   const st = await G(() => window.__game.story());
   const name = `t${String(at).replace('.', '_')}`;
-  await page.screenshot({ path: `${out}/${name}.png` });
+  await page.screenshot({ path: `${out}/${name}.png`, timeout: 600000 });
   console.log(name, JSON.stringify(st));
   if (!st.cinematic) break;
 }

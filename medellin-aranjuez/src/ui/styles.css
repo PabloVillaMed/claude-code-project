@@ -1705,6 +1705,10 @@ body.menu-open .menu-main-panel .menu-buttons button:not(.hidden) {
 #cine-title small {
   margin-bottom: 0.4em;
 }
+#cine-title small,
+#cine-title em {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 18px rgba(0, 0, 0, 0.8);
+}
 #cine-title em {
   margin-top: 0.6em;
   color: #d8d2c4;
