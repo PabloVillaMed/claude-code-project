@@ -279,6 +279,7 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   const wb0 = v.spec?.wheelBase ?? 2.5;
   const longTurn = turning && wb0 > 3.5;
   if (distToEnd < (uTurn ? 3 : longTurn ? 2.5 : 6.5)) {
+    agent.uTurned = uTurn;
     agent.from = agent.to;
     agent.to = agent.next;
     agent.next = null;
@@ -307,6 +308,17 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   // Curva por delante: cuánto cambia el rumbo del carril en los próximos metros.
   const ahead = lanePoint(graph, agent.from, agent.to, clamp(t + Math.min(25, distToEnd) / elen, 0, 1));
   const here = lanePoint(graph, agent.from, agent.to, clamp(t, 0, 1));
+  // Muy afuera del carril al comienzo del tramo (tras una vuelta en U que se
+  // abrió por la calle lateral): primero volver al cruce, sin cortar la esquina
+  // por el andén.
+  if (agent.uTurned) {
+    const off = Math.hypot(here.x - v.x, here.z - v.z);
+    if (prog > 10 || off < 2.5) agent.uTurned = false;
+    else if (off > 4.5) {
+      const n = graph.node(agent.from);
+      target = { x: n.x, z: n.z };
+    }
+  }
   const bend = Math.abs(wrapAngle(ahead.yaw - here.yaw));
   const desiredYaw = yawFromDir(target.x - v.x, target.z - v.z);
   const err = wrapAngle(desiredYaw - v.heading);

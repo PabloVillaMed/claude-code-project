@@ -242,14 +242,25 @@ export class Effects {
     let m = this.markers.get(id);
     if (!m) {
       const group = new THREE.Group();
-      const beam = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.9, 0.9, height, 24, 1, true),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
-      );
+      // Geometrías y materiales compartidos por altura y color.
+      const shared = (this._markerShared ??= new Map());
+      const key = `${color}:${height}`;
+      let sh = shared.get(key);
+      if (!sh) {
+        sh = {
+          beamGeo: new THREE.CylinderGeometry(0.9, 0.9, height, 24, 1, true),
+          beamMat: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+          ringGeo: new THREE.TorusGeometry(0.95, 0.06, 8, 32).rotateX(Math.PI / 2),
+          solid: new THREE.MeshBasicMaterial({ color }),
+          arrowGeo: new THREE.ConeGeometry(0.35, 0.7, 4).rotateX(Math.PI),
+        };
+        shared.set(key, sh);
+      }
+      const beam = new THREE.Mesh(sh.beamGeo, sh.beamMat);
       beam.position.y = height / 2;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 8, 32).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color }));
+      const ring = new THREE.Mesh(sh.ringGeo, sh.solid);
       ring.position.y = 0.1;
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 4).rotateX(Math.PI), new THREE.MeshBasicMaterial({ color }));
+      const arrow = new THREE.Mesh(sh.arrowGeo, sh.solid);
       arrow.position.y = height + 0.8;
       group.add(beam, ring, arrow);
       this.scene.add(group);

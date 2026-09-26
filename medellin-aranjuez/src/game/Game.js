@@ -933,9 +933,11 @@ export class Game {
     // Marcadores de dadores de misión / tiendas cuando no hay misión activa.
     for (const poi of this.city.pois) {
       const giver = !a && this.missions.available(poi.id) && !this.missions.completed.has(this.missions.available(poi.id).id);
-      const shop = poi.type === 'shop' || poi.id === 'hospital' || poi.id === 'taller';
-      if (giver || shop) {
-        const color = giver ? 0xffd200 : poi.id === 'armeria' ? 0xe63946 : 0x3a86ff;
+      const shop = poi.type === 'shop' || poi.type === 'food' || poi.id === 'hospital' || poi.id === 'taller';
+      // Solo los cercanos: cada marcador son tres mallas más por cuadro.
+      const near = Math.abs(poi.x - p.x) < 260 && Math.abs(poi.z - p.z) < 260;
+      if ((giver || shop) && near) {
+        const color = giver ? 0xffd200 : poi.id === 'armeria' ? 0xe63946 : poi.type === 'food' ? 0xf4a261 : 0x3a86ff;
         this.effects.setMarker(`poi-${poi.id}`, new THREE.Vector3(poi.x, groundHeight(poi.x, poi.z), poi.z), color);
       } else {
         this.effects.removeMarker(`poi-${poi.id}`);
@@ -962,12 +964,12 @@ export class Game {
           this.audio.ui('checkpoint');
           break;
         case 'spawnVehicle': {
-          const poi = this.city.pois.find((x) => x.id === 'taller');
+          const poi = this.city.pois.find((x) => x.id === e.at) ?? this.city.pois.find((x) => x.id === 'taller');
           const lp = this.world.lanePointNear(poi.x - 8, poi.z);
           const v = new VehicleEntity(this.world, e.vehicle, lp.x, lp.z, lp.yaw, { kind: 'parked', color: 0xd62828 });
           this.world.vehicles.push(v);
           this.player.lastVehicle = v;
-          this.hud.help('Súbete a la moto roja (<kbd>F</kbd>) y pasa por todos los checkpoints antes de que se acabe el tiempo.', 7);
+          this.hud.help(e.at === 'taller' ? 'Súbete a la moto roja (<kbd>F</kbd>) y pasa por todos los checkpoints antes de que se acabe el tiempo.' : 'Ahí está la moto roja del negocio (<kbd>F</kbd>): haz las entregas antes de que se enfríe el pedido.', 7);
           break;
         }
         case 'spawnGang':
@@ -1032,6 +1034,7 @@ export class Game {
   _interactPrompt(poi) {
     const m = this.missions.available(poi.id);
     if (poi.id === 'armeria') return 'Presiona <kbd>E</kbd> para comprar armas, munición y chaleco.';
+    if (poi.type === 'food') return `Presiona <kbd>E</kbd> para pedir en <b>${poi.name}</b>${m && !this.missions.completed.has(m.id) ? ' (tienen un encargo para vos)' : ''}.`;
     if (poi.id === 'hospital') return 'Presiona <kbd>E</kbd> para curarte ($200).';
     if (poi.id === 'taller') return this.player.inVehicle ? 'Presiona <kbd>E</kbd> para reparar el vehículo ($300).' : m ? `Presiona <kbd>E</kbd> para iniciar: <b>${m.title}</b> ($${m.reward}).` : null;
     if (m) return `Presiona <kbd>E</kbd> para iniciar la misión: <b>${m.title}</b> (recompensa $${m.reward.toLocaleString('es-CO')}).`;
@@ -1040,7 +1043,7 @@ export class Game {
 
   interact(poi) {
     const p = this.player;
-    if (poi.id === 'armeria') return this.openShop();
+    if (poi.id === 'armeria' || poi.type === 'food') return this.openShop(poi);
     if (poi.id === 'hospital') {
       if (p.health >= 100) return this.hud.toast('Estás sano, parce.');
       if (p.money < 200) return this.hud.toast('No te alcanza la plata.');
@@ -1201,7 +1204,8 @@ export class Game {
     this.hud.drawFullMap(this._hudState());
   }
 
-  openShop() {
+  openShop(poi = this.city.pois.find((q) => q.id === 'armeria')) {
+    this.shopPoi = poi;
     this.setState('shop');
     this.input.exitLock();
     if (this.onOpenShop) this.onOpenShop();
@@ -1229,6 +1233,16 @@ export class Game {
     } else if (item.kind === 'health') {
       if (p.health >= 100) return false;
       p.health = 100;
+    } else if (item.kind === 'food') {
+      if (p.health >= 100) {
+        this.hud.toast('Estás lleno, parce. Después comés.');
+        return false;
+      }
+      p.health = Math.min(100, p.health + item.heal);
+      this.hud.toast(`${item.name}: +${item.heal} de salud`);
+    } else if (item.kind === 'mission') {
+      this._handleMissionEvents(this.missions.start(item.id));
+      return 'close';
     }
     p.money -= item.price;
     this.audio.ui('money');
@@ -1237,6 +1251,13 @@ export class Game {
   }
 
   shopItems() {
+    const poi = this.shopPoi;
+    if (poi?.menu) {
+      const items = poi.menu.map((f) => ({ kind: 'food', id: f.id, name: f.name, icon: 'food', price: f.price, heal: f.heal, desc: `${f.desc} · +${f.heal} de salud` }));
+      const m = this.missions.available(poi.id);
+      if (m && !this.missions.completed.has(m.id)) items.push({ kind: 'mission', id: m.id, name: `Encargo: ${m.title}`, icon: 'mission', price: 0, desc: `Recompensa $${m.reward.toLocaleString('es-CO')}`, label: 'Aceptar' });
+      return items;
+    }
     const inv = this.player.inventory;
     const items = [];
     for (const w of WEAPONS) {

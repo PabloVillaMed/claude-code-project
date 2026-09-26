@@ -24,6 +24,7 @@ import {
   polyCentroid,
   polyPerimeter,
 } from './geom2d.js';
+import { LOCALES } from './facades.js';
 
 const FLOOR_H = 3;
 export const PED_RADIUS = 0.35;
@@ -95,6 +96,7 @@ export function generateCity(seed = 4) {
   addGreenery(ctx);
   addPowerLines(ctx);
   placeServices(ctx);
+  placeLocales(ctx);
 
   // Colisiones de edificios y estructuras sólidas.
   for (const b of city.buildings) {
@@ -755,6 +757,9 @@ function buildSpecialAreas(ctx) {
   addPoi(ctx, { id: 'comfama', name: 'Comfama Aranjuez', desc: 'Coliseo, piscina y canchas: el parche de los domingos.', type: 'landmark', ...at(comfama) });
   const salud = byName(/Centro de Salud de Aranjuez/);
   addPoi(ctx, { id: 'hospital', name: 'Centro de Salud de Aranjuez', desc: 'Aquí despiertas si te va mal en la calle.', type: 'service', ...at(salud) });
+  // Más lugares de OpenStreetMap.
+  addPoi(ctx, { id: 'cultural', name: 'Centro Cultural de Moravia', desc: 'Obra de Rogelio Salmona: ladrillo, patios y música para los pelados del barrio.', type: 'landmark', ...sidewalkNear(city, -22, 640) });
+  addPoi(ctx, { id: 'encicla', name: 'Estación EnCicla Moravia', desc: 'Bicicletas públicas junto al puente de Moravia.', type: 'landmark', ...sidewalkNear(city, -271, 509) });
 }
 
 function addProp(ctx, p) {
@@ -956,6 +961,194 @@ function placeServices(ctx) {
   }
   if (top) city.pois.push({ radius: 3.5, id: 'mirador', name: 'Mirador de Aranjuez', desc: 'Desde lo alto del barrio se ve el valle entero. De noche parece un pesebre.', type: 'landmark', x: top.x, z: top.z });
   void rng;
+}
+
+// ------------------------------------------------------------------ locales típicos
+/**
+ * Negocios con nombre propio. Los reales salen de OpenStreetMap o de su
+ * dirección (Mandingas: Cl. 92 #50B-71 y Cra. 51 #93-114; Granizados:
+ * Cra. 50C #92-84); los típicos del barrio van junto a un lugar conocido.
+ * `menu`: lo que se puede comprar (cura `heal` de salud).
+ */
+export const LOCAL_SPOTS = [
+  {
+    id: 'mandingas92',
+    name: 'Mandingas La 92',
+    at: [300, -250],
+    desc: 'Las papas mandingas de toda la vida, en la 92 con la 50B. Se hace fila hasta de noche.',
+    menu: [
+      { id: 'mandingas', name: 'Papas mandingas', desc: 'Papita criolla con salsa de la casa', price: 45, heal: 35 },
+      { id: 'salchipapa', name: 'Salchipapa', desc: 'Con queso rallado y salsas', price: 60, heal: 50 },
+      { id: 'gaseosa', name: 'Gaseosa helada', desc: 'Pa bajar las papas', price: 15, heal: 10 },
+    ],
+  },
+  {
+    id: 'mandingas94',
+    name: 'Mandingas La 94',
+    at: [158, -505],
+    desc: 'La otra sede, sobre la 51 subiendo hacia la 94.',
+    menu: [
+      { id: 'mandingas', name: 'Papas mandingas', desc: 'Papita criolla con salsa de la casa', price: 45, heal: 35 },
+      { id: 'gaseosa', name: 'Gaseosa helada', desc: 'Pa bajar las papas', price: 15, heal: 10 },
+    ],
+  },
+  {
+    id: 'granizados92',
+    name: 'Granizados La 92',
+    at: [272, -332],
+    desc: 'Granizados y capuchinos en la 50C, a una cuadra de la 92.',
+    menu: [
+      { id: 'granizado', name: 'Granizado de mora', desc: 'Con leche condensada y galleta', price: 35, heal: 20 },
+      { id: 'capuchino', name: 'Capuchino helado', desc: 'Café, hielo raspado y crema', price: 40, heal: 25 },
+    ],
+  },
+  {
+    id: 'laspatatas',
+    name: 'Las Patatas',
+    at: [154, -261],
+    desc: 'Salchipapas en la esquina de la 92 con la 51.',
+    menu: [
+      { id: 'salchipapa', name: 'Salchipapa mediana', desc: 'Papa, salchicha, queso y salsas', price: 55, heal: 45 },
+      { id: 'perro', name: 'Perro caliente', desc: 'Con papitas trituradas por encima', price: 45, heal: 35 },
+    ],
+  },
+  {
+    id: 'marinillos',
+    name: 'Panadería Los Marinillos',
+    at: [405, -235],
+    desc: 'Pandebonos y buñuelos recién salidos del horno.',
+    menu: [
+      { id: 'pandebono', name: 'Pandebono', desc: 'Calientico, con tinto', price: 20, heal: 15 },
+      { id: 'bunuelo', name: 'Buñuelo', desc: 'Redondito y dorado', price: 20, heal: 15 },
+      { id: 'tinto', name: 'Tinto', desc: 'El café de la esquina', price: 10, heal: 5 },
+    ],
+  },
+  {
+    id: 'varaka',
+    name: 'La Varaka',
+    at: [614, -386],
+    desc: 'Almuerzo corrientazo y bandeja paisa cerca del parque de Aranjuez.',
+    menu: [
+      { id: 'bandeja', name: 'Bandeja paisa', desc: 'Frijoles, arroz, chicharrón, huevo, arepa y tajada', price: 120, heal: 100 },
+      { id: 'corrientazo', name: 'Almuerzo del día', desc: 'Sopa, seco y jugo', price: 70, heal: 60 },
+    ],
+  },
+  {
+    id: 'migao',
+    name: 'El Migao',
+    at: [-289, -146],
+    desc: 'Café de barrio con parva y chocolate.',
+    menu: [
+      { id: 'migao', name: 'Migao', desc: 'Chocolate con queso y pan desmigado', price: 35, heal: 25 },
+      { id: 'tinto', name: 'Tinto', desc: 'El café de la esquina', price: 10, heal: 5 },
+    ],
+  },
+  {
+    id: 'maspan',
+    name: 'maspan',
+    at: [121, -73],
+    desc: 'Panadería de la Cl. 90 cerca de San Cayetano.',
+    menu: [
+      { id: 'pandequeso', name: 'Pan de queso', desc: 'Recién horneado', price: 20, heal: 15 },
+      { id: 'tinto', name: 'Tinto', desc: 'El café de la esquina', price: 10, heal: 5 },
+    ],
+  },
+  {
+    id: 'empanadas',
+    name: 'Empanadas Diana',
+    at: [-323, 709],
+    desc: 'Empanadas y pollo asado en Moravia.',
+    menu: [
+      { id: 'empanada', name: 'Empanadas con ají', desc: 'Tres empanaditas de papa y carne', price: 30, heal: 25 },
+      { id: 'pollo', name: 'Cuarto de pollo', desc: 'Asado, con arepa y papa', price: 80, heal: 70 },
+    ],
+  },
+  {
+    id: 'arepas',
+    name: 'Arepas de Chócolo Doña Marleny',
+    near: ['parque', -22, 24],
+    desc: 'Arepa de chócolo con quesito, junto al parque.',
+    menu: [{ id: 'chocolo', name: 'Arepa de chócolo', desc: 'Con mantequilla y quesito', price: 40, heal: 30 }],
+  },
+  {
+    id: 'cholados',
+    name: 'Cholados y Salpicón La Cancha',
+    near: ['cancha', 18, 20],
+    desc: 'Cholados, salpicón y obleas para después del partido.',
+    menu: [
+      { id: 'cholado', name: 'Cholado', desc: 'Hielo, fruta picada, lechera y coco', price: 40, heal: 25 },
+      { id: 'oblea', name: 'Oblea', desc: 'Con arequipe y queso', price: 20, heal: 10 },
+    ],
+  },
+  {
+    id: 'fritanga',
+    name: 'Fritanga El Paisa',
+    near: ['consuelo', 25, 25],
+    desc: 'Chicharrón, morcilla, chorizo y arepa de la parrilla.',
+    menu: [
+      { id: 'chicharron', name: 'Chicharrón con arepa', desc: 'Carnudo y crocante', price: 60, heal: 50 },
+      { id: 'chorizo', name: 'Chorizo con arepa', desc: 'Con limón', price: 35, heal: 30 },
+    ],
+  },
+  {
+    id: 'billares92',
+    name: 'Billares La 92',
+    at: [470, -250],
+    desc: 'Billar, parqués y música de cantina.',
+    menu: [
+      { id: 'gaseosa', name: 'Gaseosa', desc: 'Bien fría', price: 15, heal: 10 },
+      { id: 'tinto', name: 'Tinto', desc: 'Pa aguantar la partida', price: 10, heal: 5 },
+    ],
+  },
+  { id: 'carniceria90', name: 'Carnicería La 90', at: [-140, -90] },
+];
+
+/** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */
+const COMMERCIAL_STREETS = new Set(['Calle 92', 'Carrera 51', 'Carrera 52']);
+
+function placeLocales(ctx) {
+  const { city } = ctx;
+  // La 92, la 51 y la 52: más tiendas (con su propio generador para no
+  // cambiar el resto del barrio).
+  const crng = makeRng(city.seed + 92);
+  for (const b of city.buildings) {
+    if (b.interior || b.shop || !['ladrillo', 'pintada'].includes(b.style) || b.floors > 5 || b.frame.hu < 2.2) continue;
+    const f = b.frame;
+    const r = roadAt(f.x + f.nx * (f.hv + GRID.sidewalk + 1.5), f.z + f.nz * (f.hv + GRID.sidewalk + 1.5), 1);
+    if (r && COMMERCIAL_STREETS.has(MAPA.edges[r.edge].name) && crng.chance(0.55)) b.style = 'tienda';
+  }
+  const kinds = new Map(LOCALES.map(([n, k]) => [n, k]));
+  const fronts = (b) => {
+    const f = b.frame;
+    return !!roadAt(f.x + f.nx * (f.hv + GRID.sidewalk + 1.5), f.z + f.nz * (f.hv + GRID.sidewalk + 1.5), 1);
+  };
+  for (const L of LOCAL_SPOTS) {
+    let tx;
+    let tz;
+    if (L.near) {
+      const p = city.pois.find((q) => q.id === L.near[0]);
+      if (!p) continue;
+      tx = p.x + L.near[1];
+      tz = p.z + L.near[2];
+    } else [tx, tz] = L.at;
+    let best = null;
+    let bd = 60;
+    for (const b of city.buildings) {
+      if (b.interior || b.shop || b.local || !['ladrillo', 'pintada', 'tienda'].includes(b.style) || b.floors > 5 || b.frame.hu < 2.4) continue;
+      const f = b.frame;
+      const d = Math.hypot(f.x + f.nx * f.hv - tx, f.z + f.nz * f.hv - tz);
+      if (d < bd && fronts(b)) {
+        bd = d;
+        best = b;
+      }
+    }
+    if (!best) continue;
+    best.style = 'tienda';
+    best.local = { name: L.name, kind: kinds.get(L.name) ?? 'cafeteria' };
+    if (!L.menu) continue;
+    const f = best.frame;
+    city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'food', menu: L.menu, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
+  }
 }
 
 // ------------------------------------------------------------------ metro
@@ -1168,7 +1361,7 @@ function addStreetLife(city, rng) {
   // 1) Tiendas de barrio: sillas plásticas y canastas de cerveza en el andén.
   const CHAIR_COLORS = ['#f4f4f0', '#f4f4f0', '#f4f4f0', '#d8312b', '#2f6fb3', '#3f8f4a'];
   for (const b of city.buildings) {
-    if (b.style !== 'tienda' || b.interior || b.shop || b.floors >= 6 || !rng.chance(0.5)) continue;
+    if (b.style !== 'tienda' || b.interior || b.shop || b.floors >= 6 || (!b.local && !rng.chance(0.5))) continue;
     const block = blocksById[b.block];
     const f = facadeInfo(b);
     const n = rng.int(2, 4);

@@ -84,14 +84,18 @@ game.onOpenShop = () => {
 };
 
 function renderShop() {
+  $('shop-title').textContent = game.shopPoi?.name ?? 'Armería El Parcero';
+  $('shop-kicker').textContent = game.shopPoi?.menu ? 'Pedido' : 'Tienda';
   $('shop-money').textContent = `Tu plata: $${game.player.money.toLocaleString('es-CO')}`;
   const items = game.shopItems();
   $('shop-items').innerHTML = items
-    .map((it, i) => `<div class="shop-item"><div class="ico">${LINE_ICONS[it.icon] ?? weaponIconHtml(it.icon)}</div><div class="info"><div class="name">${it.name}</div><div class="desc">${it.desc}</div></div><button data-i="${i}" ${game.player.money < it.price ? 'disabled' : ''}>$${it.price.toLocaleString('es-CO')}</button></div>`)
+    .map((it, i) => `<div class="shop-item"><div class="ico">${LINE_ICONS[it.icon] ?? weaponIconHtml(it.icon)}</div><div class="info"><div class="name">${escapeHtml(it.name)}</div><div class="desc">${escapeHtml(it.desc)}</div></div><button data-i="${i}" ${game.player.money < it.price ? 'disabled' : ''}>${it.label ?? `$${it.price.toLocaleString('es-CO')}`}</button></div>`)
     .join('');
   $('shop-items').querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => {
-      if (game.buy(items[+b.dataset.i])) renderShop();
+      const r = game.buy(items[+b.dataset.i]);
+      if (r === 'close') closeShop();
+      else if (r) renderShop();
     });
   });
 }

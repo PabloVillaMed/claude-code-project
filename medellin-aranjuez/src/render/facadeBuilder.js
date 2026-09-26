@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { GeoBuilder } from './geoBuilder.js';
 import { photoMaterial, PHOTO_TEXTURES } from './photoMaterials.js';
-import { CURTAIN_COLORS, FACADE, FRAME_COLORS, METAL_COLORS, SHOPS, ZOCALO_COLORS, faceFrame } from '../sim/facades.js';
+import { CURTAIN_COLORS, FACADE, FRAME_COLORS, METAL_COLORS, SIGN_NAMES, ZOCALO_COLORS, faceFrame } from '../sim/facades.js';
 import { MAP_MIN_X, MAP_MIN_Z } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
 import {
@@ -442,7 +442,7 @@ export class FacadeBuilder {
     fbox(G('detail'), o.u0, o.u0 + 0.06, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
     fbox(G('detail'), o.u1 - 0.06, o.u1, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
     // Aviso con el nombre del negocio.
-    const si = Math.max(0, SHOPS.findIndex(([n]) => n === shop.name));
+    const si = Math.max(0, SIGN_NAMES.findIndex(([n]) => n === shop.name));
     const uvS = slot(si, SIGN_COLS, SIGN_ROWS);
     const s0 = Math.max(0.1, o.u0 - 0.25);
     const s1 = Math.min(L.face.len - 0.1, o.u1 + 0.25);

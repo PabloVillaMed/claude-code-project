@@ -214,6 +214,30 @@ test('misión Domicilio express completa de principio a fin', async () => {
   expect(s.money).toBeGreaterThanOrEqual(m0 + 900);
 });
 
+test('locales: en Mandingas La 92 se pide comida y se acepta el encargo', async () => {
+  await G(() => {
+    const g = window.__gameInstance;
+    g.player.health = 40;
+    g.addMoney(1000);
+    const p = window.__game.pois().find((x) => x.id === 'mandingas92');
+    window.__game.teleport(p.x, p.z);
+  });
+  await frames(3);
+  await page.keyboard.press('KeyE');
+  await expect(page.locator('#shop')).toBeVisible();
+  await expect(page.locator('#shop-title')).toHaveText('Mandingas La 92');
+  await page.locator('#shop-items button').first().click();
+  expect((await st()).health).toBeGreaterThan(40);
+  await page.locator('#shop-items button', { hasText: 'Aceptar' }).click();
+  await expect(page.locator('#shop')).toBeHidden();
+  await frames(3);
+  expect((await st()).mission).toBe('mandingas');
+  await G(() => {
+    const g = window.__gameInstance;
+    g._handleMissionEvents(g.missions.cancel());
+  });
+});
+
 test('policía: con estrellas aparecen patrullas', async () => {
   await G((S) => {
     window.__game.teleport(S.x, S.z);

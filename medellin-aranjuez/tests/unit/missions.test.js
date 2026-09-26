@@ -98,3 +98,43 @@ describe('nivel de búsqueda', () => {
     expect(w.desiredUnits()).toBe(0);
   });
 });
+
+describe('locales típicos y sus encargos', () => {
+  it('Mandingas, granizados y demás quedan en su cuadra, con aviso y menú', () => {
+    const c = city();
+    const want = { mandingas92: [300, -250], mandingas94: [158, -505], granizados92: [272, -332], laspatatas: [154, -261] };
+    for (const [id, [x, z]] of Object.entries(want)) {
+      const p = c.pois.find((q) => q.id === id);
+      expect(p, id).toBeTruthy();
+      expect(p.type).toBe('food');
+      expect(p.menu.length).toBeGreaterThan(0);
+      expect(Math.hypot(p.x - x, p.z - z), id).toBeLessThan(40);
+      const b = c.buildings.find((q) => q.local?.name === p.name);
+      expect(b, p.name).toBeTruthy();
+      expect(b.style).toBe('tienda');
+    }
+    expect(c.pois.filter((p) => p.type === 'food').length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('domicilios de mandingas: moto del local, pedido y tres entregas', () => {
+    const c = city();
+    const ms = new MissionSystem(createMissionDefs(c));
+    expect(ms.available('mandingas92').id).toBe('mandingas');
+    const evs = ms.start('mandingas');
+    expect(evs.find((e) => e.type === 'spawnVehicle').at).toBe('mandingas92');
+    let paid = 0;
+    for (const st of ms.active.def.stages) {
+      const r = ms.update(1, { x: st.target.x, z: st.target.z });
+      paid += r.find((e) => e.type === 'complete')?.reward ?? 0;
+    }
+    expect(paid).toBe(1400);
+  });
+
+  it('el granizado se derrite si uno se demora', () => {
+    const c = city();
+    const ms = new MissionSystem(createMissionDefs(c));
+    ms.start('granizado');
+    expect(ms.active.timer).toBeGreaterThan(30);
+    expect(types(ms.update(ms.active.timer + 1, { x: 0, z: 0 }))).toEqual(['fail']);
+  });
+});

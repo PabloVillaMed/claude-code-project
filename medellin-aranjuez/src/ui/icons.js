@@ -29,6 +29,10 @@ export const LINE_ICONS = {
   armor: svg('<path d="M8 3l-4 3v14h7v-5h2v5h7V6l-4-3-2 3h-4z"/><path d="M9 11h6"/>'),
   // Botiquín.
   health: svg('<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M9 6V4h6v2M12 10v6M9 13h6"/>'),
+  // Plato con cubiertos.
+  food: svg('<circle cx="12" cy="13" r="6"/><circle cx="12" cy="13" r="3"/><path d="M3 4v5a1.5 1.5 0 003 0V4M4.5 9v11M21 4c-2 1-2.5 3-2.5 6h2.5v10"/>'),
+  // Encargo (paquete con cinta).
+  mission: svg('<rect x="4" y="8" width="16" height="12" rx="1"/><path d="M4 12h16M12 8v12M12 8c-1-3-5-4-5-1s5 1 5 1zm0 0c1-3 5-4 5-1s-5 1-5 1z"/>'),
 };
 
 /** Estrella de búsqueda en SVG (nítida a cualquier escala). */

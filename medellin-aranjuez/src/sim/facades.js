@@ -51,6 +51,31 @@ export const SHOPS = [
   ['Remontadora La Horma', 'ferreteria'],
 ];
 
+/**
+ * Locales con nombre propio (reales de OpenStreetMap o típicos del barrio):
+ * [nombre, interior, letrero pequeño]. Van en casas escogidas por cityLayout,
+ * nunca al azar.
+ */
+export const LOCALES = [
+  ['Mandingas La 92', 'cafeteria', 'Papas mandingas · Salchipapas'],
+  ['Mandingas La 94', 'cafeteria', 'Papas mandingas · Gaseosa'],
+  ['Granizados La 92', 'heladeria', 'Granizados · Capuchinos'],
+  ['Las Patatas', 'cafeteria', 'Salchipapas · Comidas rápidas'],
+  ['Panadería Los Marinillos', 'panaderia', 'Pandebonos · Buñuelos · Tinto'],
+  ['La Varaka', 'cafeteria', 'Almuerzos · Bandeja paisa'],
+  ['El Migao', 'cafeteria', 'Café · Tinto · Parva'],
+  ['maspan', 'panaderia', 'Panadería y pastelería'],
+  ['Empanadas Diana', 'cafeteria', 'Empanadas · Pollo asado'],
+  ['Arepas de Chócolo Doña Marleny', 'cafeteria', 'Arepas de chócolo con quesito'],
+  ['Cholados y Salpicón La Cancha', 'heladeria', 'Cholados · Salpicón · Obleas'],
+  ['Fritanga El Paisa', 'cafeteria', 'Chicharrón · Morcilla · Chorizo'],
+  ['Billares La 92', 'billares', 'Cerveza fría · Parqués'],
+  ['Carnicería La 90', 'carniceria', 'Res · Cerdo · Pollo'],
+];
+
+/** Todos los avisos pintados, en el orden del atlas de letreros. */
+export const SIGN_NAMES = [...SHOPS.map(([n, k]) => [n, k, null]), ...LOCALES];
+
 /** Color de la carpintería de aluminio: natural, bronce, blanco, negro. */
 export const FRAME_COLORS = [
   [0.72, 0.74, 0.76],
@@ -232,7 +257,8 @@ export function facadeLayout(b, idx) {
   if (b.style === 'tienda') {
     const doorSpace = upstairsDoor ? FACADE.door[0] + 0.4 : 0;
     const sw = clamp(usable - doorSpace, 2.2, 5.2);
-    const [name, kind] = SHOPS[rng.int(0, SHOPS.length - 1)];
+    const pickShop = SHOPS[rng.int(0, SHOPS.length - 1)];
+    const [name, kind] = b.local ? [b.local.name, b.local.kind] : pickShop;
     ground.push({ kind: 'shop', w: sw, h: FACADE.shopH, name, interior: kind, awning: rng.chance(0.55) ? rng.int(0, 3) : -1, shutter: rng.range(0.08, 0.3), shutterColor: rng.int(0, 4), counter: rng.chance(0.7) });
     if (upstairsDoor) ground.push({ kind: 'door', w: FACADE.door[0], h: FACADE.door[1] });
   } else if (tower) {

@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { makeRng } from '../sim/rng.js';
-import { SHOPS } from '../sim/facades.js';
+import { SIGN_NAMES } from '../sim/facades.js';
 import { canvas, stains, toTexture } from './textures.js';
 
 /** Rectángulo UV [u0, v0, u1, v1] de la casilla i en un atlas de cols x rows. */
@@ -360,7 +360,7 @@ export function interiorAtlas() {
 
 // ------------------------------------------------------------------ avisos
 export const SIGN_COLS = 4;
-export const SIGN_ROWS = 8;
+export const SIGN_ROWS = 10;
 
 const SIGN_STYLES = [
   ['#c1121f', '#ffffff'],
@@ -373,14 +373,14 @@ const SIGN_STYLES = [
   ['#e76f51', '#ffffff'],
 ];
 
-/** Avisos pintados de los negocios, un nombre por casilla (índice = SHOPS). */
+/** Avisos pintados de los negocios, un nombre por casilla (índice = SIGN_NAMES). */
 export function signAtlas() {
   const W = 512;
   const H = 128;
   const c = canvas(W * SIGN_COLS, H * SIGN_ROWS);
   const ctx = c.getContext('2d');
   const rng = makeRng(99);
-  SHOPS.forEach(([name, kind], i) => {
+  SIGN_NAMES.forEach(([name, kind, own], i) => {
     const ox = (i % SIGN_COLS) * W;
     const oy = Math.floor(i / SIGN_COLS) * H;
     const [bg, fg] = SIGN_STYLES[i % SIGN_STYLES.length];
@@ -400,8 +400,9 @@ export function signAtlas() {
     }
     ctx.fillText(name, ox + W / 2, oy + H * 0.42);
     const sub = { tienda: 'Víveres · Rancho · Licores', panaderia: 'Pan caliente todo el día', drogueria: 'Drogas · Perfumería', carniceria: 'Res · Cerdo · Pollo', fruteria: 'Frutas y verduras', peluqueria: 'Cortes · Tintes · Barbería', ferreteria: 'Todo para la casa', papeleria: 'Fotocopias · Minutos', heladeria: 'Helados · Postres', cafeteria: 'Tinto · Desayunos', billares: 'Cerveza fría' }[kind];
+    const subText = own ?? sub;
     ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
-    ctx.fillText(sub, ox + W / 2, oy + H * 0.78);
+    ctx.fillText(subText, ox + W / 2, oy + H * 0.78);
     // Desgaste del aviso.
     for (let k = 0; k < 25; k++) {
       ctx.fillStyle = `rgba(0,0,0,${rng.range(0.03, 0.09)})`;

@@ -15,6 +15,7 @@ const MAP_SCALE = 1.5; // px por metro en el mapa pre-renderizado
 const POI_STYLE = {
   landmark: { color: '#e8b64c', letter: '•' },
   shop: { color: '#d9534f', letter: '$' },
+  food: { color: '#f4a261', letter: 'C' },
   service: { color: '#4f8fd9', letter: '+' },
   mission: { color: '#e8b64c', letter: '!' },
 };
@@ -320,7 +321,7 @@ export class Hud {
     ctx.stroke();
     ctx.restore();
     const dot = (c) => `<i class="dot" style="background:${c}"></i>`;
-    $('map-legend').innerHTML = `Lugares descubiertos <b>${this.game.discovered.size}/${this.game.city.pois.length}</b><span>${dot(POI_STYLE.landmark.color)}Lugares</span><span>${dot(POI_STYLE.shop.color)}Tienda</span><span>${dot(POI_STYLE.service.color)}Servicios</span><span>${dot(POI_STYLE.mission.color)}Misiones</span>`;
+    $('map-legend').innerHTML = `Lugares descubiertos <b>${this.game.discovered.size}/${this.game.city.pois.length}</b><span>${dot(POI_STYLE.landmark.color)}Lugares</span><span>${dot(POI_STYLE.shop.color)}Tienda</span><span>${dot(POI_STYLE.food.color)}Comida</span><span>${dot(POI_STYLE.service.color)}Servicios</span><span>${dot(POI_STYLE.mission.color)}Misiones</span>`;
   }
 
   /** Convierte un clic en el mapa completo a coordenadas del mundo. */
