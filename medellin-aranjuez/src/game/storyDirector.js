@@ -43,6 +43,10 @@ export class StoryDirector {
     let chair = null;
     for (const p of city.props) {
       if (p.type !== 'chair') continue;
+      if (p.owner === 'abuela') {
+        chair = { x: p.x, z: p.z, d: 0 };
+        break;
+      }
       const d = dist2D(p.x, p.z, this.front.x, this.front.z);
       if (d < 7 && (!chair || d < chair.d)) chair = { x: p.x, z: p.z, d };
     }
@@ -383,6 +387,8 @@ export class StoryDirector {
     if (g.player.vehicle) g.exitVehicle(true);
     this.cinematic = { shots, opts, i: -1, t: 0, lineIdx: 0, speech: null, skip: false, ending: null, focus: { x: 0, y: 0, z: 0, inVehicle: false, speed: 0, dead: false } };
     g.hud.show(false);
+    // Sin marcadores de misiones ni tiendas en cámara (vuelven al terminar).
+    for (const m of g.effects.markers.values()) m.group.visible = false;
     document.body.classList.add('intro', 'cinematic');
     this.el?.classList.add('on');
     g.setFade(1);

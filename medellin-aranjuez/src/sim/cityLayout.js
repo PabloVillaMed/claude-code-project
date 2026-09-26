@@ -1107,6 +1107,7 @@ export const LOCAL_SPOTS = [
     name: 'Tienda Doña Rosa',
     kind: 'tienda',
     near: ['parque', 34, 30],
+    chair: true,
     desc: 'La tienda de tu abuela, a una cuadra del parque: tinto, pan y la cuenta fiada del barrio.',
     menu: [
       { id: 'tinto', name: 'Tinto de la abuela', desc: 'Con panela, como siempre', price: 5, heal: 10 },
@@ -1161,6 +1162,13 @@ function placeLocales(ctx) {
     if (!L.menu) continue;
     const f = best.frame;
     city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'food', menu: L.menu, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
+    if (L.chair) {
+      // Silla plástica propia junto a la puerta (la de la abuela: la historia la sienta ahí).
+      const a = Math.min(1.9, f.hu - 0.6);
+      const x = f.x + f.nx * (f.hv + 0.45) + f.ux * a;
+      const z = f.z + f.nz * (f.hv + 0.45) + f.uz * a;
+      addProp(ctx, { type: 'chair', x, z, rot: Math.atan2(f.nx, f.nz), color: '#f4f4f0', collider: { hx: 0.24, hz: 0.24, maxY: terrainHeight(x, z) + GRID.curb + 0.9 }, owner: L.id });
+    }
   }
 }
 
