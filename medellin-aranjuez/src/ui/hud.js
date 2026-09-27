@@ -437,6 +437,7 @@ export class Hud {
   }
 
   toast(msg, time = 2.2) {
+    if (!msg) return; // un aviso vacío dejaría solo la línea dorada
     const d = document.createElement('div');
     d.className = 'toast';
     d.innerHTML = msg;
