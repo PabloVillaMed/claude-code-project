@@ -150,6 +150,16 @@ const CLIPS = [
   { name: 'sit_down', m: 'xyz/m_sit_down_chair_right', kind: 'once', rm: true, range: [0.9, 3.4] },
   { name: 'sit_down_l', m: 'xyz/m_sit_down_chair_left', kind: 'once', rm: true, range: [0.9, 3.3] },
   { name: 'stand_up', m: 'xyz/m_sit_stand_up_chair_01', kind: 'once', rm: true },
+  // Reposo alternativo (cada peatón tiene el suyo: no todos respiran igual).
+  { name: 'idle_b', file: 'static/{g}_idle_neutral_01', kind: 'loop', range: { m: [0, 12], f: [0, 12] } },
+  { name: 'idle_wait', file: 'static/{g}_idle_waiting_01', kind: 'loop', range: { m: [0, 12], f: [0, 12] } },
+  // Actividades del barrio: fumar (el vaso en la mano hace de cigarrillo) y
+  // jugar dominó / cartas sentado a la mesa.
+  { name: 'smoke_idle', file: 'static/{g}_drink_idle', kind: 'loop', fingers: true, range: { m: [0, 8], f: [0, 8] } },
+  { name: 'sit_table', file: 'static/{g}_sit_table_idle_relaxed_01', kind: 'loop', fingers: true, range: { m: [0, 10], f: [0, 10] } },
+  { name: 'sit_table_look', file: 'static/{g}_sit_table_idle_look_around', kind: 'once' },
+  { name: 'sit_table_think', file: 'static/{g}_sit_table_gestic_thoughtful', kind: 'once', range: { m: [0, 6], f: [0, 6] } },
+  { name: 'sit_table_shrug', file: 'static/{g}_sit_table_gestic_shrug_01', kind: 'once' },
 ];
 
 export const ANIMS = [];
