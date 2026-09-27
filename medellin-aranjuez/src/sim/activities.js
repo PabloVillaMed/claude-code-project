@@ -93,7 +93,8 @@ export function activitySpots(city, { isFree = () => true, layoutOf = facadeLayo
         const side = d.u1 + 0.5 < f.len - 0.35 ? d.u1 + 0.45 : d.u0 - 0.45;
         const p = facadePoint(f, side, 0.34);
         const front = facadePoint(f, side, 0.9);
-        if (side > 0.35 && isFree(front.x, front.z) && isFree(p.x, p.z) && far(p.x, p.z, 5)) {
+        const clearOf = L.openings.every((o) => o.floor !== 0 || side < o.u0 - 0.35 || side > o.u1 + 0.35);
+        if (side > 0.35 && clearOf && isFree(front.x, front.z) && isFree(p.x, p.z) && far(p.x, p.z, 5)) {
           out.push({ kind, x: p.x, z: p.z, yaw: yaw + rng.range(-0.35, 0.35), building: bi, lean: true });
           taken.push(p);
         }
