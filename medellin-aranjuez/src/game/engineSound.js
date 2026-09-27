@@ -17,7 +17,7 @@ export const SOUND_PROFILES = {
   moto4t: { off: 'moto_ralenti', on: 'moto_carga', alpha: 0.55, pitchMul: 1, noise: 0.22, noiseFreq: 1300, jitter: 0.06, misfire: 0.03, crackle: 1, lp: 5200, gain: 1 },
   moto4t_grande: { off: 'moto_ralenti', on: 'moto_carga', alpha: 0.5, pitchMul: 0.86, noise: 0.2, noiseFreq: 1100, jitter: 0.05, misfire: 0.025, crackle: 1, lp: 4600, gain: 1.1 },
   // Dos tiempos: explosión por vuelta, más aguda y rasposa ("rin-rin").
-  moto2t: { off: 'moto_ralenti', on: 'moto_carga', alpha: 0.72, pitchMul: 1.5, noise: 0.5, noiseFreq: 2600, jitter: 0.07, misfire: 0.08, crackle: 0.6, lp: 6500, gain: 0.85 },
+  moto2t: { off: 'moto_ralenti', on: 'moto_carga', alpha: 0.72, pitchMul: 1.5, noise: 0.32, noiseFreq: 2600, jitter: 0.07, misfire: 0.08, crackle: 0.6, lp: 6500, gain: 0.85 },
   // Scooter: motor tapado por la carcasa (más apagado) y variador.
   scooter: { off: 'moto_ralenti', on: 'moto_carga', alpha: 0.6, pitchMul: 1.18, noise: 0.3, noiseFreq: 1800, jitter: 0.04, misfire: 0.015, crackle: 0.2, lp: 3600, gain: 0.8 },
   carro_pequeno: { off: 'carro', on: 'carro', alpha: 0.5, pitchMul: 1.08, noise: 0.18, noiseFreq: 900, jitter: 0.035, misfire: 0.006, crackle: 0, lp: 3600, gain: 0.95 },
@@ -25,7 +25,7 @@ export const SOUND_PROFILES = {
   carro_viejo: { off: 'carro', on: 'carro', alpha: 0.45, pitchMul: 0.84, noise: 0.24, noiseFreq: 700, jitter: 0.07, misfire: 0.02, crackle: 0.1, lp: 2800, gain: 1.05 },
   camioneta: { off: 'carro', on: 'carro', alpha: 0.45, pitchMul: 0.9, noise: 0.18, noiseFreq: 750, jitter: 0.03, misfire: 0.004, crackle: 0, lp: 3100, gain: 1.1 },
   // Diésel: golpeteo seco de la inyección.
-  diesel: { off: 'diesel', on: 'diesel', alpha: 0.35, pitchMul: 1, noise: 0.35, noiseFreq: 650, jitter: 0.025, misfire: 0, crackle: 0, lp: 2600, gain: 1.2 },
+  diesel: { off: 'diesel', on: 'diesel', alpha: 0.35, pitchMul: 1, noise: 0.35, noiseFreq: 650, jitter: 0.025, misfire: 0, crackle: 0, lp: 2600, gain: 0.75 },
 };
 
 /** Opciones del procesador para un perfil (mecánica + sonido). */

@@ -104,6 +104,21 @@ se pueden redistribuir dentro del juego. Se evaluaron además:
 - **Mixamo** (Adobe): requiere cuenta y su licencia no permite redistribuir
   los archivos de animación sueltos; descartado.
 
+## Sonidos de motor
+
+Explosiones sueltas ("granos") cortadas de grabaciones reales por
+`scripts/assets/motores.mjs` y empacadas en `public/sounds/motor/motor.ogg`
+(+ `motor.json`). El juego las vuelve a disparar al ritmo de las revoluciones
+(síntesis granular, `src/game/engineWorklet.js`). Todas CC0 (vista previa HQ
+pública de Freesound).
+
+| Recurso | Archivo | Fuente | Autor | Licencia |
+|---|---|---|---|---|
+| Moto en ralentí ("Motorcycle_Yamaha_Tenere_250CC_Enduro_Idle.wav"), banco sin carga de las motos | `public/sounds/motor/motor.ogg` | [Freesound 510231](https://freesound.org/people/Singular_Estudio/sounds/510231/) | Singular_Estudio | CC0 |
+| Moto 125 andando ("Jerry Honda 125 slow follow & ride off.wav"), banco con carga de las motos | `public/sounds/motor/motor.ogg` | [Freesound 574325](https://freesound.org/people/3bagbrew/sounds/574325/) | 3bagbrew | CC0 |
+| Carro ("Sedan engine loop"), banco de los carros | `public/sounds/motor/motor.ogg` | [Freesound 748027](https://freesound.org/people/Dmitry_mansurev64/sounds/748027/) | Dmitry_mansurev64 | CC0 |
+| Diésel ("Diesel engine idling"), banco de la buseta | `public/sounds/motor/motor.ogg` | [Freesound 705386](https://freesound.org/people/chungus43A/sounds/705386/) | chungus43A | CC0 |
+
 ## Sonidos de armas
 
 Grabaciones reales recortadas, normalizadas y convertidas a Opus mono por

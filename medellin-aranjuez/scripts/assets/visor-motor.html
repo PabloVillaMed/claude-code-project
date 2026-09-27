@@ -41,7 +41,7 @@
         } else v = 0;
         stepEngine(e, { speed: v, vmax, throttle, dt });
         const crackle = throttle === 0 && e.rpm > e.profile.redline * 0.45 && v > 4 ? 1 : 0;
-        voice.set({ rpm: e.rpm, load: e.load, cut: e.cut, crackle, gain: 0.9 }, 0.02, t);
+        voice.set({ rpm: e.rpm, load: e.load, cut: e.limiting, crackle, gain: 0.9 }, 0.02, t);
         rpmLog.push([+t.toFixed(2), Math.round(e.rpm), e.gear, +e.load.toFixed(2), e.cut ? 1 : 0]);
       }
       const buf = await ctx.startRendering();

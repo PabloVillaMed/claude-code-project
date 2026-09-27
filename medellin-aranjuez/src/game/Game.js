@@ -632,6 +632,7 @@ export class Game {
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
     this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
+    this.audio.updateTraffic(this.world.vehicles, dt, p.vehicle);
     this._ambientAudio(dt);
     this.pickups.update(dt, p);
     this._updateMissions(dt);
@@ -848,7 +849,7 @@ export class Game {
     if (this._stepBoarding(dt, a)) {
       // (Freno solo si va hacia delante: quieto, el freno es reversa.)
       stepVehicle(s, { throttle: s.forwardSpeed < -0.3 ? 0.6 : 0, brake: s.forwardSpeed > 0.3 ? 1 : 0, steer: 0, handbrake: true }, dt, { groundHeight, collision: this.city.collision });
-      this.audio.setEngine(true, 0.2, s.type);
+      this.audio.drive(s, { throttle: 0, brake: 0 }, dt);
       return;
     }
     const input = { throttle: a.throttle, brake: a.brake, steer: a.steer, handbrake: a.handbrake };
@@ -887,14 +888,8 @@ export class Game {
       if (impact > 16) this.combat.damagePlayer((impact - 16) * 2, null);
     }
     this.stats.distance += Math.abs(s.forwardSpeed) * dt;
-    // Motor con cambios: las revoluciones suben en cada marcha y caen al cambiar.
-    const ratio = Math.min(1, Math.abs(s.forwardSpeed) / s.spec.maxSpeed);
-    const GEARS = s.type === 'buseta' ? [0, 0.22, 0.45, 0.7, 1.01] : [0, 0.17, 0.35, 0.55, 0.77, 1.01];
-    let gi = 0;
-    while (gi < GEARS.length - 2 && ratio > GEARS[gi + 1]) gi++;
-    const inGear = (ratio - GEARS[gi]) / (GEARS[gi + 1] - GEARS[gi]);
-    const rpm = Math.min(1, 0.22 + inGear * 0.72 + a.throttle * 0.08 + (s.slip > 3 ? 0.1 : 0));
-    this.audio.setEngine(true, rpm, s.type);
+    // Motor: caja de cambios simulada y explosiones grabadas (audio.drive).
+    this.audio.drive(s, a, dt);
     this._skid(v, a, dt);
     this.audio.horn(a.horn);
     if (a.horn) this.world.addThreat(s.x, s.z, 12, 0.3);
@@ -956,7 +951,6 @@ export class Game {
     // Cámara detrás del vehículo.
     this.camRig.yaw = v.state.heading;
     this.audio.init();
-    this.audio.setEngine(true, 0, v.type);
   }
 
   exitVehicle(force = false) {
@@ -1581,6 +1575,7 @@ export class Game {
       resume: () => g.resume(),
       vehicleTypes: () => Object.keys(VEHICLE_TYPES),
       vehicleVariants: () => Object.keys(VEHICLE_VARIANTS),
+      engineStatus: () => g.audio.engineStatus?.() ?? null,
       screenshotHudHidden(on) {
         g.hud.show(!on);
       },

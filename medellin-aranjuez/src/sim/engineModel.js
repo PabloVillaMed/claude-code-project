@@ -123,6 +123,8 @@ export function stepEngine(e, { speed, vmax, throttle, brake = 0, dt }) {
   if (e.limiterT > 0) e.rpm -= (p.limiter - p.idle) * 0.9 * dt;
   e.rpm = clamp(e.rpm, p.idle * 0.85, p.limiter + 50);
   e.cut = e.shift > 0 || e.limiterT > 0.02;
+  // Solo el limitador corta el encendido; al cambiar el motor sigue andando sin carga.
+  e.limiting = e.limiterT > 0.02;
   // Carga: acelerador en cambio (la marcha "tira"); frenando con motor, 0.
   e.load = e.cut ? 0 : clamp(load * (1 - 0.5 * e.clutch), 0, 1);
   e.brake = brake;
