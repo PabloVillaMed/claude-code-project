@@ -124,6 +124,7 @@ export class Input {
       steer: (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0),
       phone: h('KeyT'),
       help: h('F1'),
+      emote: h('KeyG'),
     };
     for (let i = 1; i <= 6; i++) if (h(`Digit${i}`) || h(`Numpad${i}`)) a.weaponSlot = i;
 
@@ -143,7 +144,7 @@ export class Input {
         a.lookY += ax(3) * 0.035 * this.sensitivity * (this.invertY ? -1 : 1);
         // Xbox: A saltar, B agacharse/freno de mano, X recargar, Y subir/bajar,
         // LB/RB cambiar arma, LT apuntar/frenar, RT disparar/acelerar,
-        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar, View mapa, Menu pausa.
+        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos, View mapa, Menu pausa.
         a.sprint ||= b(10);
         a.jump ||= b(0);
         a.crouch ||= b(1);
@@ -154,6 +155,7 @@ export class Input {
         a.reload ||= bh(2);
         a.enterVehicle ||= bh(3);
         a.interact ||= bh(12);
+        a.emote ||= bh(13);
         a.weaponCycle += (bh(5) ? 1 : 0) - (bh(4) ? 1 : 0);
         a.weaponWheel ||= b(4) && b(5);
         a.pause ||= bh(9);
@@ -183,7 +185,7 @@ export class Input {
     this.mouse.leftPressed = false;
     if (this.virtual) {
       // Acciones de un solo frame en la entrada virtual.
-      for (const key of ['reload', 'interact', 'enterVehicle', 'map', 'pause', 'camera', 'firePressed', 'phone', 'help']) delete this.virtual[key];
+      for (const key of ['reload', 'interact', 'enterVehicle', 'map', 'pause', 'camera', 'firePressed', 'phone', 'help', 'emote']) delete this.virtual[key];
       if (this.virtual.weaponSlot) this.virtual.weaponSlot = 0;
       if (this.virtual.weaponCycle) this.virtual.weaponCycle = 0;
       if (this.virtual.lookX) this.virtual.lookX = 0;

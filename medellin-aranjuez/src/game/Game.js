@@ -28,6 +28,8 @@ import { Combat } from './combat.js';
 import { CameraRig } from './cameraRig.js';
 import { Pickups } from './pickups.js';
 import { Dialogue } from './dialogue.js';
+import { Boarding } from './boarding.js';
+import { playerStyle, purchaseGestures, EMOTES, nextEmote } from '../sim/animSelect.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
 
@@ -674,6 +676,9 @@ export class Game {
   // ================================================================ a pie
   updateOnFoot(dt, a) {
     const p = this.player;
+    // Bajándose de un vehículo: termina de levantarse antes de moverse.
+    if (this._stepBoarding(dt, a)) return;
+    if (p.rig.root.parent !== this.scene) this.scene.add(p.rig.root);
     const inv = p.inventory;
     const w = inv.current;
     p.aiming = a.aim && !this.wheel.open;
@@ -717,12 +722,15 @@ export class Game {
     p.rig.setWeapon(w.id);
     p.rig.root.position.set(p.state.pos.x, p.state.pos.y, p.state.pos.z);
     p.rig.root.rotation.y = p.state.yaw;
+    this._playerGestures(a);
     p.rig.animate(dt, {
       speed: p.state.speed,
       onGround: p.state.onGround,
       aiming: (p.aiming || inv.cooldown > 0.05) && w.kind === 'gun',
       crouching: p.state.crouching,
       aimPitch: this.camRig.pitch,
+      style: playerStyle(p.health), // herido: cojea
+      fidget: true, // quieto un rato: mira alrededor, se rasca, bosteza...
     });
 
     // Subirse a un vehículo.
@@ -730,6 +738,66 @@ export class Game {
       const v = this.world.nearestVehicle(p.state.pos.x, p.state.pos.z, 2.5);
       if (v) this.enterVehicle(v);
     }
+  }
+
+  /** Gestos del jugador: los de una compra (recibir, beber) y los emotes (G). */
+  _playerGestures(a) {
+    const p = this.player;
+    if (a.emote && !p.aiming) {
+      p.emote = nextEmote(p.emote ?? -1);
+      p.gestures = [EMOTES[p.emote]];
+    }
+    const g = p.rig.gestureLayer;
+    if (p.gestures?.length && (!g || g.fidget || a.emote)) {
+      const name = p.gestures.shift();
+      p.rig.play(name, { speed: name === 'take' ? 1.4 : 1, fadeIn: 0.3, fadeOut: 0.4 });
+    }
+  }
+
+  /** ¿Subir / bajar con animación? (en las pruebas automáticas es instantáneo, salvo que se pida). */
+  _animBoarding() {
+    return this.animatedBoarding ?? !this.opts.autotest;
+  }
+
+  /**
+   * Avanza la animación de subir / bajar en curso. Devuelve true mientras
+   * dure. Acelerar, frenar o girar (al subir) o moverse (al bajar) la adelantan.
+   */
+  _stepBoarding(dt, a) {
+    const p = this.player;
+    const b = p.boarding;
+    if (!b) return false;
+    const skip = b.mode === 'enter' ? a.throttle > 0 || a.brake > 0 || Math.abs(a.steer) > 0.2 : Math.hypot(a.moveX, a.moveY) > 0.3 || a.jump || a.aim;
+    // Teletransporte o reaparición durante la bajada: se corta.
+    const far = b.mode === 'exit' && dist2D(b.vehicle.state.x, b.vehicle.state.z, p.state.pos.x, p.state.pos.z) > 8;
+    if (!far && !b.update(dt, skip)) return true;
+    this._endBoarding();
+    return false;
+  }
+
+  /** Termina (o corta) la subida / bajada: el personaje queda sentado o de pie donde va. */
+  _endBoarding() {
+    const p = this.player;
+    const b = p.boarding;
+    if (!b) return;
+    p.boarding = null;
+    b.cancel();
+    if (p.vehicle) this._seatPlayer(p.vehicle);
+    else {
+      this.scene.add(p.rig.root);
+      p.rig.root.position.set(p.state.pos.x, p.state.pos.y, p.state.pos.z);
+      p.rig.root.rotation.set(0, p.state.yaw, 0);
+    }
+  }
+
+  /** Personaje sentado en el puesto del conductor (sin animación). */
+  _seatPlayer(v) {
+    const p = this.player;
+    const seat = v.view.seat;
+    p.rig.root.position.set(seat.x, seat.y - 0.5 + (v.type === 'moto' ? 0.35 : 0), seat.z);
+    p.rig.root.rotation.set(0, 0, 0);
+    v.view.group.add(p.rig.root);
+    p.rig.setWeapon(null);
   }
 
   /** Un vehículo en marcha que golpea al jugador a pie le hace daño y lo empuja. */
@@ -759,6 +827,12 @@ export class Game {
     const p = this.player;
     const v = p.vehicle;
     const s = v.state;
+    // Subiéndose: el vehículo espera frenado hasta que el personaje esté sentado.
+    if (this._stepBoarding(dt, a)) {
+      stepVehicle(s, { throttle: 0, brake: 1, steer: 0, handbrake: true }, dt, { groundHeight, collision: this.city.collision });
+      this.audio.setEngine(true, 0.2, s.type);
+      return;
+    }
     const input = { throttle: a.throttle, brake: a.brake, steer: a.steer, handbrake: a.handbrake };
     const obstacles = [];
     for (const o of this.world.vehicles) {
@@ -834,8 +908,9 @@ export class Game {
     }
   }
 
-  enterVehicle(v) {
+  enterVehicle(v, opts = {}) {
     const p = this.player;
+    this._endBoarding();
     if (v.driver && v.driver !== 'player') {
       // Robo del vehículo: el conductor sale corriendo.
       this.world.ejectDriver(v, { x: p.x, z: p.z });
@@ -852,11 +927,14 @@ export class Game {
     p.vehicle = v;
     p.lastVehicle = v;
     p.state.vel.x = p.state.vel.y = p.state.vel.z = 0;
-    const seat = v.view.seat;
-    p.rig.root.position.set(seat.x, seat.y - 0.5 + (v.type === 'moto' ? 0.35 : 0), seat.z);
-    p.rig.root.rotation.set(0, 0, 0);
-    v.view.group.add(p.rig.root);
-    p.rig.setWeapon(null);
+    // Con animación: camina a la puerta, la abre y se sienta (boarding.js);
+    // con afán (policía cerca) todo va más rápido.
+    if (opts.animate ?? this._animBoarding()) {
+      v.view.group.updateMatrixWorld(true);
+      const from = v.view.group.worldToLocal(new THREE.Vector3(p.state.pos.x, p.state.pos.y, p.state.pos.z));
+      p.boarding = Boarding.create(p.rig, v, 'enter', { from: { x: from.x, z: from.z, yaw: p.state.yaw - v.state.heading }, hurry: this.wanted.level > 0 });
+    }
+    if (!p.boarding) this._seatPlayer(v);
     // Cámara detrás del vehículo.
     this.camRig.yaw = v.state.heading;
     this.audio.init();
@@ -868,19 +946,43 @@ export class Game {
     const p = this.player;
     const v = p.vehicle;
     if (!v) return;
+    // Bajarse (o salir volando) a mitad de la subida: se corta la animación.
+    if (p.boarding) {
+      force = true;
+      this._endBoarding();
+    }
     const s = v.state;
     let pt = exitPoint(s);
+    let side = -1;
     // Si el lado del conductor está bloqueado, salir por el otro lado.
     if (this.city.collision.pointBlocked(pt.x, pt.z)) {
       pt = { x: 2 * s.x - pt.x, z: 2 * s.z - pt.z };
+      side = 1;
     }
-    const r = this.city.collision.resolveCircle(pt.x, pt.z, 0.4);
+    let r = this.city.collision.resolveCircle(pt.x, pt.z, 0.4);
     if (!force && this.city.collision.pointBlocked(r.x, r.z)) {
       this.hud.toast('No hay espacio para bajarse');
       return;
     }
-    this.scene.add(p.rig.root);
-    p.state = createPlayerState(r.x, r.z, groundHeight, s.heading);
+    let yaw = s.heading;
+    // Con animación: se levanta y sale por la puerta; queda de pie junto a
+    // ella (el control vuelve al terminar, o antes si el jugador se mueve).
+    let b = !force && this._animBoarding() ? Boarding.create(p.rig, v, 'exit', { side }) : null;
+    if (b) {
+      v.view.group.updateMatrixWorld(true);
+      const f = v.view.group.localToWorld(new THREE.Vector3(b.final.x, 0, b.final.z));
+      const rf = this.city.collision.resolveCircle(f.x, f.z, 0.4);
+      if (this.city.collision.pointBlocked(rf.x, rf.z)) {
+        b.cancel();
+        b = null;
+      } else {
+        r = rf;
+        yaw = s.heading + b.final.yaw;
+      }
+    }
+    p.boarding = b;
+    if (!b) this.scene.add(p.rig.root);
+    p.state = createPlayerState(r.x, r.z, groundHeight, yaw);
     p.state.stamina = 100;
     v.driver = null;
     v.kind = 'parked';
@@ -895,6 +997,7 @@ export class Game {
     const p = this.player;
     if (p.dead) return;
     if (p.vehicle) this.exitVehicle(true);
+    this._endBoarding();
     p.dead = true;
     p.health = 0;
     this.deathTimer = 5;
@@ -1244,6 +1347,8 @@ export class Game {
       this._handleMissionEvents(this.missions.start(item.id));
       return 'close';
     }
+    // Al volver al juego: recibe lo comprado (y se lo come / toma).
+    if (!p.inVehicle) p.gestures = purchaseGestures(item.kind);
     p.money -= item.price;
     this.audio.ui('money');
     this.save();
@@ -1388,6 +1493,19 @@ export class Game {
       },
       exitVehicle() {
         g.exitVehicle(true);
+      },
+      /** Subir / bajar con animación también en las pruebas automáticas (o volver a lo instantáneo). */
+      setAnimatedBoarding(on) {
+        g.animatedBoarding = on;
+      },
+      /** Animación de subir / bajar en curso: {mode, t, total} o null. */
+      boarding() {
+        const b = g.player.boarding;
+        return b ? { mode: b.mode, t: b.t, total: b.plan.total } : null;
+      },
+      /** Gesto que está haciendo el jugador (o null). */
+      playerGesture() {
+        return g.player.rig.gesture ?? null;
       },
       startMission(id) {
         g._handleMissionEvents(g.missions.start(id));

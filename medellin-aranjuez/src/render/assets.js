@@ -14,7 +14,8 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 /**
  * Entrada de manifiesto:
  *  { key: 'personajes/male01', type: 'gltf' | 'texture' | 'hdr', url: 'models/x.glb',
- *    urlHd?: 'models/x-hd.glb', srgb?: boolean, repeat?: boolean, optional?: boolean }
+ *    urlHd?: 'models/x-hd.glb', srgb?: boolean, repeat?: boolean, optional?: boolean,
+ *    post?: (gltf) => gltf  (retoque del glTF recién cargado, p. ej. desempacar clips) }
  */
 class AssetLibrary {
   constructor() {
@@ -69,8 +70,10 @@ class AssetLibrary {
   async _loadUrl(e, url) {
     const anisotropy = this.renderer ? Math.min(8, this.renderer.capabilities.getMaxAnisotropy()) : 4;
     switch (e.type) {
-      case 'gltf':
-        return this._gltfLoader().loadAsync(url);
+      case 'gltf': {
+        const g = await this._gltfLoader().loadAsync(url);
+        return e.post ? e.post(g) : g;
+      }
       case 'hdr': {
         const t = await new HDRLoader().setDataType(THREE.HalfFloatType).loadAsync(url);
         t.mapping = THREE.EquirectangularReflectionMapping;

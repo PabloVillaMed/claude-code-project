@@ -1,19 +1,31 @@
 // Personajes humanos con esqueleto y animaciones reales (Microsoft Rocketbox,
 // MIT). Cada instancia clona el avatar con SkeletonUtils (geometría y
-// materiales compartidos) y tiene su propio AnimationMixer. Los clips se
-// mezclan por peso según el estado: reposo / caminar / trotar / correr
-// (timeScale ajustado a la velocidad real para que los pies no patinen),
-// agachado, sentado (conducir), salto; y por código encima de la animación:
-// apuntar (IK de dos huesos en ambos brazos), golpe / machetazo y muerte.
+// materiales compartidos) y tiene su propio AnimationMixer. Por capas:
+//  1. Base (mezclador): reposo / caminar / trotar / correr (timeScale ajustado
+//     a la velocidad real para que los pies no patinen), agachado, sentado
+//     (conducir o silla) y salto. Cada ranura cambia de clip según el estilo
+//     (`st.style`: cojeando, borracho, paseando, sobrado) o el asiento.
+//  2. Brazos continuos (`st.upper`: celular, hablar, escuchar...), solo del
+//     torso para arriba, encima de lo que hagan las piernas.
+//  3. Gestos de una vez (`play(nombre)`: saludar, recibir, beber, abrir la
+//     puerta, sentarse, levantarse...) y gestos de relleno cuando el
+//     personaje lleva un rato quieto (`st.fidget`).
+//  4. Por código: apuntar (IK de dos huesos en ambos brazos), golpe /
+//     machetazo, manos al volante / manubrio y muerte.
+// Los clips se escalan por avatar la primera vez que se usan y las capas 2 y
+// 3 se evalúan a mano (sin acciones del mezclador): un peatón que solo camina
+// no paga por el resto del catálogo.
 //
 // Si los GLB no están (o fallan), `new CharacterRig(look)` devuelve el muñeco
 // procedural de siempre (ProceduralRig), con la misma API:
 //   .root, .setWeapon(id), .muzzleWorld(v), .punch(), .animate(dt, st),
-//   .dispose(), .deadBlend
+//   .play(nombre, opciones), .stopGesture(), .gesture, .hasClip(n),
+//   .clipInfo(n), .dispose(), .deadBlend
 
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { damp, lerp, clamp } from '../sim/math.js';
+import { FIDGETS, pickFidget, fidgetDelay } from '../sim/animSelect.js';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_PLAYER, buildWeaponMesh } from './proceduralRig.js';
@@ -50,8 +62,36 @@ registerAssets([
   ...Object.values(AVATARS)
     .flat()
     .map((a) => ({ key: `personajes/${a.id}`, type: 'gltf', url: `models/personajes/${a.id}.glb` })),
-  { key: ANIM_KEY, type: 'gltf', url: 'models/personajes/animaciones.glb' },
+  { key: ANIM_KEY, type: 'gltf', url: 'models/personajes/animaciones.glb', post: unpackClips },
 ]);
+
+/**
+ * El GLB de animaciones trae todos los clips empacados en una animación glTF
+ * "empaque" de dos pistas (ver scripts/assets/rocketbox.mjs, packAnimations):
+ * aquí se rearma un AnimationClip por clip. Sin empaque (formato anterior) se
+ * deja tal cual.
+ */
+export function unpackClips(gltf) {
+  const pk = gltf.scene?.userData?.packed;
+  const pack = gltf.animations?.find((a) => a.name === 'empaque');
+  if (!pk || !pack) return gltf;
+  const lines = [pack.tracks.find((t) => t.name.endsWith('.quaternion')), pack.tracks.find((t) => t.name.endsWith('.position'))];
+  gltf.animations = pk.clips.map((c) => {
+    const tracks = [];
+    for (const [bone, kind, first, n, base] of c.tracks) {
+      const L = lines[kind];
+      if (!L) continue;
+      const size = kind ? 3 : 4;
+      const times = new Float32Array(n);
+      for (let i = 0; i < n; i++) times[i] = (L.times[first + i] - base) / pk.fps;
+      const values = L.values.slice(first * size, (first + n) * size);
+      const name = pk.bones[bone];
+      tracks.push(kind ? new THREE.VectorKeyframeTrack(`${name}.position`, times, values) : new THREE.QuaternionKeyframeTrack(`${name}.quaternion`, times, values));
+    }
+    return new THREE.AnimationClip(c.name, c.duration, tracks);
+  });
+  return gltf;
+}
 
 /** Aspecto aleatorio: el de siempre + qué avatar usar. */
 export function randomLook(rng, outfit = 'civil') {
@@ -74,13 +114,14 @@ const _qt = new THREE.Quaternion();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _v4 = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 
-/** Prepara (una vez por avatar) la escena fuente, los clips escalados y el agarre del arma. */
+/** Prepara (una vez por avatar) la escena fuente, los clips disponibles y el agarre del arma. */
 function getTemplate(id) {
   if (templates.has(id)) return templates.get(id);
   const gltf = assets.gltf(`personajes/${id}`);
@@ -91,13 +132,12 @@ function getTemplate(id) {
     const hip = info.hipHeight ?? 0.9;
     const g = info.gender === 'f' ? 'f' : 'm';
     const meta = anim.scene.userData?.clips ?? {};
-    const clips = {};
+    // Clips de su género; los que no tienen versión femenina usan la masculina.
+    const src = new Map();
     for (const c of anim.animations) {
-      if (!c.name.startsWith(`${g}_`)) continue;
-      const clip = c.clone();
-      // La posición de la cadera viene normalizada (1.0 = altura de cadera).
-      for (const tr of clip.tracks) if (tr.name === 'Bip01.position') for (let i = 0; i < tr.values.length; i++) tr.values[i] *= hip;
-      clips[c.name.slice(2)] = { clip, speed: meta[c.name]?.speed || 1 };
+      const pre = c.name.slice(0, 2);
+      const name = c.name.slice(2);
+      if (pre === `${g}_` || (pre === 'm_' && !src.has(name))) src.set(name, { raw: c, meta: meta[c.name] ?? {} });
     }
     gltf.scene.traverse((o) => {
       if (o.isMesh) {
@@ -117,22 +157,65 @@ function getTemplate(id) {
     gltf.scene.updateMatrixWorld(true);
     const hand = gltf.scene.getObjectByName('Bip01_R_Hand');
     let grip = null;
+    let props = null;
     if (hand) {
       const hq = hand.getWorldQuaternion(new THREE.Quaternion());
+      const hqi = hq.clone().invert();
       const along = X_AXIS.clone().applyQuaternion(hq).normalize();
       const up = new THREE.Vector3(0, 0, 1);
       up.sub(_v.copy(along).multiplyScalar(up.dot(along))).normalize();
       const wq = weaponQuat(along, up, new THREE.Quaternion());
-      const q = hq.clone().invert().multiply(wq);
+      const q = hqi.clone().multiply(wq);
       // Centro de la palma: un poco hacia los dedos y hacia la palma (abajo en T).
       const palmW = along.clone().multiplyScalar(0.075).add(new THREE.Vector3(0, -0.035, 0));
-      const p = palmW.applyQuaternion(hq.clone().invert());
+      const p = palmW.clone().applyQuaternion(hqi);
       grip = { q, p };
+      // Utilería en la mano derecha (vaso, celular): marco de la palma en T
+      // (dedos, normal de la palma hacia abajo, pulgar hacia delante).
+      const palmN = new THREE.Vector3(0, -1, 0);
+      const thumb = new THREE.Vector3().crossVectors(palmN, along).normalize();
+      if (thumb.z < 0) thumb.negate();
+      const frame = (x, y, z, off) => ({
+        q: hqi.clone().multiply(new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z))),
+        p: off.applyQuaternion(hqi),
+      });
+      props = {
+        // Vaso: eje a lo largo del pulgar, por fuera de la palma.
+        cup: frame(new THREE.Vector3().crossVectors(thumb, palmN), thumb, palmN, palmW.clone().addScaledVector(palmN, 0.03).addScaledVector(along, -0.01)),
+        // Celular: a lo largo de los dedos, pegado a la palma.
+        phone: frame(new THREE.Vector3().crossVectors(along, palmN), along, palmN, palmW.clone().addScaledVector(palmN, 0.012)),
+      };
     }
-    t = { scene: gltf.scene, clips, hip, gender: g, grip, height: info.height ?? 1.75 };
+    t = { scene: gltf.scene, src, clips: new Map(), hip, gender: g, grip, props, height: info.height ?? 1.75 };
   }
   templates.set(id, t);
   return t;
+}
+
+/**
+ * Clip `name` escalado a la cadera del avatar (perezoso, compartido por todas
+ * sus instancias): {clip, speed, duration, loop, kind, end} o null.
+ */
+function tplClip(tpl, name) {
+  let c = tpl.clips.get(name);
+  if (c !== undefined) return c;
+  const s = tpl.src.get(name);
+  c = null;
+  if (s) {
+    // La posición de la cadera viene normalizada (1.0 = altura de cadera); las
+    // rotaciones se comparten tal cual.
+    const tracks = s.raw.tracks.map((tr) => {
+      if (tr.name !== 'Bip01.position') return tr;
+      const tt = tr.clone();
+      for (let i = 0; i < tt.values.length; i++) tt.values[i] *= tpl.hip;
+      return tt;
+    });
+    const m = s.meta;
+    const clip = new THREE.AnimationClip(name, s.raw.duration, tracks);
+    c = { clip, name, speed: m.speed || 1, duration: clip.duration, loop: m.loop ?? m.kind !== 'once', kind: m.kind ?? 'loop', end: m.end ?? null };
+  }
+  tpl.clips.set(name, c);
+  return c;
 }
 
 /** Cuaternión de un arma cuyo cañón (-Z) apunta a `dir` y su parte de arriba (+Y) a `up`. */
@@ -181,22 +264,38 @@ function ik2(upper, fore, hand, target, pole, weight) {
   pointBone(fore, T2.sub(E2).normalize(), weight);
 }
 
-// Huesos que las capas por código (apuntar, golpe, conducir, muerte) giran
-// encima de la animación. Ver SkinnedRig.animate: se restauran a la pose
-// del mezclador antes de cada actualización.
-const CODE_BONES = [
-  'Bip01_Pelvis', 'Bip01_Spine', 'Bip01_Spine1', 'Bip01_Spine2', 'Bip01_Neck', 'Bip01_Head',
-  'Bip01_L_Clavicle', 'Bip01_L_UpperArm', 'Bip01_L_Forearm', 'Bip01_L_Hand',
-  'Bip01_R_Clavicle', 'Bip01_R_UpperArm', 'Bip01_R_Forearm', 'Bip01_R_Hand',
-  'Bip01_L_Thigh', 'Bip01_L_Calf', 'Bip01_L_Foot', 'Bip01_R_Thigh', 'Bip01_R_Calf', 'Bip01_R_Foot',
-];
+// Huesos de la capa de brazos (celular, hablar, beber...): brazos, cuello y
+// cabeza. La columna se queda con la base: sentado, el torso se sostiene con
+// la columna inclinada hacia delante y una columna de pie lo echaba para atrás.
+const UPPER = /^Bip01_(Neck|Head|[LR]_(Clavicle|UpperArm|Forearm|Hand|Finger\d+))$/;
 
-// Nodos de la mezcla de locomoción: [clip, velocidad en el juego (m/s)].
+// Nodos de la mezcla de locomoción: [ranura, velocidad en el juego (m/s)].
 const LOCO = [
   ['walk', 1.35],
   ['jog', 3.0],
   ['sprint', 5.2],
 ];
+
+// Clip de caminar de cada estilo.
+const STYLE_WALK = { injured: 'walk_injured', drunk: 'walk_drunk', stroll: 'walk_stroll', cool: 'walk_cool' };
+
+// Utilería que aparece en la mano derecha con ciertos clips.
+const PROP_OF = { phone: 'phone', text: 'phone', drink: 'cup' };
+const propMeshes = {};
+function propMesh(kind) {
+  const shared = (propMeshes[kind] ??=
+    kind === 'cup'
+      ? // Vaso desechable de gaseosa / tinto.
+        { g: new THREE.CylinderGeometry(0.037, 0.029, 0.105, 14), m: new THREE.MeshStandardMaterial({ color: 0xf1ede4, roughness: 0.55 }) }
+      : // Celular.
+        { g: new THREE.BoxGeometry(0.07, 0.148, 0.009), m: new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.35, metalness: 0.2 }) });
+  const mesh = new THREE.Mesh(shared.g, shared.m);
+  mesh.name = kind === 'cup' ? 'vaso' : 'celular';
+  mesh.castShadow = false;
+  return mesh;
+}
+
+const smoothstep = (x) => x * x * (3 - 2 * x);
 
 // ------------------------------------------------------------------ rig con piel
 export class SkinnedRig {
@@ -227,16 +326,13 @@ export class SkinnedRig {
       }
     });
     this.mixer = new THREE.AnimationMixer(this.model);
-    this.actions = {};
-    for (const [name, { clip }] of Object.entries(tpl.clips)) {
-      const a = this.mixer.clipAction(clip);
-      a.play();
-      a.setEffectiveWeight(0);
-      a.setEffectiveTimeScale(0); // el tiempo lo lleva este rig
-      this.actions[name] = a;
-    }
-    this.w = { idle: 1, walk: 0, jog: 0, sprint: 0, crouch: 0, sit: 0, air: 0 };
-    this.t = { idle: Math.random() * 2, crouch: Math.random() * 3 };
+    this.actions = {}; // acciones del mezclador, creadas al primer uso
+    this.w = { idle: 1 }; // peso actual de cada clip de la base
+    this._tw = {};
+    this.slots = { idle: 'idle', walk: 'walk', jog: 'jog', sprint: 'sprint', crouch: 'crouch', sit: 'sit' };
+    this.clock = Math.random() * 20;
+    this.tCrouch = Math.random() * 3;
+    this.airW = 0;
     this.phase = Math.random();
     this.frame = 0;
     this.rendered = 0;
@@ -256,9 +352,20 @@ export class SkinnedRig {
     this.deadBlend = 0;
     this.driveBlend = 0;
     this.lean = 0;
-    this.sitHip = (tpl.clips.sit?.clip.tracks.find((t) => t.name === 'Bip01.position')?.values[1] ?? 0.53) * s;
-    this.codeBones = CODE_BONES.map((n) => this.bones[n]).filter(Boolean);
-    this.animPose = this.codeBones.map((b) => b.quaternion.clone());
+    this.sitHip = (tplClip(tpl, 'sit')?.clip.tracks.find((t) => t.name === 'Bip01.position')?.values[1] ?? 0.53) * s;
+    // Capas encima del mezclador (brazos continuos y gestos).
+    this.layers = [];
+    this.upperName = null;
+    this.still = 0;
+    this.nextFidget = fidgetDelay(true, Math.random());
+    this.lastFidget = null;
+    this._binds = new Map();
+    this.props = {};
+    // Pose que dejó el mezclador: se repone antes de cada actualización (ver animate).
+    this.poseBones = Object.values(this.bones).filter((b) => b.name.startsWith('Bip01'));
+    this.animPose = this.poseBones.map((b) => b.quaternion.clone());
+    this.hipBone = this.bones.Bip01 ?? null;
+    this.animHip = this.hipBone ? this.hipBone.position.clone() : null;
     this.footDown = 0;
   }
 
@@ -283,6 +390,248 @@ export class SkinnedRig {
     this.punchTimer = 0.35;
   }
 
+  // ------------------------------------------------------------ gestos
+  hasClip(name) {
+    return !!name && !!tplClip(this.tpl, name);
+  }
+
+  /** {duration, loop, end: {dx, dz, dyaw} en el marco de la raíz} o null. */
+  clipInfo(name) {
+    const c = tplClip(this.tpl, name);
+    return c ? { duration: c.duration, loop: c.loop, end: c.end ? this._endDelta(c.end) : null } : null;
+  }
+
+  /**
+   * Gesto de una vez (o en bucle con loop: true) encima de la base. Opciones:
+   * speed, from / to (s del clip), fadeIn / fadeOut (s), hold (se queda en el
+   * último cuadro hasta stopGesture o commitRootMotion), mask: 'auto' (todo
+   * el cuerpo si está de pie y quieto; del torso para arriba caminando o
+   * sentado) | 'full' | 'upper'. Devuelve la capa ({t, dur, w, ended...}).
+   */
+  play(name, opts = {}) {
+    const c = tplClip(this.tpl, name);
+    if (!c) return null;
+    // Un gesto a la vez: el anterior se desvanece.
+    for (const L of this.layers) {
+      if (L.slot === 'gesture' && L.target > 0) {
+        L.target = 0;
+        L.fadeOut = Math.min(L.fadeOut, opts.fadeIn ?? 0.25);
+      }
+    }
+    return this._layer(c, { slot: 'gesture', ...opts });
+  }
+
+  /** Desvanece el gesto en curso. */
+  stopGesture(fade = 0.25) {
+    for (const L of this.layers) {
+      if (L.slot !== 'gesture') continue;
+      L.target = 0;
+      L.fadeOut = Math.max(0.01, fade);
+    }
+  }
+
+  /** Nombre del gesto en curso (o null). */
+  get gesture() {
+    return this.gestureLayer?.name ?? null;
+  }
+
+  get gestureLayer() {
+    for (let i = this.layers.length - 1; i >= 0; i--) if (this.layers[i].slot === 'gesture' && this.layers[i].target > 0) return this.layers[i];
+    return null;
+  }
+
+  /**
+   * Aplica el desplazamiento de cadera del gesto en curso que lo tenga
+   * (sentarse, levantarse): devuelve {dx, dz, dyaw} en el marco de la raíz
+   * para que quien la mueve la lleve allá. Desde ese momento el gesto se
+   * dibuja relativo a la nueva raíz y se desvanece sin que la cadera salte.
+   */
+  commitRootMotion(fade = 0.2) {
+    const L = this.layers.find((l) => l.slot === 'gesture' && l.c.end && !l.corr);
+    if (!L) return null;
+    const e = L.c.end;
+    L.corr = { x: e.x * this.tpl.hip, z: e.z * this.tpl.hip, q: new THREE.Quaternion().setFromAxisAngle(Y_AXIS, -e.yaw) };
+    L.target = 0;
+    L.fadeOut = Math.max(0.01, fade);
+    return this._endDelta(e);
+  }
+
+  _endDelta(e) {
+    // Espacio del clip (mira a +Z) -> raíz (mira a -Z): giro de 180° y escala.
+    const k = this.tpl.hip * this.scale;
+    return { dx: -e.x * k, dz: -e.z * k, dyaw: e.yaw };
+  }
+
+  _layer(c, o) {
+    const L = {
+      name: c.name,
+      c,
+      slot: o.slot,
+      t: o.from ?? 0,
+      dur: Math.min(c.duration, o.to ?? c.duration),
+      speed: o.speed ?? 1,
+      loop: o.loop ?? o.slot === 'upper',
+      mask: o.mask ?? 'auto',
+      w: o.instant ? 1 : 0,
+      target: 1,
+      fadeIn: Math.max(0.01, o.fadeIn ?? 0.25),
+      fadeOut: Math.max(0.01, o.fadeOut ?? 0.3),
+      hold: !!o.hold,
+      fidget: !!o.fidget,
+      corr: null,
+      ended: false,
+      binds: this._bind(c),
+    };
+    this.layers.push(L);
+    return L;
+  }
+
+  /** Interpoladores de las pistas de un clip sobre los huesos de esta instancia (caché corta). */
+  _bind(c) {
+    let b = this._binds.get(c.name);
+    if (b) {
+      this._binds.delete(c.name);
+      this._binds.set(c.name, b);
+      return b;
+    }
+    b = [];
+    for (const tr of c.clip.tracks) {
+      const [node, prop] = tr.name.split('.');
+      const bone = this.bones[node];
+      if (!bone) continue;
+      b.push({ bone, interp: tr.createInterpolant(), pos: prop === 'position', upper: UPPER.test(node), root: node === 'Bip01' });
+    }
+    this._binds.set(c.name, b);
+    if (this._binds.size > 8) this._binds.delete(this._binds.keys().next().value);
+    return b;
+  }
+
+  /** Lógica de las capas (cada cuadro, aunque no se dibuje): qué suena, tiempos y fundidos. */
+  _updateLayers(dt, st, moving, blocked, dead) {
+    const driving = st.driving ?? null;
+    // Brazos continuos.
+    const want = !blocked && st.upper && this.hasClip(st.upper) ? st.upper : null;
+    if (want !== this.upperName) {
+      for (const L of this.layers) if (L.slot === 'upper') L.target = 0;
+      this.upperName = want;
+      if (want) this._layer(tplClip(this.tpl, want), { slot: 'upper', mask: 'upper', fadeIn: 0.4, fadeOut: 0.4, from: Math.random() * 3 });
+    }
+    // Gestos de relleno: de pie o en la silla, quieto y sin nada en las manos.
+    const idle = st.fidget && !blocked && !moving && !want && (!driving || driving === 'chair') && !this.gestureLayer;
+    if (idle) {
+      this.still += dt;
+      if (this.still >= this.nextFidget) {
+        const name = pickFidget(driving ? FIDGETS.sit : FIDGETS.stand, this.lastFidget, Math.random(), (n) => this.hasClip(n));
+        if (name) this.play(name, { fidget: true, fadeIn: 0.45, fadeOut: 0.55 });
+        this.lastFidget = name;
+        this.nextFidget = this.still + fidgetDelay(false, Math.random());
+      }
+    } else if (moving || blocked || !st.fidget) {
+      this.still = 0;
+      this.nextFidget = Math.max(this.nextFidget, 4);
+    }
+    // Tiempos y fundidos.
+    for (let i = this.layers.length - 1; i >= 0; i--) {
+      const L = this.layers[i];
+      if (dead || (L.fidget && moving) || (blocked && (L.slot !== 'gesture' || L.fidget))) {
+        L.target = 0;
+        L.fadeOut = Math.min(L.fadeOut, 0.2);
+      }
+      L.t += dt * L.speed;
+      if (!L.loop) {
+        if (L.t >= L.dur) {
+          L.t = L.dur;
+          L.ended = true;
+          if (!L.hold) L.target = 0;
+        } else if (!L.hold && (L.dur - L.t) / L.speed < L.fadeOut) L.target = 0;
+      }
+      if (L.target > L.w) L.w = Math.min(L.target, L.w + dt / L.fadeIn);
+      else L.w = Math.max(L.target, L.w - dt / L.fadeOut);
+      if (L.target === 0 && L.w <= 0) {
+        L.ended = true;
+        this.layers.splice(i, 1);
+      }
+    }
+  }
+
+  /** Mezcla las capas sobre la pose del mezclador. */
+  _applyLayers(moving, seated) {
+    for (const L of this.layers) {
+      if (L.w <= 0.001) continue;
+      const w = smoothstep(Math.min(1, L.w));
+      const seatedClip = L.name.startsWith('sit_') && !L.c.end;
+      const upperOnly = L.mask === 'upper' || (L.mask === 'auto' && (moving || seated !== seatedClip));
+      const t = L.loop ? L.t % L.c.duration : Math.min(L.t, L.dur);
+      for (const b of L.binds) {
+        if (upperOnly && !b.upper) continue;
+        const v = b.interp.evaluate(t);
+        if (b.pos) {
+          _v4.set(v[0], v[1], v[2]);
+          if (L.corr) {
+            _v4.x -= L.corr.x;
+            _v4.z -= L.corr.z;
+            _v4.applyQuaternion(L.corr.q);
+          }
+          b.bone.position.lerp(_v4, w);
+        } else {
+          _q.set(v[0], v[1], v[2], v[3]);
+          if (L.corr && b.root) _q.premultiply(L.corr.q);
+          if (w >= 0.999) b.bone.quaternion.copy(_q);
+          else b.bone.quaternion.slerp(_q, w);
+        }
+      }
+    }
+  }
+
+  /** Vaso o celular en la mano derecha mientras algún clip lo pide. */
+  _updateProps() {
+    const hand = this.bones.Bip01_R_Hand;
+    if (!hand || !this.tpl.props) return;
+    let want = null;
+    let best = 0.35;
+    for (const L of this.layers) {
+      const p = PROP_OF[L.name];
+      if (p && L.w > best) {
+        want = p;
+        best = L.w;
+      }
+    }
+    if (this.aimBlend > 0.3 || (this.weaponId && this.weaponId !== 'fists')) want = null;
+    for (const kind of ['cup', 'phone']) {
+      let m = this.props[kind];
+      if (!m && want === kind) {
+        m = this.props[kind] = propMesh(kind);
+        m.quaternion.copy(this.tpl.props[kind].q);
+        m.position.copy(this.tpl.props[kind].p);
+        hand.add(m);
+      }
+      if (m) m.visible = want === kind;
+    }
+    // Con las manos ocupadas (recibir, beber, saludar...) el arma no se ve.
+    const busy = this.layers.some((L) => L.slot === 'gesture' && !L.fidget && L.w > 0.35 && !L.c.end);
+    this.weaponMount.visible = !busy || this.aimBlend > 0.3;
+  }
+
+  /** Acción del mezclador para un clip de la base (creada al primer uso). */
+  _action(name) {
+    let a = this.actions[name];
+    if (a === undefined) {
+      const c = tplClip(this.tpl, name);
+      a = this.actions[name] = c ? this.mixer.clipAction(c.clip) : null;
+      if (a) {
+        a.play();
+        a.setEffectiveWeight(0);
+        a.setEffectiveTimeScale(0); // el tiempo lo lleva este rig
+      }
+    }
+    return a;
+  }
+
+  // ------------------------------------------------------------ animación
+  /**
+   * st = {speed, onGround, aiming, crouching, driving ('car'|'moto'|'chair'|null),
+   *       dead, aimPitch, style, upper, fidget, handsFree, mountLift}
+   */
   animate(dt, st) {
     this.frame++;
     const speed = st.speed ?? 0;
@@ -290,36 +639,57 @@ export class SkinnedRig {
     const dead = !!st.dead;
     const crouch = !!st.crouching && !driving;
     const air = !st.onGround && !driving && !dead;
+    const moving = speed > 0.3;
 
     this.aimBlend = damp(this.aimBlend, st.aiming ? 1 : 0, 14, dt);
     this.deadBlend = damp(this.deadBlend, dead ? 1 : 0, 6, dt);
     this.driveBlend = damp(this.driveBlend, driving ? 1 : 0, 10, dt);
     this.lean = damp(this.lean, speed > 5.5 ? 0.12 : 0, 5, dt);
     if (this.punchTimer > 0) this.punchTimer -= dt;
+    this._updateLayers(dt, st, moving, dead || air || !!st.aiming || crouch, dead);
 
-    // Pesos objetivo de cada clip.
-    const tw = { idle: 0, walk: 0, jog: 0, sprint: 0, crouch: 0, sit: 0, air: 0 };
-    if (driving) tw.sit = 1;
-    else if (air) tw.air = 1;
-    else if (crouch) {
-      tw.crouch = 1;
-    } else if (speed < 0.12) tw.idle = 1;
+    // Ranuras de la base: qué clip hace de reposo, caminar, trotar...
+    const style = st.style ?? null;
+    const S = this.slots;
+    const pick = (name, fallback) => (this.hasClip(name) ? name : fallback);
+    S.idle = style === 'drunk' ? pick('idle_drunk', 'idle') : 'idle';
+    S.walk = style ? pick(STYLE_WALK[style], 'walk') : 'walk';
+    S.jog = style === 'injured' ? pick('run_injured', 'jog') : 'jog';
+    S.sit = driving === 'chair' ? pick('sit_idle', 'sit') : 'sit';
+
+    // Pesos objetivo de cada ranura.
+    const tw = this._tw;
+    for (const k in tw) tw[k] = 0;
+    const add = (slot, x) => {
+      if (x > 0) tw[S[slot]] = (tw[S[slot]] ?? 0) + x;
+    };
+    if (driving) add('sit', 1);
+    else if (air) {
+      // Solo airW (cuadro congelado del sprint, abajo).
+    } else if (crouch) add('crouch', 1);
+    else if (speed < 0.12) add('idle', 1);
     else if (speed < LOCO[0][1]) {
       const k = (speed - 0.12) / (LOCO[0][1] - 0.12);
-      tw.idle = 1 - Math.min(1, k * 2.5);
-      tw.walk = 1 - tw.idle;
+      const idle = 1 - Math.min(1, k * 2.5);
+      add('idle', idle);
+      add('walk', 1 - idle);
     } else {
       let i = 0;
       while (i < LOCO.length - 1 && speed > LOCO[i + 1][1]) i++;
-      if (i >= LOCO.length - 1) tw.sprint = 1;
+      if (i >= LOCO.length - 1) add('sprint', 1);
       else {
         const k = (speed - LOCO[i][1]) / (LOCO[i + 1][1] - LOCO[i][1]);
-        tw[LOCO[i][0]] = 1 - k;
-        tw[LOCO[i + 1][0]] = k;
+        add(LOCO[i][0], 1 - k);
+        add(LOCO[i + 1][0], k);
       }
     }
     const rate = driving || dead ? 8 : 10;
-    for (const k in this.w) this.w[k] = damp(this.w[k], tw[k], rate, dt);
+    for (const k in tw) if (!(k in this.w)) this.w[k] = 0;
+    for (const k in this.w) {
+      this.w[k] = damp(this.w[k], tw[k] ?? 0, rate, dt);
+      if (this.w[k] < 1e-4 && !tw[k]) this.w[k] = 0;
+    }
+    this.airW = damp(this.airW, air ? 1 : 0, rate, dt);
 
     // Lo que no se dibuja no se anima (y lo lejano, a menor frecuencia).
     this.accum += dt;
@@ -333,47 +703,60 @@ export class SkinnedRig {
     // Fase compartida de locomoción (los ciclos quedan sincronizados).
     let cyc = 0;
     let wsum = 0;
-    for (const [name] of LOCO) {
-      const c = this.tpl.clips[name];
-      if (!c || this.w[name] < 1e-3) continue;
+    for (const [slot] of LOCO) {
+      const c = tplClip(this.tpl, S[slot]);
+      const w = this.w[S[slot]] ?? 0;
+      if (!c || w < 1e-3 || (slot === 'sprint' && air)) continue;
       const ts = clamp(speed / c.speed, 0.55, 1.6);
-      cyc += (this.w[name] * ts) / c.clip.duration;
-      wsum += this.w[name];
+      cyc += (w * ts) / c.duration;
+      wsum += w;
     }
     if (wsum > 0) this.phase = (this.phase + (step * cyc) / wsum) % 1;
-    this.t.idle += step;
-    this.t.crouch += step * (crouch && speed > 0.3 ? 1.6 : 1);
+    this.clock += step;
+    this.tCrouch += step * (crouch && speed > 0.3 ? 1.6 : 1);
 
-    const A = this.actions;
-    const set = (name, weight, time) => {
-      const a = A[name];
-      if (!a) return;
-      a.setEffectiveWeight(weight);
-      a.time = time % a.getClip().duration;
-    };
-    set('idle', this.w.idle, this.t.idle);
-    set('crouch', this.w.crouch, this.t.crouch);
-    set('sit', this.w.sit, 0);
-    for (const [name] of LOCO) set(name, name === 'sprint' ? this.w.sprint + this.w.air : this.w[name], this.phase * (A[name]?.getClip().duration ?? 1));
     // El mezclador de three.js solo escribe un hueso si su valor cambió desde
     // la actualización anterior. Con una pose quieta (sentado en la moto o el
     // carro, con la cadera en el cuadro 0 de "sit") deja de escribirlos, y las
-    // rotaciones relativas de las capas por código (inclinar el torso, abrir
+    // rotaciones que ponen encima las capas (gestos, inclinar el torso, abrir
     // las piernas) se acumulaban cuadro a cuadro: tras unos segundos el
     // motociclista quedaba acostado hacia atrás o retorcido. Por eso se
     // devuelve cada hueso a la pose animada antes de mezclar.
-    const cb = this.codeBones;
-    for (let i = 0; i < cb.length; i++) cb[i].quaternion.copy(this.animPose[i]);
-    // En el aire: cuadro de zancada del sprint (piernas abiertas), congelado.
-    if (this.w.air > 0.05 && A.sprint) A.sprint.time = 0.25 * A.sprint.getClip().duration;
+    const pb = this.poseBones;
+    for (let i = 0; i < pb.length; i++) pb[i].quaternion.copy(this.animPose[i]);
+    if (this.hipBone) this.hipBone.position.copy(this.animHip);
+
+    for (const name in this.w) {
+      const w = this.w[name] + (name === S.sprint ? this.airW : 0);
+      if (w < 1e-3) {
+        this.actions[name]?.setEffectiveWeight(0);
+        continue;
+      }
+      const a = this._action(name);
+      if (!a) continue;
+      a.setEffectiveWeight(w);
+      const c = tplClip(this.tpl, name);
+      const d = c.duration;
+      // En el aire: cuadro de zancada del sprint (piernas abiertas), congelado.
+      if (name === S.sprint && this.airW > 0.05) a.time = 0.25 * d;
+      else if (c.kind === 'locomotion') a.time = this.phase * d;
+      else if (c.kind === 'pose') a.time = 0;
+      else a.time = (name === 'crouch' ? this.tCrouch : this.clock) % d;
+    }
     // Agachado caminando: un poco del ciclo de caminar sobre el agachado.
-    if (crouch && speed > 0.3 && A.walk) {
-      A.walk.setEffectiveWeight(0.35);
-      A.walk.time = this.phase * A.walk.getClip().duration;
+    const walkA = crouch && speed > 0.3 ? this._action(S.walk) : null;
+    if (crouch && speed > 0.3 && walkA) {
+      walkA.setEffectiveWeight(0.35);
+      walkA.time = this.phase * walkA.getClip().duration;
       this.phase = (this.phase + (step * speed) / 1.2) % 1;
     }
     this.mixer.update(0);
-    for (let i = 0; i < cb.length; i++) this.animPose[i].copy(cb[i].quaternion);
+    for (let i = 0; i < pb.length; i++) this.animPose[i].copy(pb[i].quaternion);
+    if (this.hipBone) this.animHip.copy(this.hipBone.position);
+
+    // Capas: brazos continuos y gestos; utilería en la mano.
+    if (this.layers.length) this._applyLayers(moving, !!driving);
+    this._updateProps();
 
     // Sentado: cadera sobre el asiento. world.js/Game ponen la raíz en
     // asiento - 0.5 (+0.35 en moto); en carro se sube un poco para que se
@@ -390,14 +773,15 @@ export class SkinnedRig {
 
     // ---------------------------------------------- capas por código
     const a = this.aimBlend;
-    const needArms = a > 0.01 || this.punchTimer > 0 || (db > 0.01 && driving !== 'chair') || d > 0.01;
+    const wheel = db > 0.01 && driving !== 'chair' && !st.handsFree;
+    const needArms = a > 0.01 || this.punchTimer > 0 || wheel || (db > 0.01 && driving === 'moto') || d > 0.01;
     // Moto: puntos del modelo (asiento, puños, estriberas) y velocidad (vehicleMesh).
     const ride = driving === 'moto' ? this.root.parent?.userData.ride : null;
     this.footDown = damp(this.footDown, ride && Math.abs(ride.speed) < 0.8 ? 1 : 0, 5, step);
     if (needArms) {
       this.root.updateMatrixWorld(true);
-      if (ride && db > 0.01) this._rideMoto(ride, db, a);
-      else if (db > 0.01 && driving !== 'chair') this._driveArms(driving === 'moto', db * (1 - a));
+      if (ride && db > 0.01) this._rideMoto(ride, db, a, st.mountLift ?? 0);
+      else if (wheel) this._driveArms(driving === 'moto', db * (1 - a));
       if (a > 0.01 && d < 0.5) this._aimArms(st.aimPitch ?? 0, a);
       if (this.punchTimer > 0) this._punchArm();
       if (d > 0.01) this._limp(d);
@@ -532,9 +916,10 @@ export class SkinnedRig {
    * tanque y pies en las estriberas; detenido, el pie izquierdo al piso.
    * `ride` (espacio del vehículo, frente en -Z): seatY, seatZ, grips[izq, der],
    * pegs[izq, der], speed. `w`: peso de la postura; `aim`: el brazo derecho
-   * lo lleva la mira (disparo desde la moto).
+   * lo lleva la mira (disparo desde la moto); `lift` (0..1): al montarse o
+   * bajarse, la pierna derecha pasa por encima del asiento.
    */
-  _rideMoto(ride, w, aim) {
+  _rideMoto(ride, w, aim, lift = 0) {
     const B = this.bones;
     if (!B.Bip01_Pelvis || !B.Bip01_L_Thigh) return;
     const veh = this.root.parent;
@@ -591,11 +976,16 @@ export class SkinnedRig {
       // Tobillo sobre la estribera (el metatarso apoya en ella).
       const ankle = toW(peg).addScaledVector(up, 0.07).addScaledVector(fwd, -0.06);
       let pole = fwd.clone().addScaledVector(right, -s * 0.12).addScaledVector(up, 0.2);
-      const down = s < 0 ? this.footDown : 0;
+      const down = s < 0 ? Math.max(this.footDown, lift > 0 ? 1 : 0) : 0;
       if (down > 0.01) {
         const ground = toW({ x: peg.x - 0.2, y: 0.08, z: peg.z - 0.12 });
         ankle.lerp(ground, down);
         pole = pole.lerp(right.clone().multiplyScalar(s * 0.6).add(fwd), down);
+      }
+      if (s > 0 && lift > 0.01) {
+        // Pierna derecha por encima de la parte de atrás del asiento.
+        const over = toW({ x: 0.1, y: ride.seatY + 0.45, z: ride.seatZ + 0.35 });
+        ankle.lerp(over, Math.sin(Math.min(1, lift) * Math.PI));
       }
       ik2(thigh, calf, foot, ankle, pole, w);
       pointBone(foot, fwd.clone().addScaledVector(up, down > 0.5 ? -0.15 : -0.35).normalize(), w);
@@ -655,7 +1045,7 @@ export class CharacterRig {
   constructor(look) {
     const id = look.avatar ?? (look.outfit === 'player' ? 'jugador' : null);
     const tpl = id ? getTemplate(id) : null;
-    if (tpl && tpl.clips.idle && tpl.clips.walk) return new SkinnedRig(look, tpl);
+    if (tpl && tplClip(tpl, 'idle') && tplClip(tpl, 'walk')) return new SkinnedRig(look, tpl);
     return new ProceduralRig(look);
   }
 }
