@@ -10,6 +10,7 @@ import { createPed, nearestBlock, stepPed, PED } from '../sim/pedAI.js';
 import { pointInPoly } from '../sim/geom2d.js';
 import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
+import { pickVariant, randomPaint } from '../sim/vehicleVariants.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
 import { walkStyle, standingActivity, walkingActivity, speechGesture } from '../sim/animSelect.js';
 
@@ -19,8 +20,10 @@ export class VehicleEntity {
   constructor(world, type, x, z, heading, opts = {}) {
     this.id = nextId++;
     this.world = world;
-    this.state = createVehicleState(type, x, z, heading, groundHeight);
-    this.view = new VehicleView(type, opts);
+    // Variante (modelo, medidas y motor) y color al azar según el tipo.
+    const variant = opts.variant ?? pickVariant(type, world.rng.next, opts.kind ?? 'parked');
+    this.state = createVehicleState(type, x, z, heading, groundHeight, variant);
+    this.view = new VehicleView(type, { color: randomPaint(type, world.rng.next), ...opts, variant: this.state.variant });
     world.scene.add(this.view.group);
     this.kind = opts.kind ?? 'parked';
     this.agent = opts.agent ?? null;
@@ -119,12 +122,14 @@ export class PedEntity {
   }
 }
 
+// Mezcla del tráfico de Medellín: casi la mitad son motos, luego los carros
+// particulares pequeños, los taxis amarillos, camionetas y busetas.
 const TRAFFIC_TYPES = [
-  ['taxi', 0.34],
-  ['sedan', 0.24],
-  ['moto', 0.22],
-  ['camioneta', 0.12],
-  ['buseta', 0.08],
+  ['moto', 0.4],
+  ['sedan', 0.23],
+  ['taxi', 0.21],
+  ['camioneta', 0.1],
+  ['buseta', 0.06],
 ];
 
 export class World {

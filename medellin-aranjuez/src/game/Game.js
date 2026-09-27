@@ -8,6 +8,7 @@ import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
 import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
+import { VEHICLE_VARIANTS } from '../sim/vehicleVariants.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
 import { MissionSystem, createMissionDefs } from '../sim/missions.js';
@@ -1446,6 +1447,7 @@ export class Game {
           yaw: p.yaw,
           inVehicle: p.inVehicle,
           vehicleType: p.vehicle?.type ?? null,
+          vehicleVariant: p.vehicle?.state.variant ?? null,
           speed: p.speed,
           speedKmh: p.vehicle ? speedKmh(p.vehicle.state) : p.speed * 3.6,
           onGround: p.state.onGround,
@@ -1512,9 +1514,9 @@ export class Game {
       giveAll() {
         for (const w of WEAPONS) g.player.inventory.give(w.id);
       },
-      spawnVehicle(type = 'taxi') {
+      spawnVehicle(type = 'taxi', variant = undefined) {
         const lp = g.world.lanePointNear(g.player.x, g.player.z);
-        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked' });
+        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked', variant });
         g.world.vehicles.push(v);
         return { x: lp.x, z: lp.z, heading: lp.yaw };
       },
@@ -1578,6 +1580,7 @@ export class Game {
       pause: () => g.pause(),
       resume: () => g.resume(),
       vehicleTypes: () => Object.keys(VEHICLE_TYPES),
+      vehicleVariants: () => Object.keys(VEHICLE_VARIANTS),
       screenshotHudHidden(on) {
         g.hud.show(!on);
       },

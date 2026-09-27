@@ -8,6 +8,7 @@
 import { clamp, damp, forwardX, forwardZ, rightX, rightZ, wrapAngle } from './math.js';
 import { aabbToObb, obbVsObb } from './collision.js';
 import { PLAY_BOUNDS } from './terrain.js';
+import { VEHICLE_VARIANTS } from './vehicleVariants.js';
 
 export const VEHICLE_TYPES = {
   taxi: { name: 'Taxi', length: 4.0, width: 1.73, height: 1.5, mass: 950, maxSpeed: 40, accel: 7.5, brake: 16, reverseMax: 8, steerMax: 0.6, wheelBase: 2.5, grip: 10, handbrakeGrip: 1.6, mu: 0.95, health: 1000, seats: 4 },
@@ -20,11 +21,20 @@ export const VEHICLE_TYPES = {
 
 const GRAVITY = 9.8;
 
-export function createVehicleState(type, x, z, heading, groundFn) {
-  const spec = VEHICLE_TYPES[type];
-  if (!spec) throw new Error(`Tipo de vehículo desconocido: ${type}`);
+/** Ficha de un tipo con los cambios de su variante (medidas, masa, motor). */
+export function vehicleSpec(type, variant = null) {
+  const base = VEHICLE_TYPES[type];
+  if (!base) throw new Error(`Tipo de vehículo desconocido: ${type}`);
+  const v = VEHICLE_VARIANTS[variant];
+  if (!v || v.type !== type || (!v.spec && !v.name)) return base;
+  return { ...base, ...v.spec, name: v.name ?? base.name };
+}
+
+export function createVehicleState(type, x, z, heading, groundFn, variant = null) {
+  const spec = vehicleSpec(type, variant);
   return {
     type,
+    variant: VEHICLE_VARIANTS[variant]?.type === type ? variant : null,
     spec,
     x,
     z,

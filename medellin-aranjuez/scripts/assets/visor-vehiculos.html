@@ -19,7 +19,8 @@
       import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
       import { assets } from '/src/render/assets.js';
       import { VehicleView } from '/src/render/vehicleMesh.js';
-      import { CharacterRig } from '/src/render/characterRig.js';
+      import { CharacterRig, randomLook } from '/src/render/characterRig.js';
+      import { makeRng } from '/src/sim/rng.js';
       import { createVehicleState } from '/src/sim/vehiclePhysics.js';
 
       const q = new URLSearchParams(location.search);
@@ -66,7 +67,7 @@
             const st = createVehicleState(type, 0, 0, 0, () => 0, variant);
             view.sync(st, 0, night);
             if (q.get('conductor')) {
-              const rig = new CharacterRig({ avatar: null, outfit: 'civil', height: 1 });
+              const rig = new CharacterRig(randomLook(makeRng(7 + k)));
               const seat = view.seat;
               rig.root.position.set(seat.x, seat.y - 0.5 + (type === 'moto' ? 0.35 : 0), seat.z);
               view.group.add(rig.root);

@@ -1099,7 +1099,9 @@ const VARIANTES = {
         if (/Fara_2|Fara_lamp/.test(p)) return 'faro';
         if (/Fonar/.test(p)) return hsv(color).s > 0.45 ? 'stop' : undefined;
         // Latas: el rojo de la textura es la pintura.
-        if (/Kuzov_low|Kapot|Bagajnik_low|Dver|Bamper/.test(p) && color[0] > color[1] * 1.6 && color[0] > 70) return 'pintura';
+        if (/Kuzov_low|Kapot|Bagajnik_low|Dver/.test(p) && color[0] > color[1] * 1.6 && color[0] > 70) return 'pintura';
+        // Parachoques: pintados salvo el plástico negro (la textura tiene mugre).
+        if (/Bamper/.test(p)) return hsv(color).v > 0.3 && color[0] > color[1] * 1.25 ? 'pintura' : undefined;
         return undefined;
       },
       budget: 10000,
