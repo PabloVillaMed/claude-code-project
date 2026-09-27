@@ -6,7 +6,6 @@ import { buildModelProps, updatePropLod } from './props.js';
 import { FacadeBuilder } from './facadeBuilder.js';
 import { buildStreetFurniture } from './streetFurniture.js';
 import { facadeLayout } from '../sim/facades.js';
-import { textTexture } from './textures.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { facadeMaterial, hasPhotoTextures, photoMaterial } from './photoMaterials.js';
 import { GEO_REF, riverX, urbanAmount } from '../sim/geography.js';
@@ -47,6 +46,7 @@ export class CityRenderer {
     this._backdrop();
     this._roads();
     this._blocks();
+    this._foot();
     this._water();
     this._buildings();
     this._props();
@@ -448,6 +448,22 @@ export class CityRenderer {
     curb.build(this.materials.concrete, { cast: false, name: 'sardineles' });
   }
 
+  /**
+   * Senderos reales de OpenStreetMap: peatonales y pasajes entre casas,
+   * escalas, caminos de tierra y ciclorrutas, sobre lotes y prados.
+   */
+  _foot() {
+    const g = this._chunked();
+    const hf = (x, z) => terrainHeight(x, z) + GRID.curb + 0.035;
+    const COL = { footway: [0.9, 0.88, 0.84], steps: [0.8, 0.78, 0.75], path: [0.74, 0.66, 0.55], cycleway: [0.78, 0.45, 0.4] };
+    for (const f of this.city.foot ?? []) {
+      const mid = f.pts[Math.floor(f.pts.length / 2)];
+      const vm = f.kind === 'steps' ? 1 : 3; // las escalas: huellas más seguidas
+      ribbon(g(mid[0], mid[1]), f.pts, -f.width / 2, f.width / 2, hf, { step: 2.5, uv: (sv, o) => [o / 3, sv / vm], color: COL[f.kind] ?? COL.footway });
+    }
+    g.build(this.materials.concrete, { cast: false, name: 'senderos' });
+  }
+
   /** Zonas especiales del mapa: plaza del parque, jardines y canchas. */
   _areas(byType) {
     const hf = (lift) => (x, z) => terrainHeight(x, z) + GRID.curb + lift;
@@ -666,7 +682,7 @@ export class CityRenderer {
     if (!done.lamps) this._lamps(byType.lamp ?? []);
     if (!done.poles) this._poles(byType.pole ?? [], byType.cable ?? []);
     if (!done.benches) this._benches(byType.bench ?? []);
-    for (const p of byType.sign ?? []) this._sign(p);
+    // Los avisos (byType.sign) van fusionados en streetFurniture.js.
     for (const p of byType.fountain ?? []) this._fountain(p);
     for (const p of byType.kiosk ?? []) this._kiosk(p);
     for (const p of byType.goal ?? []) this._goal(p);
@@ -879,30 +895,6 @@ export class CityRenderer {
     im.castShadow = true;
     im.receiveShadow = true;
     this.root.add(im);
-  }
-
-  _sign(p) {
-    const group = new THREE.Group();
-    const y = terrainHeight(p.x, p.z) + GRID.curb;
-    const tex = textTexture(p.text, { bg: '#11402c' });
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.05, 0.08), [
-      this.materials.darkMetal,
-      this.materials.darkMetal,
-      this.materials.darkMetal,
-      this.materials.darkMetal,
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.15 }),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5 }),
-    ]);
-    panel.position.y = 2.6;
-    panel.castShadow = true;
-    const post1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.1), this.materials.darkMetal);
-    post1.position.set(-1.8, 1.05, 0);
-    const post2 = post1.clone();
-    post2.position.x = 1.8;
-    group.add(panel, post1, post2);
-    group.position.set(p.x, y, p.z);
-    group.rotation.y = p.rot ?? 0;
-    this.root.add(group);
   }
 
   _fountain(p) {

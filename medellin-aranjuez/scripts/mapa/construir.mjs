@@ -6,11 +6,19 @@
 //     del sardinel, el centro del andén (por donde caminan los peatones) y la
 //     línea de paramento (donde empiezan las casas). Así funciona con calles
 //     curvas, diagonales, sin salida y cruces irregulares, sin casos especiales.
-//  3. Zonas (parques, canchas, iglesias, cementerio, el Morro de Moravia)
-//     asignadas a las manzanas; metro (línea A) y estación Caribe.
-//  4. Terreno: rejilla de elevación SRTM suavizada, en metros del juego.
-// Entrada: .cache/mapa/osm.json (o la consulta anterior) y .cache/mapa/srtm.json.
-// Salida: src/data/mapa.json. Uso: node scripts/mapa/construir.mjs [--png salida.png]
+//  3. Zonas (parques, canchas, iglesias, cementerio, el Morro de Moravia,
+//     parqueaderos) asignadas a las manzanas; metro (línea A) y estación Caribe.
+//  4. Edificios reales: huellas de OpenStreetMap ajustadas a rectángulos
+//     orientados, recortadas contra el andén y con el frente hacia la calle;
+//     cobertura de huellas por manzana (donde falta, cityLayout completa con
+//     casas procedurales).
+//  5. Senderos (peatonales, escalas, caminos, ciclorrutas), semáforos,
+//     paraderos de bus y lugares con nombre.
+//  6. Terreno: rejilla de elevación SRTM suavizada, en metros del juego.
+// Entrada: .cache/mapa/osm.json (o la consulta anterior), .cache/mapa/osm-extra.json
+// (opcional) y .cache/mapa/srtm.json; los descarga scripts/mapa/descargar.mjs.
+// Salida: src/data/mapa.json. Reproducible: mismo caché → mismo archivo.
+// Uso: node scripts/mapa/descargar.mjs && node scripts/mapa/construir.mjs [--png salida.png]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +37,17 @@ function loadOsm() {
     }
   }
   throw new Error('Falta .cache/mapa/osm.json (node scripts/mapa/descargar.mjs)');
+}
+
+/** Consulta complementaria (nodos de las vías, lugares, multipolígonos); opcional. */
+function loadExtra() {
+  const f = path.join(CACHE, 'osm-extra.json');
+  if (!fs.existsSync(f)) {
+    console.log('(sin .cache/mapa/osm-extra.json: sin semáforos ni paraderos reales)');
+    return [];
+  }
+  console.log('OSM:', path.relative(ROOT, f));
+  return JSON.parse(fs.readFileSync(f, 'utf8')).elements;
 }
 
 const [RX0, RZ1] = project(REGION.south, REGION.west);
@@ -54,6 +73,11 @@ const CLASS = {
   service: { w: 4.5, car: true },
   pedestrian: { w: 5, car: false },
 };
+
+// Nombres tradicionales de las carreras de Medellín (nomenclatura de la
+// ciudad: Palacé, Bolívar, Carabobo, Venezuela) donde OpenStreetMap no trae
+// alt_name en ese tramo.
+const TRADITIONAL = { 'Carrera 49': 'Venezuela', 'Carrera 50': 'Palacé', 'Carrera 51': 'Bolívar', 'Carrera 52': 'Carabobo' };
 
 function roadWidth(tags, cls) {
   const lanes = parseInt(tags.lanes, 10);
@@ -121,6 +145,7 @@ function buildRoads(elements) {
             b,
             pts: seg.map((q) => q.xz),
             name: l.tags.name ?? '',
+            alt: l.tags.alt_name ?? TRADITIONAL[l.tags.name] ?? '',
             cls: l.cls,
             width: w,
             oneway: l.tags.oneway === 'yes' || l.tags.oneway === '1' || l.cls.endsWith('_link') ? 1 : l.tags.oneway === '-1' ? -1 : 0,
@@ -454,6 +479,8 @@ const AREA_KIND = (t) => {
   if (t.amenity === 'school' || t.amenity === 'university' || t.amenity === 'college' || t.amenity === 'kindergarten') return 'colegio';
   if (t.natural === 'wood' || t.natural === 'scrub' || t.natural === 'grassland' || t.landuse === 'forest' || t.landuse === 'meadow') return 'verde';
   if (t.tourism === 'museum' || (t.building && /museo/i.test(t.name ?? ''))) return 'museo';
+  // Parqueaderos a cielo abierto: ahí no van casas.
+  if (t.amenity === 'parking' && !t.building && !['multi-storey', 'underground', 'rooftop'].includes(t.parking)) return 'parqueadero';
   return null;
 };
 
@@ -491,6 +518,373 @@ function buildRail(elements) {
     if (!pts.some(([x, z]) => x > BOUNDS.minX - 300 && x < BOUNDS.maxX + 300 && z > BOUNDS.minZ - 300 && z < BOUNDS.maxZ + 300)) continue;
     out.push({ kind: e.tags.railway, bridge: e.tags.bridge ? 1 : 0, layer: parseInt(e.tags.layer, 10) || 0, pts: pts.map(round2) });
   }
+  return out;
+}
+
+// ------------------------------------------------------------------ edificios reales
+// Huellas de edificios de OpenStreetMap. El juego dibuja cada edificio como
+// rectángulos orientados (fachada al frente, costados, fondo y techo), así que
+// cada huella se ajusta a su rectángulo de área mínima o, si es en L o en U, a
+// 2-4 rectángulos que la cubren. Luego se recorta contra el andén del juego
+// (nunca sobre la calzada ni el andén) y se gira para que su frente mire a la
+// calle más cercana; si el frente real quedó a menos de 1.8 m del paramento
+// del juego se lleva hasta él (así las fachadas de la cuadra quedan en línea).
+const BUILDING_SKIP = new Set(['roof', 'ruins', 'no', 'carport', 'canopy', 'collapsed', 'demolished', 'construction_site']);
+const LOT_D = 2.28; // distancia mínima de un edificio a la calzada (el andén mide 2.2 m)
+
+function buildingKind(t) {
+  const b = t.building;
+  const a = t.amenity;
+  if (['school', 'kindergarten', 'university', 'college'].includes(b) || ['school', 'kindergarten', 'college', 'university', 'childcare'].includes(a)) return 'colegio';
+  if (['church', 'chapel', 'cathedral', 'temple'].includes(b) || a === 'place_of_worship') return 'iglesia';
+  if (b === 'hospital' || ['hospital', 'clinic'].includes(a) || t.healthcare) return 'salud';
+  if (b === 'transportation' || a === 'bus_station') return 'terminal';
+  if (['civic', 'public', 'government'].includes(b) || ['community_centre', 'library', 'theatre', 'police', 'fire_station', 'townhall'].includes(a)) return 'civico';
+  if (['commercial', 'retail', 'supermarket', 'kiosk'].includes(b) || t.shop || a === 'marketplace') return 'comercio';
+  if (['industrial', 'warehouse', 'garages', 'garage', 'shed', 'service'].includes(b)) return 'bodega';
+  if (b === 'construction') return 'obra';
+  if (b === 'apartments' || (b === 'residential' && /edificio|torre|urbanizaci/i.test(t.name ?? '')) || /^(edificio|torre)\b/i.test(t.name ?? '')) return 'apto';
+  return '';
+}
+
+function buildingLevels(t) {
+  const nums = String(t['building:levels'] ?? '').match(/\d+(\.\d+)?/g);
+  if (nums) return Math.max(1, Math.min(30, Math.round(Math.max(...nums.map(Number)))));
+  const h = parseFloat(t.height);
+  if (h > 2 && h < 120) return Math.max(1, Math.round(h / 3));
+  return 0;
+}
+
+/** Huellas (polígonos proyectados, sin repetir el cierre) con sus etiquetas. */
+function footprints(elements) {
+  const out = [];
+  const add = (geom, t, id) => {
+    const a = geom[0];
+    const b = geom[geom.length - 1];
+    if (a.lat !== b.lat || a.lon !== b.lon) return; // anillo abierto (multipolígono partido)
+    const poly = geom.slice(0, -1).map((p) => project(p.lat, p.lon));
+    if (poly.length < 3) return;
+    const [cx, cz] = centroid(poly);
+    if (cx < BOUNDS.minX || cx > BOUNDS.maxX || cz < BOUNDS.minZ || cz > BOUNDS.maxZ) return;
+    const A = Math.abs(area(poly));
+    if (A < 12) return;
+    out.push({ poly, tags: t, id, area: A, c: [cx, cz] });
+  };
+  for (const e of elements) {
+    const t = e.tags;
+    if (!t?.building || BUILDING_SKIP.has(t.building)) continue;
+    if (e.type === 'way' && e.geometry?.length >= 4) add(e.geometry, t, e.id);
+    else if (e.type === 'relation') for (const mb of e.members ?? []) if (mb.role === 'outer' && mb.geometry?.length >= 4) add(mb.geometry, t, e.id);
+  }
+  return out;
+}
+
+/** Rectángulo orientado de área mínima (en el eje de alguna arista): u = a lo largo, v = perpendicular. */
+function minRect(poly) {
+  let best = null;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const [ax, az] = poly[i];
+    const [bx, bz] = poly[(i + 1) % n];
+    const l = Math.hypot(bx - ax, bz - az);
+    if (l < 0.3) continue;
+    const ux = (bx - ax) / l;
+    const uz = (bz - az) / l;
+    let u0 = Infinity;
+    let u1 = -Infinity;
+    let v0 = Infinity;
+    let v1 = -Infinity;
+    for (const [x, z] of poly) {
+      const u = x * ux + z * uz;
+      const v = -x * uz + z * ux;
+      if (u < u0) u0 = u;
+      if (u > u1) u1 = u;
+      if (v < v0) v0 = v;
+      if (v > v1) v1 = v;
+    }
+    const a = (u1 - u0) * (v1 - v0);
+    if (!best || a < best.area) best = { area: a, ux, uz, u0, u1, v0, v1 };
+  }
+  return best;
+}
+
+/**
+ * Huella en L, en U o irregular: rectángulos (en el marco de su rectángulo
+ * mínimo) que la cubren, el más grande primero (celdas de 0.5 m).
+ */
+function decompose(poly, R0, polyA) {
+  const S = 0.5;
+  const nu = Math.max(1, Math.ceil((R0.u1 - R0.u0) / S));
+  const nv = Math.max(1, Math.ceil((R0.v1 - R0.v0) / S));
+  const grid = new Uint8Array(nu * nv);
+  let total = 0;
+  for (let j = 0; j < nv; j++) {
+    for (let i = 0; i < nu; i++) {
+      const u = R0.u0 + (i + 0.5) * S;
+      const v = R0.v0 + (j + 0.5) * S;
+      if (pointInPoly(u * R0.ux - v * R0.uz, u * R0.uz + v * R0.ux, poly)) {
+        grid[j * nu + i] = 1;
+        total++;
+      }
+    }
+  }
+  const rects = [];
+  let covered = 0;
+  const h = new Int32Array(nu);
+  for (let k = 0; k < 4 && covered < total * 0.9; k++) {
+    // Rectángulo de unos más grande (histograma por filas).
+    h.fill(0);
+    let best = null;
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) h[i] = grid[j * nu + i] ? h[i] + 1 : 0;
+      const st = [];
+      for (let i = 0; i <= nu; i++) {
+        const hi = i < nu ? h[i] : 0;
+        let start = i;
+        while (st.length && st[st.length - 1][1] >= hi) {
+          const [s0, hh] = st.pop();
+          const a = hh * (i - s0);
+          if (hh > 0 && (!best || a > best.a)) best = { a, i0: s0, i1: i, j0: j - hh + 1, j1: j + 1 };
+          start = s0;
+        }
+        st.push([start, hi]);
+      }
+    }
+    if (!best) break;
+    const w = (best.i1 - best.i0) * S;
+    const d = (best.j1 - best.j0) * S;
+    if (best.a * S * S < Math.max(10, polyA * 0.1) || Math.min(w, d) < 2.5) break;
+    for (let j = best.j0; j < best.j1; j++) for (let i = best.i0; i < best.i1; i++) grid[j * nu + i] = 0;
+    covered += best.a;
+    rects.push({ ux: R0.ux, uz: R0.uz, u0: R0.u0 + best.i0 * S, u1: R0.u0 + best.i1 * S, v0: R0.v0 + best.j0 * S, v1: R0.v0 + best.j1 * S });
+  }
+  return rects;
+}
+
+/**
+ * Recorta el rectángulo (u0..u1, v0..v1 en su marco) hasta que todo quede a
+ * más de LOT_D de la calzada, lo orienta hacia la calle y lo lleva al
+ * paramento. Devuelve [x, z, nx, nz, hu, hv, interior] o null.
+ */
+function fitRect(Dat, r) {
+  let { u0, u1, v0, v1 } = r;
+  const { ux, uz } = r;
+  const W = (u, v) => [u * ux - v * uz, u * uz + v * ux];
+  const dAt = (u, v) => Dat(...W(u, v));
+  // Lados: [eje, signo] → muestras sobre el lado.
+  const sides = [
+    ['u', -1],
+    ['u', 1],
+    ['v', -1],
+    ['v', 1],
+  ];
+  const samples = (side, out = 0) => {
+    const [ax, sg] = side;
+    const pts = [];
+    if (ax === 'u') {
+      const u = (sg > 0 ? u1 : u0) + sg * out;
+      const n = Math.max(1, Math.ceil((v1 - v0 - 0.2) / 0.5));
+      for (let k = 0; k <= n; k++) pts.push([u, v0 + 0.1 + ((v1 - v0 - 0.2) * k) / n]);
+    } else {
+      const v = (sg > 0 ? v1 : v0) + sg * out;
+      const n = Math.max(1, Math.ceil((u1 - u0 - 0.2) / 0.5));
+      for (let k = 0; k <= n; k++) pts.push([u0 + 0.1 + ((u1 - u0 - 0.2) * k) / n, v]);
+    }
+    return pts;
+  };
+  const move = (side, d) => {
+    const [ax, sg] = side;
+    if (ax === 'u') {
+      if (sg > 0) u1 += d;
+      else u0 -= d;
+    } else if (sg > 0) v1 += d;
+    else v0 -= d;
+  };
+  for (let it = 0; it < 120; it++) {
+    if (u1 - u0 < 2.4 || v1 - v0 < 2.4) return null;
+    let worst = null;
+    for (const s of sides) {
+      const pts = samples(s);
+      const bad = pts.filter(([u, v]) => dAt(u, v) < LOT_D).length / pts.length;
+      if (bad > 0 && (!worst || bad > worst.bad)) worst = { s, bad };
+    }
+    if (!worst) break;
+    move(worst.s, -0.25);
+  }
+  if (u1 - u0 < 2.4 || v1 - v0 < 2.4) return null;
+  // Nada de calzada adentro (una vía que atraviesa la huella).
+  for (let u = u0 + 0.5; u < u1; u += 1.5) for (let v = v0 + 0.5; v < v1; v += 1.5) if (dAt(u, v) < LOT_D) return null;
+  // Frente: el lado más cercano a la calzada.
+  let front = null;
+  for (const s of sides) {
+    const pts = samples(s, 0.3);
+    const mean = pts.reduce((acc, [u, v]) => acc + dAt(u, v), 0) / pts.length;
+    if (!front || mean < front.mean) front = { s, mean };
+  }
+  const interior = front.mean > SIDEWALK + 5 ? 1 : 0;
+  if (!interior) {
+    // Al paramento: hasta 1.8 m hacia la calle si todo el frente sigue fuera del andén.
+    const pts = samples(front.s);
+    const gap = Math.min(...pts.map(([u, v]) => dAt(u, v))) - LOT_D - 0.02;
+    if (gap > 0.05 && gap < 1.8) {
+      move(front.s, gap);
+      if (samples(front.s).some(([u, v]) => dAt(u, v) < LOT_D)) move(front.s, -gap);
+    }
+  }
+  const [ax, sg] = front.s;
+  const [cx, cz] = W((u0 + u1) / 2, (v0 + v1) / 2);
+  // Normal hacia afuera del lado de frente, en coordenadas del mundo.
+  const nx = ax === 'u' ? ux * sg : -uz * sg;
+  const nz = ax === 'u' ? uz * sg : ux * sg;
+  const along = ax === 'u' ? v1 - v0 : u1 - u0;
+  const depth = ax === 'u' ? u1 - u0 : v1 - v0;
+  // Medio frente un poco menor: las casas vecinas no quedan con fachadas coplanares traslapadas.
+  return [round2([cx, cz]), [Math.round(nx * 1e4) / 1e4, Math.round(nz * 1e4) / 1e4], Math.round((along / 2 - 0.02) * 100) / 100, Math.round((depth / 2) * 100) / 100, interior];
+}
+
+function buildBuildings(elements, R, D, lab, compToBlock) {
+  const Dat = (x, z) => {
+    const i = Math.floor((x - R.x0) / RES);
+    const j = Math.floor((z - R.z0) / RES);
+    if (i < 0 || j < 0 || i >= R.nx || j >= R.nz) return 0;
+    return D[j * R.nx + i];
+  };
+  const out = [];
+  let parts = 0;
+  let dropped = 0;
+  for (const fp of footprints(elements)) {
+    // Manzana: la de la celda del centroide (o la de algún vértice si cae en la calzada).
+    let blk = -1;
+    for (const [x, z] of [fp.c, ...fp.poly]) {
+      const i = Math.floor((x - R.x0) / RES);
+      const j = Math.floor((z - R.z0) / RES);
+      const b = compToBlock.get(lab[j * R.nx + i]);
+      if (b !== undefined) {
+        blk = b;
+        break;
+      }
+    }
+    if (blk < 0) {
+      dropped++;
+      continue;
+    }
+    const R0 = minRect(fp.poly);
+    const rect = fp.area / R0.area;
+    const rects = rect < 0.82 && fp.area > 60 ? decompose(fp.poly, R0, fp.area) : [R0];
+    const fitted = [];
+    for (const r of rects.length ? rects : [R0]) {
+      const f = fitRect(Dat, r);
+      if (f) fitted.push(f.flat());
+    }
+    if (!fitted.length) {
+      dropped++;
+      continue;
+    }
+    parts += fitted.length;
+    const t = fp.tags;
+    const rec = { b: blk, r: fitted };
+    const k = buildingKind(t);
+    if (k) rec.k = k;
+    const lv = buildingLevels(t);
+    if (lv) rec.lv = lv;
+    if (t.name) rec.n = t.name;
+    rec.a = Math.round(fp.area);
+    out.push(rec);
+  }
+  console.log(`edificios reales: ${out.length} huellas en ${parts} rectángulos (${dropped} descartadas)`);
+  return out;
+}
+
+/** Fracción del lote de cada manzana cubierta por huellas reales (en el raster). */
+function blockCoverage(outBlocks, buildings) {
+  const cov = new Map();
+  for (const b of buildings) for (const r of b.r) cov.set(b.b, (cov.get(b.b) ?? 0) + 4 * r[4] * r[5]);
+  for (const bl of outBlocks) {
+    const lotA = bl.lot.reduce((s, l) => s + Math.abs(area(l)), 0);
+    bl.osm = lotA > 0 ? Math.round(Math.min(1, (cov.get(bl.id) ?? 0) / lotA) * 100) / 100 : 0;
+  }
+}
+
+// ------------------------------------------------------------------ senderos
+// Peatonales, escalas, caminos y ciclorrutas de OpenStreetMap que no son
+// andén ni cebra: los pasajes entre casas de Moravia, las escalas de las
+// lomas, los caminos de los parques. Solo la parte que queda fuera de la
+// calzada y del andén (esos ya se dibujan).
+const FOOT_W = { footway: 2.2, steps: 2.2, path: 1.6, cycleway: 2.4 };
+
+function buildFoot(elements, Dat) {
+  const out = [];
+  for (const e of elements) {
+    const t = e.tags ?? {};
+    if (e.type !== 'way' || !e.geometry || !FOOT_W[t.highway]) continue;
+    if (t.area === 'yes') continue;
+    if (['sidewalk', 'crossing', 'traffic_island'].includes(t.footway) || t.bridge || t.tunnel || (parseInt(t.layer, 10) || 0) !== 0 || t.access === 'private') continue;
+    const pts = [];
+    for (const p of e.geometry) {
+      const [x, z] = project(p.lat, p.lon);
+      // Densificar a 1 m para cortar donde pisa andén o calzada.
+      if (pts.length) {
+        const [px, pz] = pts[pts.length - 1];
+        const n = Math.ceil(Math.hypot(x - px, z - pz));
+        for (let k = 1; k < n; k++) pts.push([px + ((x - px) * k) / n, pz + ((z - pz) * k) / n]);
+      }
+      pts.push([x, z]);
+    }
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2 && polyLength(run) >= 4) out.push({ k: t.highway, w: FOOT_W[t.highway], ...(t.name ? { n: t.name } : {}), pts: simplify(run, 0.3).map(round2) });
+      run = [];
+    };
+    for (const [x, z] of pts) {
+      const inside = x > BOUNDS.minX && x < BOUNDS.maxX && z > BOUNDS.minZ && z < BOUNDS.maxZ;
+      if (inside && Dat(x, z) >= SIDEWALK - 0.1) run.push([x, z]);
+      else flush();
+    }
+    flush();
+  }
+  console.log(`senderos: ${out.length} tramos (${Math.round(out.reduce((s, f) => s + polyLength(f.pts), 0))} m)`);
+  return out;
+}
+
+// ------------------------------------------------------------------ nodos de las vías
+/** Semáforos y paraderos de bus reales. */
+function buildStreetNodes(elements) {
+  const signals = [];
+  const stops = [];
+  const seen = new Set();
+  for (const e of elements) {
+    if (e.type !== 'node' || seen.has(e.id)) continue;
+    seen.add(e.id);
+    const t = e.tags ?? {};
+    const [x, z] = project(e.lat, e.lon);
+    if (x < BOUNDS.minX || x > BOUNDS.maxX || z < BOUNDS.minZ || z > BOUNDS.maxZ) continue;
+    if (t.highway === 'traffic_signals') signals.push([round1(x), round1(z)]);
+    else if (t.highway === 'bus_stop' || (t.public_transport === 'platform' && (t.bus === 'yes' || t.highway === 'bus_stop'))) stops.push({ x: round1(x), z: round1(z), ...(t.name ? { n: t.name } : {}) });
+  }
+  console.log(`semáforos: ${signals.length}, paraderos: ${stops.length}`);
+  return { signals, stops };
+}
+
+// ------------------------------------------------------------------ lugares con nombre
+const POI_KEYS = ['amenity', 'shop', 'leisure', 'tourism', 'healthcare', 'office', 'historic', 'public_transport', 'railway', 'man_made', 'craft'];
+/** Lugares con nombre de OpenStreetMap (cityLayout escoge cuáles son puntos de interés). */
+function buildNamedPlaces(elements) {
+  const out = [];
+  const seen = new Set();
+  for (const e of elements) {
+    const t = e.tags ?? {};
+    if (!t.name || seen.has(`${e.type}${e.id}`)) continue;
+    seen.add(`${e.type}${e.id}`);
+    const key = POI_KEYS.find((k) => t[k]);
+    if (!key || (e.type === 'way' && t.highway)) continue;
+    let xz;
+    if (e.type === 'node') xz = project(e.lat, e.lon);
+    else if (e.geometry?.length) xz = centroid(e.geometry.map((p) => project(p.lat, p.lon)));
+    else if (e.bounds) xz = project((e.bounds.minlat + e.bounds.maxlat) / 2, (e.bounds.minlon + e.bounds.maxlon) / 2);
+    if (!xz || xz[0] < BOUNDS.minX || xz[0] > BOUNDS.maxX || xz[1] < BOUNDS.minZ || xz[1] > BOUNDS.maxZ) continue;
+    out.push({ n: t.name, k: `${key}=${t[key]}`, x: round1(xz[0]), z: round1(xz[1]), osm: `${e.type[0]}${e.id}` });
+  }
+  console.log(`lugares con nombre: ${out.length}`);
   return out;
 }
 
@@ -559,6 +953,8 @@ const RING = 1.1; // centro del andén
 function main() {
   const t0 = Date.now();
   const elements = loadOsm();
+  const extra = loadExtra();
+  const all = [...elements, ...extra];
   let net = buildRoads(elements);
   net = mergeCloseNodes(net, 3.5);
   for (const e of net.edges) e.pts = simplify(e.pts, 0.35).map(round2);
@@ -626,6 +1022,18 @@ function main() {
     if (touchesEdge) continue;
     outBlocks.push({ id: outBlocks.length, comp, c: [round1(cx), round1(cz)], area: Math.round(Math.abs(area(curb))), curb, ring: b.ring.sort((p, q) => Math.abs(area(q)) - Math.abs(area(p))), lot: b.lot.sort((p, q) => Math.abs(area(q)) - Math.abs(area(p))) });
   }
+  // Edificios reales (huellas de OpenStreetMap) y cobertura de cada manzana.
+  const compToBlock = new Map(outBlocks.map((b) => [b.comp, b.id]));
+  const buildings = buildBuildings(all, R, D, lab, compToBlock);
+  blockCoverage(outBlocks, buildings);
+  const Dat = (x, z) => {
+    const i = Math.floor((x - R.x0) / RES);
+    const j = Math.floor((z - R.z0) / RES);
+    return i < 0 || j < 0 || i >= R.nx || j >= R.nz ? 0 : D[j * R.nx + i];
+  };
+  const foot = buildFoot(elements, Dat);
+  const { signals, stops } = buildStreetNodes(all);
+  const places = buildNamedPlaces(all);
   // Zonas y su manzana.
   const areas = buildAreas(elements);
   for (const ar of areas) {
@@ -643,16 +1051,22 @@ function main() {
     sidewalk: SIDEWALK,
     ring: RING,
     nodes: net.nodes.map((n) => ({ x: round1(n.x), z: round1(n.z) })),
-    edges: net.edges.map((e) => ({ a: e.a, b: e.b, name: e.name, cls: e.cls, w: round1(e.width), oneway: e.oneway, lanes: e.lanes, car: e.car ? 1 : 0, bridge: e.bridge, pts: e.pts })),
+    edges: net.edges.map((e) => ({ a: e.a, b: e.b, name: e.name, ...(e.alt ? { alt: e.alt } : {}), cls: e.cls, w: round1(e.width), oneway: e.oneway, lanes: e.lanes, car: e.car ? 1 : 0, bridge: e.bridge, pts: e.pts })),
     blocks: outBlocks.map(({ comp, ...b }) => b),
     areas,
     water,
     rail,
+    buildings,
+    foot,
+    signals,
+    stops,
+    places,
     terrain,
   };
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(data));
   console.log(`manzanas: ${outBlocks.length}, zonas: ${areas.length}, agua: ${water.length}, metro: ${rail.length}`);
+  for (const k of ['nodes', 'edges', 'blocks', 'areas', 'buildings', 'foot', 'places', 'terrain']) console.log(`  ${k}: ${(JSON.stringify(data[k]).length / 1024).toFixed(0)} KB`);
   console.log(`listo en ${((Date.now() - t0) / 1000).toFixed(1)} s → ${path.relative(ROOT, OUT)} (${(fs.statSync(OUT).size / 1024).toFixed(0)} KB)`);
   const png = process.argv.indexOf('--png');
   if (png > 0) return drawPng(data, process.argv[png + 1]);
@@ -675,6 +1089,23 @@ async function drawPng(data, file) {
     for (const r of bl.ring) svg += `<path d="${path(r, true)}" fill="none" stroke="#fff" stroke-width="0.4" stroke-dasharray="2,2"/>`;
   }
   for (const a of data.areas) svg += `<path d="${path(a.poly, true)}" fill="${color[a.kind] ?? '#888'}" fill-opacity="0.75"/>`;
+  // Edificios reales: rectángulos con el frente marcado.
+  for (const bd of data.buildings) {
+    for (const [x, z, nx, nz, hu, hv, inner] of bd.r) {
+      const ux = nz;
+      const uz = -nx;
+      const c = [
+        [x - ux * hu + nx * hv, z - uz * hu + nz * hv],
+        [x + ux * hu + nx * hv, z + uz * hu + nz * hv],
+        [x + ux * hu - nx * hv, z + uz * hu - nz * hv],
+        [x - ux * hu - nx * hv, z - uz * hu - nz * hv],
+      ];
+      svg += `<path d="${path(c, true)}" fill="${inner ? '#b86' : '#c44'}" stroke="#622" stroke-width="0.2"/><path d="${path(c.slice(0, 2))}" stroke="#ff0" stroke-width="0.6"/>`;
+    }
+  }
+  for (const f of data.foot) svg += `<path d="${path(f.pts)}" fill="none" stroke="${f.k === 'steps' ? '#f0f' : f.k === 'cycleway' ? '#08f' : '#0a0'}" stroke-width="${f.w * S}" stroke-opacity="0.7"/>`;
+  for (const [x, z] of data.signals) svg += `<circle cx="${X(x)}" cy="${Z(z)}" r="3" fill="#f00" stroke="#000"/>`;
+  for (const st of data.stops) svg += `<rect x="${X(st.x) - 3}" y="${Z(st.z) - 3}" width="6" height="6" fill="#00f"/>`;
   for (const w of data.water) svg += `<path d="${path(w.pts)}" fill="none" stroke="#4aa3df" stroke-width="3"/>`;
   for (const r of data.rail) svg += `<path d="${path(r.pts)}" fill="none" stroke="${r.bridge ? '#1f5fbf' : '#2f9a5f'}" stroke-width="4" stroke-dasharray="${r.bridge ? '0' : '8,4'}"/>`;
   svg += `<rect x="${X(b.minX)}" y="${Z(b.minZ)}" width="${(b.maxX - b.minX) * S}" height="${(b.maxZ - b.minZ) * S}" fill="none" stroke="#ff0" stroke-width="2"/>`;
