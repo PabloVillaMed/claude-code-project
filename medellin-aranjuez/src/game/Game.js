@@ -8,7 +8,7 @@ import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
 import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
-import { VEHICLE_VARIANTS } from '../sim/vehicleVariants.js';
+import { VEHICLE_VARIANTS, defaultVariant } from '../sim/vehicleVariants.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
 import { MissionSystem, createMissionDefs } from '../sim/missions.js';
@@ -1082,7 +1082,9 @@ export class Game {
         case 'spawnVehicle': {
           const poi = this.city.pois.find((x) => x.id === e.at) ?? this.city.pois.find((x) => x.id === 'taller');
           const lp = this.world.lanePointNear(poi.x - 8, poi.z);
-          const v = new VehicleEntity(this.world, e.vehicle, lp.x, lp.z, lp.yaw, { kind: 'parked', color: 0xd62828 });
+          // La del pique es la moto de siempre; la de los domicilios lleva caja.
+          const variant = e.vehicle === 'moto' ? (e.at === 'taller' ? 'moto' : 'domicilio') : defaultVariant(e.vehicle);
+          const v = new VehicleEntity(this.world, e.vehicle, lp.x, lp.z, lp.yaw, { kind: 'parked', color: 0xd62828, variant });
           this.world.vehicles.push(v);
           this.player.lastVehicle = v;
           this.hud.help(e.at === 'taller' ? 'Súbete a la moto roja (<kbd>F</kbd>) y pasa por todos los checkpoints antes de que se acabe el tiempo.' : 'Ahí está la moto roja del negocio (<kbd>F</kbd>): haz las entregas antes de que se enfríe el pedido.', 7);
@@ -1510,7 +1512,8 @@ export class Game {
       },
       spawnVehicle(type = 'taxi', variant = undefined) {
         const lp = g.world.lanePointNear(g.player.x, g.player.z);
-        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked', variant });
+        // Sin variante: la del modelo original del tipo (pruebas reproducibles).
+        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked', variant: variant ?? defaultVariant(type) });
         g.world.vehicles.push(v);
         return { x: lp.x, z: lp.z, heading: lp.yaw };
       },
