@@ -157,8 +157,9 @@ derivados de ella.
 
 | Datos | Uso | Fuente | Licencia |
 |---|---|---|---|
-| OpenStreetMap (consulta Overpass de la Comuna 4 - Aranjuez) | Ubicación relativa de lugares y nombres reales de vías | © colaboradores de OpenStreetMap, [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright) | ODbL 1.0 |
+| OpenStreetMap (consulta Overpass de la Comuna 4 - Aranjuez) | Vías, nombres y sentidos, huellas de edificios (≈6 200, ajustadas a rectángulos), senderos y escalas, semáforos, paraderos, zonas verdes y lugares con nombre (colegios, iglesias, salud, comercios de barrio) | © colaboradores de OpenStreetMap, [openstreetmap.org/copyright](https://www.openstreetmap.org/copyright) | ODbL 1.0 |
 | SRTM 30 m (vía OpenTopoData) | Perfil de pendiente oeste-este del terreno | NASA / USGS, [opentopodata.org](https://www.opentopodata.org/datasets/srtm/) | Dominio público |
+| Nomenclatura tradicional de Medellín (Palacé, Bolívar, Carabobo, Venezuela) y dirección del Centro de Desarrollo Cultural de Moravia (Cl. 82A #52-25) | Solo verificación de nombres y ubicación, sin copiar geometría | Alcaldía de Medellín, [centroculturalmoravia.org](https://centroculturalmoravia.org/) | Hechos (no se copia contenido) |
 
 Las texturas con carpeta `hd/` son la misma foto en 2048 px (calidades Alta y
 Ultra). Las rejas, puertas, interiores de locales, avisos, toldos, placas de

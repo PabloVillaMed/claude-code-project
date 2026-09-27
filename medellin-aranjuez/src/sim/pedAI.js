@@ -147,7 +147,14 @@ export function stepPed(p, dt, world) {
         p.lastWpD = Infinity;
         break;
       }
-      goToward(p, wp.x, wp.z, p.moveSpeed ?? PED.run * 0.6, dt);
+      // Trabado de frente contra algo delgado (un árbol o un poste del andén):
+      // rodearlo de lado en vez de empujar derecho.
+      if (p.stuck > 0.25) {
+        const k = p.stuck < 0.85 ? 1 : -1;
+        const ux = (wp.x - p.x) / d;
+        const uz = (wp.z - p.z) / d;
+        goToward(p, p.x + (ux - uz * k * 1.5) * 2, p.z + (uz + ux * k * 1.5) * 2, p.moveSpeed ?? PED.run * 0.6, dt);
+      } else goToward(p, wp.x, wp.z, p.moveSpeed ?? PED.run * 0.6, dt);
       break;
     }
     case 'attack': {

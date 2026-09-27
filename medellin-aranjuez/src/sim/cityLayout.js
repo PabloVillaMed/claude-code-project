@@ -702,7 +702,8 @@ function fillBlock(ctx, block, opts = {}) {
         const l = Math.hypot(best.dx, best.dz) || 1;
         const jitter = informal ? 0.3 : 1;
         const f = makeFrame(x + rng.range(-jitter, jitter), z + rng.range(-jitter, jitter), -best.dz / l, best.dx / l, size, size * rng.range(0.9, 1.1));
-        if (nearReal(ctx, f, 'back')) continue;
+        // Con pocas huellas mapeadas (Moravia) el fondo sigue siendo denso: solo se respeta el margen corto.
+        if (nearReal(ctx, f, block.osm >= 0.3 ? 'back' : 'front')) continue;
         if (!frameFits(ctx, block, lot, f, placed, reserved)) continue;
         placed.push(f);
         const floors = rng.int(1, informal ? 4 : 3);
