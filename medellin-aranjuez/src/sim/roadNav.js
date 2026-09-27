@@ -122,13 +122,19 @@ export class RoadGraph {
   /** Siguiente nodo al llegar a `at` viniendo de `from`, evitando la vuelta en U y el contravía. */
   pickNext(from, at, rand = Math.random, minWidth = 0) {
     const all = this.nodes[at].links;
+    // Sin horquillas: donde una vía se parte en dos calzadas nadie da la
+    // vuelta alrededor del separador (giro de más de ~145°), salvo que no haya más.
+    const noHairpin = (ls) => {
+      const f = ls.filter((l) => turnDot(this, from, at, l.node) > -0.82);
+      return f.length ? f : ls;
+    };
     if (minWidth) {
       // Vehículos largos: por las vías anchas mientras se pueda.
-      const wide = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.edges[l.edge].width >= minWidth && this.core.has(l.node));
+      const wide = noHairpin(all.filter((l) => l.node !== from && linkAllowed(this, l) && this.edges[l.edge].width >= minWidth && this.core.has(l.node)));
       if (wide.length) return wide[Math.floor(rand() * wide.length)].node;
     }
     // Las calles ciegas solo si no hay otra salida (el tráfico no da la vuelta en U ahí).
-    let links = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.core.has(l.node));
+    let links = noHairpin(all.filter((l) => l.node !== from && linkAllowed(this, l) && this.core.has(l.node)));
     if (!links.length) links = all.filter((l) => l.node !== from && linkAllowed(this, l) && this.nodes[l.node].links.length > 1);
     if (!links.length) links = all.filter((l) => l.node !== from && linkAllowed(this, l));
     if (!links.length) links = all.filter((l) => l.node !== from);
@@ -271,8 +277,10 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
 
   // Al acercarse al final, elegir el siguiente tramo.
   if (agent.next === undefined || agent.next === null) agent.next = chooseNext(graph, agent, opts, v);
-  const turning = agent.next !== agent.from && isTurn(graph, agent.from, agent.to, agent.next);
-  const uTurn = agent.next === agent.from;
+  // Horquilla (dar la vuelta alrededor del separador donde la vía se parte en
+  // dos calzadas): se maneja como una vuelta en U, despacio y sin cortar por el andén.
+  const uTurn = agent.next === agent.from || turnDot(graph, agent.from, agent.to, agent.next) < -0.82;
+  const turning = !uTurn && isTurn(graph, agent.from, agent.to, agent.next);
 
   // Los vehículos largos entran más al cruce antes de girar (giro abierto).
   // Igual en los giros cerrados de las calles reales (más de ~50°).
@@ -357,7 +365,12 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   else agent.stuck = 0;
   if (agent.stuck > 1.2) {
     agent.stuck = 0;
-    agent.reverseTimer = 1.6;
+    // Si se vuelve a trabar en el mismo sitio (contra un poste o una esquina
+    // del andén), cada reversa es más larga para salir de verdad.
+    const again = agent.lastStuck && Math.hypot(v.x - agent.lastStuck.x, v.z - agent.lastStuck.z) < 4;
+    agent.stuckCount = again ? (agent.stuckCount ?? 0) + 1 : 0;
+    agent.lastStuck = { x: v.x, z: v.z };
+    agent.reverseTimer = 1.6 + Math.min(3, agent.stuckCount) * 0.9;
   }
   return { throttle, brake, steer, handbrake: false };
 }

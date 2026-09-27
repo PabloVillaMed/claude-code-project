@@ -15,6 +15,7 @@ import {
   distToPolyEdge,
   frameBounds,
   frameCorners,
+  frameHitsSegment,
   framesOverlap,
   makeFrame,
   pointAlong,
@@ -41,9 +42,14 @@ const PAINT_COLORS = [
   [0.9, 0.36, 0.33], // rojo
 ];
 
-/** Nombre de la vía para el HUD (el de OpenStreetMap). */
+/**
+ * Nombre de la vía para el HUD: el de OpenStreetMap y, si lo tiene, su nombre
+ * tradicional ("Carrera 52 · Carabobo"). Las placas de las esquinas llevan
+ * solo la nomenclatura (`edge.plate`).
+ */
 export function roadName(edge) {
-  return edge.name || (edge.cls === 'service' ? 'Callejón' : 'Vía del barrio');
+  if (!edge.name) return edge.cls === 'service' ? 'Callejón' : 'Vía del barrio';
+  return edge.alt && edge.alt !== edge.name ? `${edge.name} · ${edge.alt}` : edge.name;
 }
 
 // Moravia: al occidente de Carabobo, entre la Calle 77 y la 90, hasta el río.
@@ -78,6 +84,8 @@ export function generateCity(seed = 4) {
   buildGraph(city);
   buildBlocks(city);
   city.water = MAPA.water.filter((w) => !w.tunnel);
+  // Senderos reales: peatonales, escalas, caminos y ciclorrutas de OpenStreetMap.
+  city.foot = (MAPA.foot ?? []).map((f) => ({ kind: f.k, width: f.w, name: f.n ?? '', pts: f.pts }));
   const ctx = { city, rng };
   const excl = exclusions(city);
   ctx.excl = excl;
@@ -87,6 +95,9 @@ export function generateCity(seed = 4) {
   addMetro(ctx);
   ctx.station = city.metro.geo?.footprints ?? [];
   city.inStation = (x, z) => ctx.station.some((f) => Math.abs((x - f.x) * f.ux + (z - f.z) * f.uz) < f.hu && Math.abs((x - f.x) * f.nx + (z - f.z) * f.nz) < f.hv);
+  // Primero los edificios reales (huellas de OpenStreetMap), luego los
+  // lugares especiales y por último las casas procedurales donde no hay huellas.
+  placeRealBuildings(ctx);
   buildSpecialAreas(ctx);
   for (const block of city.blocks) {
     if (block.type !== 'residencial') continue;
@@ -110,8 +121,8 @@ export function generateCity(seed = 4) {
   city.spawn = { ...sidewalkNear(city, parque.x, parque.z + 18), yaw: 0 };
   city.hospital = city.pois.find((p) => p.id === 'hospital');
   addStreetLife(city, makeRng(seed + 777));
-  // Nada de motos parqueadas sobre la estación del metro.
-  city.parkedVehicles = city.parkedVehicles.filter((v) => !city.inStation(v.x, v.z));
+  // Nada de motos parqueadas sobre la estación del metro ni metidas en un edificio.
+  city.parkedVehicles = city.parkedVehicles.filter((v) => !city.inStation(v.x, v.z) && !city.collision.pointBlocked(v.x, v.z));
   return city;
 }
 
@@ -135,12 +146,14 @@ function buildGraph(city) {
       cum,
       length: cum[cum.length - 1],
       name: e.name,
+      alt: e.alt ?? '',
       cls: e.cls,
       width: e.w,
       lanes: e.lanes,
       oneway: e.oneway,
       bridge: !!e.bridge,
     };
+    edge.plate = roadName({ name: e.name, cls: e.cls });
     edge.name = roadName(edge);
     if (!e.car) {
       city.paths.push(edge);
@@ -203,6 +216,7 @@ function buildBlocks(city) {
     };
     block.ring = block.rings[0] ?? null;
     block.informal = isMoraviaPoint(cx, cz);
+    block.osm = b.osm ?? 0; // fracción del lote cubierta por huellas reales de OpenStreetMap
     city.blocks.push(block);
   }
   const bySrc = new Map(city.blocks.map((b) => [b.src, b]));
@@ -270,14 +284,20 @@ function crossings(city) {
   }
 }
 
-// Obstáculos donde no se construye: quebradas a cielo abierto, corredor del metro.
+// Obstáculos donde no se construye: quebradas a cielo abierto, corredor del
+// metro y senderos peatonales reales (pasajes y escalas entre las casas).
+// `rReal`: holgura para los edificios reales de OpenStreetMap, que ya están
+// donde están (solo se evita que tapen el cauce, los muros o la vía férrea).
 function exclusions(city) {
   const segs = [];
   for (const w of city.water) {
-    for (let i = 1; i < w.pts.length; i++) segs.push({ a: w.pts[i - 1], b: w.pts[i], r: w.kind === 'canal' ? 16 : 4 });
+    for (let i = 1; i < w.pts.length; i++) segs.push({ a: w.pts[i - 1], b: w.pts[i], r: w.kind === 'canal' ? 16 : 4, rReal: /Medell/i.test(w.name) ? 25 : w.kind === 'canal' ? 3.3 : 2.1 });
   }
   for (const r of MAPA.rail) {
-    for (let i = 1; i < r.pts.length; i++) segs.push({ a: r.pts[i - 1], b: r.pts[i], r: r.bridge ? 4 : 9 });
+    for (let i = 1; i < r.pts.length; i++) segs.push({ a: r.pts[i - 1], b: r.pts[i], r: r.bridge ? 4 : 9, rReal: r.bridge ? 3.5 : 6 });
+  }
+  for (const f of city.foot) {
+    for (let i = 1; i < f.pts.length; i++) segs.push({ a: f.pts[i - 1], b: f.pts[i], r: f.w / 2 + 0.4, rReal: 0 });
   }
   const cell = 32;
   const grid = new Map();
@@ -295,7 +315,7 @@ function exclusions(city) {
     }
   }
   return {
-    hits(frame, extra = 0) {
+    hits(frame, extra = 0, real = false) {
       const bb = frameBounds(frame);
       const seen = new Set();
       for (let i = Math.floor(bb.minX / cell); i <= Math.floor(bb.maxX / cell); i++) {
@@ -303,14 +323,16 @@ function exclusions(city) {
           for (const s of grid.get(`${i},${j}`) ?? []) {
             if (seen.has(s)) continue;
             seen.add(s);
+            const r = real ? s.rReal : s.r;
+            if (r <= 0) continue;
             const cx = frame.x;
             const cz = frame.z;
             const c = closestOnSeg(cx, cz, s.a[0], s.a[1], s.b[0], s.b[1]);
-            if (Math.sqrt(c.d2) < s.r + Math.hypot(frame.hu, frame.hv) + extra) {
+            if (Math.sqrt(c.d2) < r + Math.hypot(frame.hu, frame.hv) + extra) {
               // Prueba fina: esquinas y centro contra el segmento engrosado.
               for (const [x, z] of [...frameCorners(frame), [cx, cz]]) {
                 const q = closestOnSeg(x, z, s.a[0], s.a[1], s.b[0], s.b[1]);
-                if (Math.sqrt(q.d2) < s.r + extra) return true;
+                if (Math.sqrt(q.d2) < r + extra) return true;
               }
               const mid = closestOnSeg(cx, cz, s.a[0], s.a[1], s.b[0], s.b[1]);
               const lx = mid.x - cx;
@@ -399,6 +421,10 @@ function frameFits(ctx, block, lot, frame, placed, reserved) {
   // Nunca sobre la calzada (las manzanas del borde del mapa pueden venir mal cerradas).
   if (onRoadCheck(frame.x, frame.z)) return false;
   for (const [x, z] of corners) if (onRoadCheck(x, z)) return false;
+  // Ni encima del camino de los peatones (en empalmes agudos el anillo se acerca al lote).
+  if (ringBlocked(block, frame, PED_RADIUS + 0.1)) return false;
+  // Ni pegada a un edificio real (ahí la cuadra ya está mapeada).
+  if (nearReal(ctx, frame, 'front')) return false;
   for (const o of placed) if (framesOverlap(frame, o, 0.02)) return false;
   for (const r of reserved) {
     if (pointInPoly(frame.x, frame.z, r)) return false;
@@ -407,6 +433,20 @@ function frameFits(ctx, block, lot, frame, placed, reserved) {
   if (ctx.excl.hits(frame)) return false;
   for (const f of ctx.station ?? []) if (framesOverlap(frame, f, 0)) return false;
   return true;
+}
+
+/** ¿Algún tramo del anillo peatonal de la manzana pasa a menos de `r` del rectángulo? */
+function ringBlocked(block, frame, r) {
+  const ring = block.ring;
+  if (!ring) return false;
+  const bb = frameBounds(frame);
+  for (let i = 0, n = ring.length; i < n; i++) {
+    const [ax, az] = ring[i];
+    const [bx, bz] = ring[(i + 1) % n];
+    if (Math.max(ax, bx) < bb.minX - r || Math.min(ax, bx) > bb.maxX + r || Math.max(az, bz) < bb.minZ - r || Math.min(az, bz) > bb.maxZ + r) continue;
+    if (frameHitsSegment(frame, ax, az, bx, bz, r)) return true;
+  }
+  return false;
 }
 
 /** Recorridos del paramento: tramos casi rectos entre esquinas (cambios de rumbo > 28°). */
@@ -440,10 +480,143 @@ function lotRuns(lot) {
   return runs;
 }
 
+// ------------------------------------------------------------------ edificios reales
+// Zonas con edificio propio (iglesias, museo) o sin edificios (parques,
+// canchas, parqueaderos…): ahí no van huellas sueltas. Colegios y salud sí
+// usan sus bloques reales en vez del bloque genérico.
+const REAL_SKIP_KINDS = new Set(['parque', 'cancha', 'iglesia', 'museo', 'verde', 'cementerio', 'parqueadero']);
+/** Margen alrededor de cada edificio real donde no se agregan casas procedurales (frente / fondos). */
+const REAL_NEAR_FRONT = 2.5;
+const REAL_NEAR_BACK = 6;
+
+/** Estilo, pisos y techo de un edificio real según su tipo en OpenStreetMap y el barrio. */
+function realAttrs(rng, rec, informal, area) {
+  const lv = rec.lv ?? 0;
+  const inst = (style, floors, color) => ({ style, floors: lv || floors, color, roof: 'terraza', tank: false, balcony: false });
+  switch (rec.k) {
+    case 'colegio':
+      return inst('institucional', rng.int(2, 3), [0.93, 0.9, 0.82]);
+    case 'salud':
+      return inst('hospital', 3, [0.94, 0.95, 0.96]);
+    case 'civico':
+      return inst('institucional', rng.int(2, 3), [0.9, 0.88, 0.84]);
+    case 'terminal':
+      return inst('institucional', 2, [0.82, 0.82, 0.8]);
+    case 'iglesia':
+      return { style: 'iglesia', floors: 2, height: area > 500 ? 13 : 8, color: [0.95, 0.92, 0.84], roof: 'dosAguas' };
+    case 'bodega':
+      return { style: 'taller', floors: 1, height: rng.range(5, 7), color: [0.55, 0.6, 0.65], roof: 'zinc' };
+    case 'comercio':
+      if (area > 400) return inst('institucional', lv || 2, [0.95, 0.94, 0.9]);
+      break;
+    case 'apto':
+    case 'obra':
+      if (!informal) {
+        const floors = lv || rng.int(6, 12);
+        return { style: floors >= 5 ? 'torre' : 'pintada', floors, color: houseColor(rng, 'pintada'), roof: 'terraza', tank: false, balcony: floors < 5 };
+      }
+      break;
+    default:
+      break;
+  }
+  // Casas: las mismas proporciones que las procedurales del barrio.
+  let floors = lv || rng.int(informal ? 1 : 2, 4);
+  if (!lv && !informal && area > 120 && rng.chance(0.07)) floors = rng.int(5, 9);
+  if (!lv && area > 350) floors = Math.max(floors, rng.int(2, 4));
+  if (informal) floors = Math.min(floors, 5); // en Moravia no hay torres
+  let style = floors >= 6 ? 'torre' : informal ? pickInformalStyle(rng) : pickHouseStyle(rng);
+  if (rec.k === 'comercio') style = 'tienda';
+  return {
+    floors,
+    style,
+    color: houseColor(rng, style),
+    tank: floors < 6 && rng.chance(0.55),
+    roof: floors >= 6 ? 'terraza' : pickRoof(rng, floors, informal),
+    balcony: floors >= 3 && rng.chance(informal ? 0.2 : 0.5),
+  };
+}
+
+/**
+ * Edificios reales: cada huella de OpenStreetMap (ya ajustada a rectángulos
+ * en scripts/mapa/construir.mjs) se pone donde está, con su frente hacia la
+ * calle. Deja en ctx.realGrid los marcos inflados que frenan el relleno
+ * procedural en lo ya mapeado (de esta manzana o de la vecina).
+ */
+function placeRealBuildings(ctx) {
+  const { city, rng } = ctx;
+  ctx.realGrid = new Map();
+  const bySrc = new Map(city.blocks.map((b) => [b.src, b]));
+  const areasByBlock = new Map();
+  for (const a of city.areas) {
+    if (!a.block) continue;
+    if (!areasByBlock.has(a.block)) areasByBlock.set(a.block, []);
+    areasByBlock.get(a.block).push(a);
+  }
+  for (const rec of MAPA.buildings ?? []) {
+    const block = bySrc.get(rec.b);
+    if (!block || block.type !== 'residencial') continue;
+    const informal = block.informal;
+    const areas = areasByBlock.get(block) ?? [];
+    let attrs = null;
+    let attrsInst = null;
+    for (const r of rec.r) {
+      const [x, z, nx, nz, hu, hv, inner] = r;
+      const frame = makeFrame(x, z, nx, nz, hu, hv);
+      const pts = [...frameCorners(frame).map(([px, pz]) => [px + (x - px) * 0.04, pz + (z - pz) * 0.04]), [x, z]];
+      // Zona especial: colegios y salud usan sus bloques reales; lo demás se respeta.
+      const zone = areas.find((a) => pointInPoly(x, z, a.poly));
+      if (zone && REAL_SKIP_KINDS.has(zone.kind)) continue;
+      if (areas.some((a) => REAL_SKIP_KINDS.has(a.kind) && pts.some(([px, pz]) => pointInPoly(px, pz, a.poly)))) continue;
+      if (pts.some(([px, pz]) => onRoadCheck(px, pz))) continue;
+      if (ctx.excl.hits(frame, 0, true)) continue;
+      if ((ctx.station ?? []).some((f) => framesOverlap(frame, f, 0))) continue;
+      const inst = zone && (zone.kind === 'colegio' || zone.kind === 'salud');
+      const a = inst ? (attrsInst ??= realAttrs(rng, { ...rec, k: zone.kind }, informal, rec.a ?? 0)) : (attrs ??= realAttrs(rng, rec, informal, rec.a ?? 4 * hu * hv));
+      const interiorHouse = inner && ['ladrillo', 'pintada', 'tienda'].includes(a.style);
+      // Un local no cabe en un frente de menos de 3.4 m.
+      const narrowShop = a.style === 'tienda' && hu < 1.7;
+      const b = addBuilding(ctx, frame, {
+        ...a,
+        ...(narrowShop ? { style: 'pintada' } : {}),
+        ...(interiorHouse ? { style: 'ladrillo', interior: true, balcony: false } : {}),
+        informal,
+        block: block.id,
+        osm: true,
+      });
+      if (inner) b.interior = true;
+      if (inst) zone.real = (zone.real ?? []).concat(b);
+      const near = { front: makeFrame(x, z, nx, nz, hu + REAL_NEAR_FRONT, hv + REAL_NEAR_FRONT), back: makeFrame(x, z, nx, nz, hu + REAL_NEAR_BACK, hv + REAL_NEAR_BACK) };
+      const bb = frameBounds(near.back);
+      for (let i = Math.floor(bb.minX / REAL_CELL); i <= Math.floor(bb.maxX / REAL_CELL); i++) {
+        for (let j = Math.floor(bb.minZ / REAL_CELL); j <= Math.floor(bb.maxZ / REAL_CELL); j++) {
+          const k = `${i},${j}`;
+          if (!ctx.realGrid.has(k)) ctx.realGrid.set(k, []);
+          ctx.realGrid.get(k).push(near);
+        }
+      }
+    }
+  }
+}
+
+const REAL_CELL = 24;
+/** ¿El rectángulo cae en el margen de algún edificio real ('front' angosto, 'back' amplio)? */
+function nearReal(ctx, f, which) {
+  if (!ctx.realGrid?.size) return false;
+  const bb = frameBounds(f);
+  for (let i = Math.floor(bb.minX / REAL_CELL); i <= Math.floor(bb.maxX / REAL_CELL); i++) {
+    for (let j = Math.floor(bb.minZ / REAL_CELL); j <= Math.floor(bb.maxZ / REAL_CELL); j++) {
+      for (const n of ctx.realGrid.get(`${i},${j}`) ?? []) if (framesOverlap(f, n[which], 0)) return true;
+    }
+  }
+  return false;
+}
+
 function fillBlock(ctx, block, opts = {}) {
   const { rng } = ctx;
   const informal = block.informal;
   const reserved = ctx.city.areas.filter((a) => a.block === block && RESERVED_KINDS.has(a.kind)).map((a) => a.poly);
+  // Donde hay edificios reales cerca no se inventan casas (solo se completa
+  // lo que no está mapeado): ver nearReal en frameFits.
   const placed = [];
   for (const lot of block.lots) {
     const A = polyArea(lot);
@@ -508,6 +681,8 @@ function fillBlock(ctx, block, opts = {}) {
       }
     }
     // Fondos de manzana: casas interiores (se ven desde arriba y desde las lomas).
+    // Si la manzana ya está casi toda mapeada, sus patios son reales: no se rellenan.
+    if (block.osm >= 0.5) continue;
     const bb = polyBounds(lot);
     // Moravia es un tejido apretado de casas pegadas; Aranjuez deja patios.
     const step = informal ? 7.2 : 9;
@@ -527,6 +702,8 @@ function fillBlock(ctx, block, opts = {}) {
         const l = Math.hypot(best.dx, best.dz) || 1;
         const jitter = informal ? 0.3 : 1;
         const f = makeFrame(x + rng.range(-jitter, jitter), z + rng.range(-jitter, jitter), -best.dz / l, best.dx / l, size, size * rng.range(0.9, 1.1));
+        // Con pocas huellas mapeadas (Moravia) el fondo sigue siendo denso: solo se respeta el margen corto.
+        if (nearReal(ctx, f, block.osm >= 0.3 ? 'back' : 'front')) continue;
         if (!frameFits(ctx, block, lot, f, placed, reserved)) continue;
         placed.push(f);
         const floors = rng.int(1, informal ? 4 : 3);
@@ -709,6 +886,12 @@ function buildSpecialAreas(ctx) {
       }
       case 'colegio':
       case 'salud': {
+        if (a.real?.length) {
+          // Sus bloques reales ya están puestos: el aviso frente al más grande que da a la calle.
+          const fr = a.real.filter((b) => !b.interior).sort((p, q) => q.frame.hu * q.frame.hv - p.frame.hu * p.frame.hv)[0]?.frame;
+          if (fr && a.name) addProp(ctx, { type: 'sign', x: fr.x + fr.nx * (fr.hv + 1.2), z: fr.z + fr.nz * (fr.hv + 1.2), rot: Math.atan2(fr.nx, fr.nz), text: a.name });
+          break;
+        }
         if (a.area < 400) break;
         // Bloques institucionales de 2-3 pisos alrededor de un patio.
         const f0 = areaFrame(a.poly, 2);
@@ -757,10 +940,76 @@ function buildSpecialAreas(ctx) {
   addPoi(ctx, { id: 'comfama', name: 'Comfama Aranjuez', desc: 'Coliseo, piscina y canchas: el parche de los domingos.', type: 'landmark', ...at(comfama) });
   const salud = byName(/Centro de Salud de Aranjuez/);
   addPoi(ctx, { id: 'hospital', name: 'Centro de Salud de Aranjuez', desc: 'Aquí despiertas si te va mal en la calle.', type: 'service', ...at(salud) });
-  // Más lugares de OpenStreetMap.
-  addPoi(ctx, { id: 'cultural', name: 'Centro Cultural de Moravia', desc: 'Obra de Rogelio Salmona: ladrillo, patios y música para los pelados del barrio.', type: 'landmark', ...sidewalkNear(city, -22, 640) });
-  addPoi(ctx, { id: 'encicla', name: 'Estación EnCicla Moravia', desc: 'Bicicletas públicas junto al puente de Moravia.', type: 'landmark', ...sidewalkNear(city, -271, 509) });
+  // Más lugares de OpenStreetMap. El Centro de Desarrollo Cultural de Moravia
+  // (Cl. 82A #52-25) es el edificio de OSM junto a Carabobo, no el nodo
+  // suelto de biblioteca que quedaba 230 m al oriente.
+  addPoi(ctx, { id: 'cultural', name: 'Centro Cultural de Moravia', desc: 'Obra de Rogelio Salmona: ladrillo, patios y música para los pelados del barrio.', type: 'landmark', ...sidewalkNear(city, ...placeAt('w252559808', [-245.8, 534.7])) });
+  addPoi(ctx, { id: 'encicla', name: 'Estación EnCicla Moravia', desc: 'Bicicletas públicas junto al puente de Moravia.', type: 'landmark', ...sidewalkNear(city, ...placeAt('n7253815368', [-271, 509])) });
+  for (const L of OSM_POIS) {
+    const [x, z] = placeAt(L.osm, L.at);
+    // La Terminal del Norte no tiene andén cerca: se llega por el puente de la estación Caribe.
+    const sw = L.id === 'terminal' && city.metro.geo?.westLanding ? { ...city.metro.geo.westLanding } : sidewalkNear(city, x, z);
+    if ((L.id !== 'terminal' && Math.hypot(sw.x - x, sw.z - z) > 45) || !insideMap(sw.x, sw.z, -3)) continue;
+    addPoi(ctx, { id: L.id, name: L.name, desc: L.desc, type: L.type ?? 'landmark', ...sw });
+    // Aviso con el nombre entre el andén y el lugar, mirando a la calle.
+    const d = Math.hypot(x - sw.x, z - sw.z);
+    if (L.sign && d > 2) {
+      const nx = (sw.x - x) / d;
+      const nz = (sw.z - z) / d;
+      addProp(ctx, { type: 'sign', x: sw.x - nx * 0.8, z: sw.z - nz * 0.8, rot: Math.atan2(nx, nz), text: L.sign === true ? L.name : L.sign });
+    }
+  }
 }
+
+/** Punto más cercano sobre el eje de una vía de carros (a menos de maxD): {x, z, dx, dz, hw}. */
+function nearestCarSeg(x, z, maxD) {
+  let best = null;
+  for (const e of MAPA.edges) {
+    if (!e.car) continue;
+    for (let i = 1; i < e.pts.length; i++) {
+      const [ax, az] = e.pts[i - 1];
+      const [bx, bz] = e.pts[i];
+      if (Math.min(ax, bx) > x + maxD || Math.max(ax, bx) < x - maxD || Math.min(az, bz) > z + maxD || Math.max(az, bz) < z - maxD) continue;
+      const c = closestOnSeg(x, z, ax, az, bx, bz);
+      const l = Math.hypot(bx - ax, bz - az);
+      if (l > 0.1 && c.d2 < maxD * maxD && (!best || c.d2 < best.d2)) best = { d2: c.d2, x: c.x, z: c.z, dx: (bx - ax) / l, dz: (bz - az) / l, hw: e.w / 2 };
+    }
+  }
+  return best;
+}
+
+/** Posición de un lugar de OpenStreetMap por su id (mapa.json → places), o la de respaldo. */
+function placeAt(osm, fallback) {
+  const p = (MAPA.places ?? []).find((q) => q.osm === osm);
+  return p ? [p.x, p.z] : fallback;
+}
+
+/**
+ * Lugares reales de OpenStreetMap que se vuelven puntos de interés (con su
+ * id de OSM y la posición de respaldo). Los nombres se verificaron contra
+ * las etiquetas de OSM; las descripciones son del juego.
+ */
+const OSM_POIS = [
+  { id: 'terminal', osm: 'w143598966', at: [-955.9, 264.4], name: 'Terminal del Norte', desc: 'Buses para todo Antioquia y la Costa, pegada a la estación Caribe.', sign: 'Terminal de Transporte Norte' },
+  { id: 'metroplus', osm: 'w935436260', at: [635.2, -442.9], name: 'Estación Metroplús Parque de Aranjuez', desc: 'La estación del Metroplús junto al parque: bus articulado hacia el centro.' },
+  { id: 'metroplusCaribe', osm: 'n8751394007', at: [-876.3, 357.4], name: 'Paradero Metroplús Caribe', desc: 'El Metroplús junto a la estación Caribe y la Terminal del Norte.' },
+  { id: 'claret', osm: 'w115813024', at: [418, 683], name: 'Parroquia San Antonio María Claret', desc: 'La iglesia de Campo Valdés.' },
+  { id: 'sanesteban', osm: 'w1494287177', at: [-194.1, -261.2], name: 'Parroquia San Esteban Protomártir', desc: 'Parroquia de Palermo, cerca de la Calle 92.' },
+  { id: 'ninodios', osm: '', at: [-185, 106], name: 'Parroquia El Niño Dios', desc: 'La iglesia del barrio Los Álamos.', sign: 'Parroquia El Niño Dios' },
+  { id: 'mercado', osm: 'w46136548', at: [380, 764.7], name: 'Plaza de Mercado de Campo Valdés', desc: 'Frutas, verduras, carnicerías y tinto en la plaza del barrio.', sign: 'Plaza de Mercado Campo Valdés' },
+  { id: 'biblioteca', osm: 'w533036883', at: [-48.1, -107.8], name: 'Biblioteca Pública Comfama', desc: 'La biblioteca de la sede de Comfama en Aranjuez.', sign: 'Biblioteca Pública' },
+  { id: 'saludMoravia', osm: 'n7855091960', at: [-427.3, 713.8], name: 'Centro de Salud de Moravia', desc: 'El puesto de salud del barrio.', type: 'service', sign: 'Centro de Salud Moravia' },
+  { id: 'policia', osm: 'w784675128', at: [427.6, -225.9], name: 'Inspección de Policía de Aranjuez', desc: 'Aquí se ponen las denuncias… y aquí te traen si te portas mal.', type: 'service', sign: 'Inspección de Policía' },
+  { id: 'agustiniano', osm: 'w1420452700', at: [729.7, -399.9], name: 'Colegio Agustiniano de San Nicolás', desc: 'El colegio de los agustinos, junto al Parque de Aranjuez.', sign: 'Colegio Agustiniano San Nicolás' },
+  { id: 'lorenza', osm: 'w382817658', at: [174.6, 106], name: 'I.E. Lorenza Villegas de Santos', desc: 'Colegio público entre San Cayetano y la quebrada.' },
+  { id: 'campoValdes', osm: 'w45514170', at: [726.7, 654.3], name: 'I.E. Campo Valdés', desc: 'Colegio público del barrio Campo Valdés.' },
+  { id: 'gilberto', osm: 'w522488449', at: [-26.4, -321.3], name: 'I.E. Gilberto Alzate Avendaño', desc: 'Colegio junto a la Transversal 92A.' },
+  { id: 'elBosque', osm: 'w702146578', at: [-529.8, 146.8], name: 'I.E. El Bosque', desc: 'El colegio de Moravia, al lado de la parroquia del Consuelo.' },
+  { id: 'madreLaura', osm: 'w1493725084', at: [-98.9, -550], name: 'Parque de la Madre Laura', desc: 'Skate park, gimnasio al aire libre y la estatua de la santa Laura Montoya.', sign: 'Parque Madre Laura' },
+  { id: 'bermejala', osm: 'w1340584352', at: [-418.7, 378.9], name: 'Parque Lineal La Bermejala', desc: 'Parque a la orilla de la quebrada La Bermejala, en Moravia.' },
+  { id: 'huertos', osm: 'w917431554', at: [-491, 22], name: 'Huertos Comunitarios de Moravia', desc: 'Las huertas que siembran los vecinos del barrio.' },
+  { id: 'puenteMadreLaura', osm: 'w1278291473', at: [-556.1, -658], name: 'Puente de la Madre Laura', desc: 'El puente sobre el río Medellín que une Aranjuez con Castilla.' },
+];
 
 function addProp(ctx, p) {
   // Nada de utilería sólida sobre la estación del metro.
@@ -881,6 +1130,23 @@ function curbSides(block, off) {
   return sides;
 }
 
+/** ¿Hay un cruce (nodo con 3 o más vías) a menos de r m? */
+function nearJunction(city, x, z, r) {
+  if (!city.junctionGrid) {
+    city.junctionGrid = new Map();
+    for (const n of city.nodes) {
+      if (!n.active || n.links.length < 3) continue;
+      const k = `${Math.floor(n.x / 16)},${Math.floor(n.z / 16)}`;
+      if (!city.junctionGrid.has(k)) city.junctionGrid.set(k, []);
+      city.junctionGrid.get(k).push(n);
+    }
+  }
+  const i0 = Math.floor(x / 16);
+  const j0 = Math.floor(z / 16);
+  for (let i = i0 - 1; i <= i0 + 1; i++) for (let j = j0 - 1; j <= j0 + 1; j++) for (const n of city.junctionGrid.get(`${i},${j}`) ?? []) if (Math.hypot(n.x - x, n.z - z) < r) return true;
+  return false;
+}
+
 /** Recorre el borde del andén de una manzana cada `step` m llamando a fn(x, z, side). */
 function walkCurb(block, off, step, start, fn) {
   let acc = start;
@@ -897,9 +1163,10 @@ function walkCurb(block, off, step, start, fn) {
 function addSidewalkProps(ctx, block) {
   const { rng, city } = ctx;
   if (!block.ring || block.type === 'rio' || block.type === 'separador') return;
-  // Faroles cada ~27 m junto al sardinel (sin tapar esquinas).
+  // Faroles cada ~27 m junto al sardinel (sin tapar esquinas: ahí los
+  // carros que doblan cerrado se subirían al andén contra el poste).
   walkCurb(block, 0.45, 27, rng.range(4, 14), (x, z, s) => {
-    if (onRoadCheck(x, z)) return;
+    if (onRoadCheck(x, z) || nearJunction(city, x, z, 9)) return;
     addProp(ctx, { type: 'lamp', x, z, rot: s.rot + Math.PI, collider: { hx: 0.15, hz: 0.15 } });
   });
   // Árboles de andén (más verde que antes: mango, ficus, guayacán…).
@@ -1115,6 +1382,18 @@ export const LOCAL_SPOTS = [
       { id: 'gaseosa', name: 'Gaseosa', desc: 'Bien fría', price: 15, heal: 10 },
     ],
   },
+  // Más negocios de barrio con su posición en OpenStreetMap (solo el aviso).
+  { id: 'farmacia90', name: 'Farmacia La 90', at: [-183, -107] },
+  { id: 'juanxxiii', name: 'Droguería Juan XXIII', at: [142, -100] },
+  { id: 'granerolapalma', name: 'Granero La Palma', at: [275, -212] },
+  { id: 'tortas', name: 'Tortas y Tortas', at: [150, -67] },
+  { id: 'coctelazo', name: 'El Coctelazo', at: [88, -272] },
+  { id: 'super80', name: 'Supermercado La 80', at: [-132, 128] },
+  { id: 'mercadosvelez', name: 'Mercados Vélez', at: [125, -534] },
+  { id: 'tiendacarabobo', name: 'Tienda Casera Carabobo', at: [-315, 114] },
+  { id: 'veterinaria92', name: 'Veterinaria La 92', at: [303, -237] },
+  { id: 'eficarnes', name: 'Efi Carnes', at: [760, -518] },
+  { id: 'spaunas', name: 'Spa de Uñas', at: [-174, -98] },
 ];
 
 /** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */
@@ -1331,7 +1610,8 @@ function addPowerLines(ctx) {
       const p = pointAlong(e.pts, e.cum, s);
       const x = p.x - p.dz * off;
       const z = p.z + p.dx * off;
-      if (!insideMap(x, z) || onRoadCheck(x, z)) {
+      // Ni en la calzada ni en la esquina de un cruce (ahí los carros que doblan lo tumbarían).
+      if (!insideMap(x, z) || onRoadCheck(x, z) || nearJunction(city, x, z, 9)) {
         prev = null;
         continue;
       }
@@ -1463,9 +1743,9 @@ function addStreetLife(city, rng) {
     const byName = new Map();
     for (const l of n.links) {
       const e = city.edges[l.edge];
-      if (!e.name || byName.has(e.name)) continue;
+      if (!e.plate || byName.has(e.plate)) continue;
       const q = e.pts[l.dir === 1 ? 1 : e.pts.length - 2];
-      byName.set(e.name, Math.atan2(-(q[1] - n.z), q[0] - n.x));
+      byName.set(e.plate, Math.atan2(-(q[1] - n.z), q[0] - n.x));
     }
     const names = [...byName.keys()];
     if (names.length < 2) continue;
@@ -1482,10 +1762,26 @@ function addStreetLife(city, rng) {
     }
   }
 
-  // 6) Paraderos de bus en las vías principales.
+  // 6) Paraderos de bus: los reales de OpenStreetMap y, en las vías
+  // principales sin uno real cerca, uno de cada tres tramos largos.
+  const realStops = [];
+  for (const st of MAPA.stops ?? []) {
+    const c = nearestCarSeg(st.x, st.z, 16);
+    if (!c) continue;
+    const side = Math.sign((st.x - c.x) * -c.dz + (st.z - c.z) * c.dx) || 1;
+    const off = c.hw + 0.6;
+    const x = c.x - c.dz * off * side;
+    const z = c.z + c.dx * off * side;
+    const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+    if (!block) continue;
+    const rot = Math.atan2(c.dz * side, -c.dx * side);
+    if (place({ type: 'busStop', x, z, rot, name: st.n ?? '', collider: { hx: 0.8, hz: 0.8, maxY: ground(x, z) + 0.9 } }, block)) realStops.push({ x, z });
+  }
   let stopK = 0;
   for (const e of city.edges) {
     if (!e.active || !['secondary', 'tertiary'].includes(e.cls) || e.length < 50 || stopK++ % 3) continue;
+    const mid = pointAlong(e.pts, e.cum, e.length / 2);
+    if (realStops.some((q) => Math.hypot(q.x - mid.x, q.z - mid.z) < 150)) continue;
     const p = pointAlong(e.pts, e.cum, e.length / 2);
     for (const side of rng.chance(0.5) ? [1, -1] : [-1, 1]) {
       const off = e.width / 2 + 0.6;
@@ -1496,6 +1792,24 @@ function addStreetLife(city, rng) {
       if (!block) continue;
       const rot = Math.atan2(p.dz * side, -p.dx * side);
       if (place({ type: 'busStop', x, z, rot, collider: { hx: 0.8, hz: 0.8, maxY: ground(x, z) + 0.9 } }, block)) break;
+    }
+  }
+
+  // 6b) Semáforos reales de OpenStreetMap: el poste en la esquina del andén
+  // más cercana y el brazo sobre la calzada.
+  for (const [sx, sz] of MAPA.signals ?? []) {
+    let done = false;
+    for (let r = 4.5; r <= 13 && !done; r += 1.5) {
+      for (let k = 0; k < 20 && !done; k++) {
+        const a = (k / 20) * Math.PI * 2 + 0.13;
+        const x = sx + Math.cos(a) * r;
+        const z = sz + Math.sin(a) * r;
+        if (onRoadCheck(x, z) || !insideMap(x, z)) continue;
+        const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+        if (!block || distToPolyEdge(x, z, block.curb) > 0.7) continue;
+        const arm = Math.min(4.2, Math.max(2, r * 0.55));
+        if (place({ type: 'trafficLight', x, z, rot: Math.atan2(sx - x, sz - z), arm, collider: { hx: 0.12, hz: 0.12 } }, block)) done = true;
+      }
     }
   }
 

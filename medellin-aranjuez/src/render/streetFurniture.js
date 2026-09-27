@@ -1,7 +1,7 @@
 // Elementos de calle procedurales: placas de nomenclatura en las esquinas,
-// paraderos de bus y venteros ambulantes (minutos, frutas, mango biche,
-// arepas, helados, dulces). Todo se fusiona por material: unas pocas
-// llamadas de dibujo para cientos de piezas.
+// paraderos de bus, semáforos, avisos de los lugares y venteros ambulantes
+// (minutos, frutas, mango biche, arepas, helados, dulces). Todo se fusiona
+// por material: unas pocas llamadas de dibujo para cientos de piezas.
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -77,6 +77,38 @@ function vendorSignAtlas() {
   const t = toTexture(c, { repeat: false });
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
+}
+
+/** Avisos de los lugares (iglesias, colegios, tiendas…): un texto por casilla. */
+const SIGN_W = 512;
+const SIGN_H = 128;
+const SIGN_COLS = 4;
+function placeSignAtlas(texts) {
+  const rows = Math.max(1, Math.ceil(texts.length / SIGN_COLS));
+  const c = canvas(SIGN_W * SIGN_COLS, SIGN_H * rows);
+  const ctx = c.getContext('2d');
+  texts.forEach((text, i) => {
+    const ox = (i % SIGN_COLS) * SIGN_W;
+    const oy = Math.floor(i / SIGN_COLS) * SIGN_H;
+    ctx.fillStyle = '#11402c';
+    ctx.fillRect(ox, oy, SIGN_W, SIGN_H);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(ox + 6, oy + 6, SIGN_W - 12, SIGN_H - 12);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let size = 55;
+    ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+    while (ctx.measureText(text).width > SIGN_W - 40 && size > 12) {
+      size -= 2;
+      ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+    }
+    ctx.fillText(text, ox + SIGN_W / 2, oy + SIGN_H / 2 + 2);
+  });
+  const t = toTexture(c, { repeat: false });
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  return { tex: t, rows };
 }
 
 // ------------------------------------------------------------------ fusión por material
@@ -174,6 +206,43 @@ function busStop(bins, p) {
   bins.add('vsign', PLANE, M(F, 1.05, 2.4, 0, 0.6, 0.16, 1, -Math.PI / 2), [1, 1, 1], uv);
 }
 
+/** Aviso de un lugar: panel de 4,2 x 1,05 m sobre dos postes, legible por ambos lados. */
+function placeSign(bins, p, uv) {
+  const F = frame(p, p.rot ?? 0);
+  const dark = [0.14, 0.15, 0.16];
+  bins.add('metal', BOX, M(F, 0, 2.6, 0, 4.2, 1.05, 0.08), dark);
+  bins.add('signs', PLANE, M(F, 0, 2.6, 0.041, 4.2, 1.05, 1), [1, 1, 1], uv);
+  bins.add('signs', PLANE, M(F, 0, 2.6, -0.041, 4.2, 1.05, 1, Math.PI), [1, 1, 1], uv);
+  for (const x of [-1.8, 1.8]) bins.add('metal', CYL, M(F, x, 1.05, 0, 0.05, 2.1, 0.05), dark);
+}
+
+/**
+ * Semáforo de brazo: poste en el andén, brazo sobre la calzada (eje +z local,
+ * hacia el cruce) y la caja con las luces mirando a los carros que llegan.
+ */
+function trafficLight(bins, p) {
+  const F = frame(p, p.rot ?? 0);
+  const arm = p.arm ?? 3;
+  const grey = [0.42, 0.44, 0.46];
+  bins.add('metal', CYL, M(F, 0, 2.7, 0, 0.09, 5.4, 0.09), grey);
+  bins.add('metal', BOX, M(F, 0, 5.25, arm / 2, 0.1, 0.1, arm), grey);
+  // Caja en la punta del brazo y otra más baja en el poste (para los peatones y motos).
+  for (const [z, y] of [
+    [arm - 0.15, 4.55],
+    [0.2, 3.0],
+  ]) {
+    bins.add('body', BOX, M(F, 0, y, z, 0.34, 0.95, 0.3), [0.07, 0.07, 0.08]);
+    // Luces a los dos lados (a lo largo de la vía): roja encendida, amarilla y verde apagadas.
+    for (const sx of [-1, 1]) {
+      [
+        [1, 0.12, 0.08],
+        [0.3, 0.24, 0.03],
+        [0.04, 0.24, 0.1],
+      ].forEach((c, k) => bins.add('lens', CYL, M(F, sx * 0.175, y + 0.3 - k * 0.3, z, 0.11, 0.02, 0.11, 0, 0, Math.PI / 2), c));
+    }
+  }
+}
+
 const UMBRELLA = [
   [0.85, 0.12, 0.12],
   [0.98, 0.78, 0.1],
@@ -249,6 +318,12 @@ export function buildStreetFurniture(r, byType) {
   for (const p of byType.streetSign ?? []) streetSign(bins, p);
   for (const p of byType.busStop ?? []) busStop(bins, p);
   for (const p of byType.vendor ?? []) vendor(bins, p);
+  for (const p of byType.trafficLight ?? []) trafficLight(bins, p);
+  // Avisos de los lugares: un solo atlas y una sola malla para todos (antes
+  // era una textura y cuatro mallas por aviso).
+  const signTexts = [...new Set((byType.sign ?? []).map((p) => p.text || ''))];
+  const signs = placeSignAtlas(signTexts);
+  for (const p of byType.sign ?? []) placeSign(bins, p, slot(signTexts.indexOf(p.text || ''), SIGN_COLS, signs.rows));
   const std = (o) => new THREE.MeshStandardMaterial(o);
   const vsTex = vendorSignAtlas();
   const mats = {
@@ -258,6 +333,8 @@ export function buildStreetFurniture(r, byType) {
     umbrella: std({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide }),
     fruit: std({ vertexColors: true, roughness: 0.45 }),
     vsign: std({ map: vsTex, roughness: 0.6 }),
+    signs: std({ map: signs.tex, roughness: 0.5, emissive: 0xffffff, emissiveMap: signs.tex, emissiveIntensity: 0.15 }),
+    lens: new THREE.MeshBasicMaterial({ vertexColors: true }),
   };
-  bins.build(r.root, mats, { plate: false, vsign: false, fruit: false });
+  bins.build(r.root, mats, { plate: false, vsign: false, fruit: false, signs: false, lens: false });
 }

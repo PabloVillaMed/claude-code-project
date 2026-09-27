@@ -72,6 +72,18 @@ export const LOCALES = [
   ['Billares La 92', 'billares', 'Cerveza fría · Parqués'],
   ['Carnicería La 90', 'carniceria', 'Res · Cerdo · Pollo'],
   ['Tienda Doña Rosa', 'tienda', 'Víveres · Tinto · Se fía'],
+  // Negocios de barrio reales de OpenStreetMap (sin cadenas ni marcas).
+  ['Farmacia La 90', 'drogueria', 'Drogas · Perfumería'],
+  ['Droguería Juan XXIII', 'drogueria', 'Drogas · Inyectología'],
+  ['Granero La Palma', 'tienda', 'Granos · Rancho · Licores'],
+  ['Tortas y Tortas', 'panaderia', 'Tortas · Postres · Café'],
+  ['El Coctelazo', 'heladeria', 'Cócteles de frutas · Helados'],
+  ['Supermercado La 80', 'tienda', 'Mercado · Aseo · Licores'],
+  ['Mercados Vélez', 'tienda', 'Supermercado de barrio'],
+  ['Tienda Casera Carabobo', 'tienda', 'Víveres · Gaseosas'],
+  ['Veterinaria La 92', 'drogueria', 'Centro médico veterinario'],
+  ['Efi Carnes', 'carniceria', 'Res · Cerdo · Pollo'],
+  ['Spa de Uñas', 'peluqueria', 'Manicure · Pedicure'],
 ];
 
 /** Todos los avisos pintados, en el orden del atlas de letreros. */

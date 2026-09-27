@@ -360,7 +360,7 @@ export function interiorAtlas() {
 
 // ------------------------------------------------------------------ avisos
 export const SIGN_COLS = 4;
-export const SIGN_ROWS = 10;
+export const SIGN_ROWS = 13; // 52 casillas: genéricos + locales con nombre propio
 
 const SIGN_STYLES = [
   ['#c1121f', '#ffffff'],
