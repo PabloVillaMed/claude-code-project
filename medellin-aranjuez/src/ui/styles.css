@@ -1735,3 +1735,16 @@ body.menu-open .menu-main-panel .menu-buttons button:not(.hidden) {
   color: #111;
   background: var(--accent);
 }
+
+/* Pantallas bajas (ventanas pequeñas, portátiles con zoom): los paneles no se
+   salen de la pantalla, se desplazan por dentro. */
+.overlay .menu-panel {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (max-height: 560px) {
+  .overlay .menu-panel {
+    padding: 22px 32px;
+  }
+}

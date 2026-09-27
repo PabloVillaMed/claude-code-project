@@ -762,7 +762,9 @@ export class Game {
       p.gestures = [EMOTES[p.emote]];
     }
     const g = p.rig.gestureLayer;
-    if (p.gestures?.length && (!g || g.fidget || a.emote)) {
+    // Lo comprado se recibe enseguida, aunque haya otro gesto en curso.
+    if (p.gestures?.length && (!g || g.fidget || a.emote || p.gestureNow)) {
+      p.gestureNow = false;
       const name = p.gestures.shift();
       p.rig.play(name, { speed: name === 'take' ? 1.4 : 1, fadeIn: 0.3, fadeOut: 0.4 });
     }
@@ -1367,7 +1369,10 @@ export class Game {
       return 'close';
     }
     // Al volver al juego: recibe lo comprado (y se lo come / toma).
-    if (!p.inVehicle) p.gestures = purchaseGestures(item.kind);
+    if (!p.inVehicle) {
+      p.gestures = purchaseGestures(item.kind);
+      p.gestureNow = p.gestures.length > 0;
+    }
     p.money -= item.price;
     this.audio.ui('money');
     this.save();
