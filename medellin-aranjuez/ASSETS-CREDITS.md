@@ -139,7 +139,9 @@ grabación) la voz de hablantes colombianos reales del corpus OpenSLR 72. Luego 
 procesaron con ffmpeg (paso alto, filtro de radio en r1/r2, recorte y nivel) a
 Opus mono. Chatterbox marca sus salidas con una marca de agua inaudible (Perth).
 
-Los audios `public/sounds/voces/*.ogg` son una obra derivada de las grabaciones
+Las líneas de la historia (`public/sounds/historia/*.ogg`, texto en `src/game/storyLines.js`: Santi = h2, Doña Rosa = m1, Don Óscar = h3) se generaron igual, con las mismas voces.
+
+Los audios `public/sounds/voces/*.ogg` y `public/sounds/historia/*.ogg` son una obra derivada de las grabaciones
 de referencia y se distribuyen bajo la misma licencia **CC BY-SA 4.0**.
 
 | Recurso | Ruta en el proyecto | Fuente | Autor | Licencia |
