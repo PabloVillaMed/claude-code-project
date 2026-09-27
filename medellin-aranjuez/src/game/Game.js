@@ -1576,6 +1576,15 @@ export class Game {
       vehicleTypes: () => Object.keys(VEHICLE_TYPES),
       vehicleVariants: () => Object.keys(VEHICLE_VARIANTS),
       engineStatus: () => g.audio.engineStatus?.() ?? null,
+      /** Vehículos por clase (traffic/parked/police) y variante. */
+      vehicleCensus() {
+        const out = {};
+        for (const v of g.world.vehicles) {
+          const k = `${v.kind}:${v.state.variant ?? v.type}`;
+          out[k] = (out[k] ?? 0) + 1;
+        }
+        return out;
+      },
       screenshotHudHidden(on) {
         g.hud.show(!on);
       },
