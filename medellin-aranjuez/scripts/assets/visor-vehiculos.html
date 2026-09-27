@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <base href="/" />
+    <title>Visor de vehículos</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #9ab; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      // Herramienta de desarrollo (npx vite y abrir /scripts/assets/visor-vehiculos.html):
+      //  ?raw=suv_compacta,moto_2t  muestra los GLB tal cual (frente y cola);
+      //  ?v=taxi:hatchback,moto:moto_2t  muestra VehicleView (tipo:variante) con
+      //  los materiales del juego y un conductor. &noche=1 enciende las luces.
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+      import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+      import { assets } from '/src/render/assets.js';
+      import { VehicleView } from '/src/render/vehicleMesh.js';
+      import { CharacterRig } from '/src/render/characterRig.js';
+      import { createVehicleState } from '/src/sim/vehiclePhysics.js';
+
+      const q = new URLSearchParams(location.search);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x9aabbb);
+      const pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromScene(new (await import('three/examples/jsm/environments/RoomEnvironment.js')).RoomEnvironment()).texture;
+      scene.environmentIntensity = 0.5;
+      scene.add(new THREE.HemisphereLight(0xdfefff, 0x5a4a3a, 1.0));
+      const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+      sun.position.set(6, 12, 8);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = sun.shadow.camera.bottom = -30;
+      sun.shadow.camera.right = sun.shadow.camera.top = 30;
+      scene.add(sun);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x6a6a66, roughness: 0.95 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      scene.add(floor);
+      const items = [];
+      if (q.get('raw')) {
+        const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+        for (const name of q.get('raw').split(',')) {
+          const g = await loader.loadAsync(`models/vehiculos/${name}.glb`);
+          const a = g.scene;
+          const b = a.clone(true);
+          b.rotation.y = Math.PI;
+          items.push([a, b]);
+        }
+      } else {
+        await assets.loadAll(renderer);
+        const night = q.get('noche') ? 1 : 0;
+        for (const tv of (q.get('v') ?? 'taxi').split(',')) {
+          const [type, variant] = tv.split(':');
+          const pair = [0, 1].map((k) => {
+            const view = new VehicleView(type, { variant });
+            const st = createVehicleState(type, 0, 0, 0, () => 0, variant);
+            view.sync(st, 0, night);
+            if (q.get('conductor')) {
+              const rig = new CharacterRig({ avatar: null, outfit: 'civil', height: 1 });
+              const seat = view.seat;
+              rig.root.position.set(seat.x, seat.y - 0.5 + (type === 'moto' ? 0.35 : 0), seat.z);
+              view.group.add(rig.root);
+              rig.animate(0.1, { speed: 0, onGround: true, driving: type === 'moto' ? 'moto' : 'car' });
+            }
+            if (k) view.group.rotation.y += Math.PI;
+            return view.group;
+          });
+          items.push(pair);
+        }
+      }
+      // Dos filas: frente (arriba) y cola (abajo).
+      let x = 0;
+      const sizes = items.map(([a]) => new THREE.Box3().setFromObject(a).getSize(new THREE.Vector3()));
+      const gap = 1.2;
+      items.forEach(([a, b], i) => {
+        const w = Math.max(sizes[i].x, sizes[i].z * 0.75);
+        a.position.set(x + w / 2, 0, 0);
+        b.position.set(x + w / 2, 0, 6.5);
+        scene.add(a, b);
+        x += w + gap;
+      });
+      scene.traverse((o) => o.isMesh && ((o.castShadow = true), (o.receiveShadow = true)));
+      const cx = x / 2;
+      const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 500);
+      const dist = +(q.get('dist') ?? Math.max(12, x * 1.05));
+      cam.position.set(cx - dist * 0.35, dist * 0.42, -dist * 0.75);
+      cam.lookAt(cx, 0.6, 3.2);
+      renderer.render(scene, cam);
+      window.__visorReady = true;
+    </script>
+  </body>
+</html>
