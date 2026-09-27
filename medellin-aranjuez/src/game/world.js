@@ -11,7 +11,7 @@ import { pointInPoly } from '../sim/geom2d.js';
 import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
-import { walkStyle, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
+import { walkStyle, walkSpeedScale, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
 import { Activities } from './activities.js';
 
 let nextId = 1;
@@ -97,6 +97,7 @@ export class PedEntity {
     this.speech = 0;
     // Forma de caminar (pandilleros sobrados, rumberos de noche, gente de paseo).
     this.walkStyle = walkStyle({ id: this.id, faction: this.faction, female: !!look.female, hour: world.game?.env?.timeOfDay });
+    if (sim.walkSpeed) sim.walkSpeed *= walkSpeedScale(this.walkStyle);
     this.stops = 0; // paradas / tramos: cada uno elige qué hace con las manos
     this.activity = null;
     this.lastMode = null;

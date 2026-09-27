@@ -79,6 +79,16 @@ export function walkStyle({ id, faction, female = false, hour = null }) {
   return r > 0.62 ? 'stroll' : null;
 }
 
+/**
+ * Cuánto más despacio camina un peatón con ese estilo: los clips de paseo y
+ * de borracho avanzan mucho menos por paso que el caminar normal y, a la
+ * misma velocidad, los pies patinaban (el ciclo no se puede acelerar más de
+ * ~1.6 veces sin que se vea a cámara rápida).
+ */
+export function walkSpeedScale(style) {
+  return style === 'stroll' ? 0.74 : style === 'drunk' ? 0.7 : style === 'cool' ? 0.92 : 1;
+}
+
 /** El jugador con poca salud camina cojeando. */
 export function playerStyle(health) {
   return health > 0 && health < 30 ? 'injured' : null;

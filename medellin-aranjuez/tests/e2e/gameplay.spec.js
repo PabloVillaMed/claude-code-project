@@ -204,6 +204,50 @@ test('animaciones: subirse y bajarse del carro con animación, gestos con G', as
   expect(errors).toEqual([]);
 });
 
+test('vida de barrio: picadito en la cancha, ropa en el balcón y todos huyen con un disparo', async () => {
+  // Cancha: aparece el partido cerca del jugador y el balón se mueve.
+  const f = await G(() => {
+    const c = window.__game.pois().find((p) => p.id === 'cancha');
+    window.__game.teleport(c.x, c.z);
+    const s = window.__game.activitySpot('futbol', false);
+    window.__game.teleport(s.x + s.frame.nx * (s.frame.hv + 8), s.z + s.frame.nz * (s.frame.hv + 8));
+    return s;
+  });
+  expect(f).not.toBe(null);
+  const futbol = () => G(() => window.__game.activities().active.find((a) => a.kind === 'futbol') ?? null);
+  await G(() => window.__game.advance(4));
+  let m = await futbol();
+  expect(m).not.toBe(null);
+  expect(m.peds).toBeGreaterThanOrEqual(6);
+  const b0 = m.info.ball;
+  await G(() => window.__game.advance(4));
+  m = await futbol();
+  expect(Math.hypot(m.info.ball.u - b0.u, m.info.ball.v - b0.v)).toBeGreaterThan(0.5);
+  // Un disparo al aire: el partido se deshace y los jugadores salen corriendo.
+  await G((f) => window.__gameInstance.world.addThreat(f.x, f.z, 60, 1), f);
+  await G(() => window.__game.advance(1));
+  m = await futbol();
+  expect(m === null || m.ended).toBe(true);
+  // Balcón: la señora de la ropa queda parada sobre la losa (no en el andén).
+  const r = await G(() => {
+    const s = window.__game.activitySpot('ropa');
+    const fx = -Math.sin(s.yaw);
+    const fz = -Math.cos(s.yaw);
+    window.__game.teleport(s.x + fx * 8, s.z + fz * 8);
+    return s;
+  });
+  await G(() => window.__game.advance(3));
+  const ropa = await G((r) => {
+    const g = window.__gameInstance;
+    const p = g.world.peds.find((q) => q.act && q.act.spot.kind === 'ropa' && Math.hypot(q.act.spot.x - r.x, q.act.spot.z - r.z) < 0.1);
+    return p ? { y: p.y, rootY: p.rig.root.position.y } : null;
+  }, r);
+  expect(ropa).not.toBe(null);
+  expect(ropa.rootY).toBeCloseTo(r.y, 1);
+  expect(r.y - r.gy).toBeGreaterThan(2);
+  expect(errors).toEqual([]);
+});
+
 test('puntos de interés: descubrir un lugar da plata y queda registrado', async () => {
   const m0 = (await st()).money;
   await G(() => {

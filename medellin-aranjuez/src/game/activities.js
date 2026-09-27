@@ -31,7 +31,8 @@ function lookFor(rng, female, outfit = 'civil') {
   return look;
 }
 
-const costOf = (s) => (s.kind === 'futbol' ? s.players : ACTIVITY_COST[s.kind] ?? 1);
+// Los partidos van aparte (máximo por calidad): no le quitan cupo al resto.
+const costOf = (s) => (s.kind === 'futbol' ? 0 : ACTIVITY_COST[s.kind] ?? 1);
 
 export class Activities {
   constructor(world) {
@@ -58,7 +59,8 @@ export class Activities {
   /** Presupuesto de personas y de partidos a la vez según la calidad. */
   budget() {
     const q = this.world.quality;
-    return { people: Math.round((q.peds ?? 34) * 0.5), matches: (q.peds ?? 34) >= 40 ? 2 : 1, radius: Math.min(80, (q.pedDraw ?? 80) * 0.85) };
+    const peds = q.peds ?? 34;
+    return { people: Math.round(peds * 0.4), matches: peds >= 40 ? 2 : 1, matchPlayers: peds >= 40 ? 10 : peds >= 30 ? 8 : 6, radius: Math.min(80, (q.pedDraw ?? 80) * 0.85) };
   }
 
   update(dt, player) {
@@ -279,10 +281,14 @@ class Ropa extends Activity {
     const lineY = s.y + 1.66;
     this.a = new THREE.Vector3(s.line.ax, lineY, s.line.az);
     this.b = new THREE.Vector3(s.line.bx, lineY, s.line.bz);
-    this.p0 = { x: s.walk.x, z: s.walk.z };
-    this.p1 = { x: s.walk.x1, z: s.walk.z1 };
     this.dir = { x: s.dir.x, z: s.dir.z };
-    const basket = new THREE.Vector3(this.p0.x - this.dir.x * 0.32, this.floor, this.p0.z - this.dir.z * 0.32);
+    // El platón en una punta del balcón (arrimado a la pared); ella se para
+    // al lado para sacar la ropa y camina hasta la otra punta.
+    const fx = -forwardX(s.yaw) * 0.12;
+    const fz = -forwardZ(s.yaw) * 0.12;
+    const basket = new THREE.Vector3(s.walk.x + fx, this.floor, s.walk.z + fz);
+    this.p0 = { x: s.walk.x + this.dir.x * 0.5, z: s.walk.z + this.dir.z * 0.5 };
+    this.p1 = { x: s.walk.x1, z: s.walk.z1 };
     this.basket = basket;
     this.line = buildClothesline(this.a, this.b, this.floor, basket, s.building % 7);
     this.add(this.line.group);
@@ -755,7 +761,7 @@ class Futbol extends Activity {
     super(mgr, s);
     const f = s.frame;
     this.f = f;
-    const n = s.players;
+    const n = Math.min(s.players, mgr.budget().matchPlayers);
     this.m = createMatch({ hu: f.hu, hv: f.hv, goalW: s.goalW, goalH: s.goalH ?? 1.2, goals: s.goals }, n, this.rng.next);
     this.ball = this.add(ballMesh(BALL.r));
     this.pedOf = new Array(n).fill(null);
