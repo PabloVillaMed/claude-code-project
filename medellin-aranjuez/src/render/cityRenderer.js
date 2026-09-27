@@ -437,7 +437,8 @@ export class CityRenderer {
       const coverage = (built.get(b.id) ?? 0) / Math.max(1, lotArea);
       for (const l of b.lots) {
         const [cx, cz] = l[Math.floor(l.length / 2)];
-        const isGreen = coverage < 0.35 || greenAreas.some((a) => a.block === b && pointInPoly(cx, cz, a.poly));
+        // Colegios, salud y parques: lo que no es edificio es prado aunque la manzana esté construida.
+        const isGreen = coverage < 0.35 || greenAreas.some((a) => (a.block === b || a.block === b.id || ['colegio', 'salud', 'parque'].includes(a.kind)) && pointInPoly(cx, cz, a.poly));
         if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 10, -z / 10] });
         else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
       }
