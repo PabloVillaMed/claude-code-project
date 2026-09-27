@@ -174,6 +174,36 @@ test('moto: aceleración y giro', async () => {
   await G(() => window.__game.exitVehicle());
 });
 
+test('animaciones: subirse y bajarse del carro con animación, gestos con G', async () => {
+  await G((S) => {
+    window.__game.teleport(S.x, S.z);
+    const v = window.__game.spawnVehicle('taxi');
+    window.__game.teleport(v.x - Math.cos(v.heading) * 2.2, v.z + Math.sin(v.heading) * 2.2);
+    window.__game.setAnimatedBoarding(true);
+  }, S);
+  await frames(2);
+  await page.keyboard.press('KeyF');
+  await frames(2);
+  expect((await st()).inVehicle).toBe(true);
+  expect((await G(() => window.__game.boarding()))?.mode).toBe('enter');
+  await G(() => window.__game.advance(4));
+  expect(await G(() => window.__game.boarding())).toBe(null);
+  // Bajarse: queda afuera de una vez (lógica) y el personaje termina de levantarse.
+  await G(() => window.__gameInstance.exitVehicle());
+  let s = await st();
+  expect(s.inVehicle).toBe(false);
+  expect((await G(() => window.__game.boarding()))?.mode).toBe('exit');
+  await G(() => window.__game.advance(3));
+  s = await st();
+  expect(await G(() => window.__game.boarding())).toBe(null);
+  expect(s.blocked).toBe(false);
+  await G(() => window.__game.setAnimatedBoarding(false));
+  await page.keyboard.press('KeyG');
+  await frames(3);
+  expect(await G(() => window.__game.playerGesture())).toBe('wave');
+  expect(errors).toEqual([]);
+});
+
 test('puntos de interés: descubrir un lugar da plata y queda registrado', async () => {
   const m0 = (await st()).money;
   await G(() => {
@@ -232,6 +262,8 @@ test('locales: en Mandingas La 92 se pide comida y se acepta el encargo', async 
   await expect(page.locator('#shop')).toBeHidden();
   await frames(3);
   expect((await st()).mission).toBe('mandingas');
+  // De vuelta en la calle recibe lo que pidió (y después se lo come).
+  expect(['take', 'drink']).toContain(await G(() => window.__game.playerGesture()));
   await G(() => {
     const g = window.__gameInstance;
     g._handleMissionEvents(g.missions.cancel());
