@@ -352,7 +352,8 @@ export class SkinnedRig {
     this.model.rotation.y = Math.PI; // el avatar mira a +Z; el juego a -Z
     // Estatura: ~1.76 m hombres y ~1.64 m mujeres, con algo de variación.
     const target = tpl.gender === 'f' ? 1.64 : 1.76;
-    const s = (target / tpl.height) * clamp(look.height ?? 1, 0.96, 1.04);
+    // `look.scale`: muchachos (el picadito) un poco más bajitos.
+    const s = (target / tpl.height) * clamp(look.height ?? 1, 0.96, 1.04) * (look.scale ?? 1);
     this.model.scale.setScalar(s);
     this.scale = s;
     this.body.add(this.model);
@@ -575,7 +576,7 @@ export class SkinnedRig {
     if (idle) {
       this.still += dt;
       if (this.still >= this.nextFidget) {
-        const name = pickFidget(driving ? FIDGETS.sit : FIDGETS.stand, this.lastFidget, Math.random(), (n) => this.hasClip(n));
+        const name = pickFidget(st.fidgets ?? (driving ? FIDGETS.sit : FIDGETS.stand), this.lastFidget, Math.random(), (n) => this.hasClip(n));
         if (name) this.play(name, { fidget: true, fadeIn: 0.45, fadeOut: 0.55 });
         this.lastFidget = name;
         this.nextFidget = this.still + fidgetDelay(false, Math.random());

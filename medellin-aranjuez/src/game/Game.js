@@ -1535,6 +1535,15 @@ export class Game {
         const b = g.player.boarding;
         return b ? { mode: b.mode, t: b.t, total: b.plan.total } : null;
       },
+      /** Actividades del barrio: lugares por tipo y las que están en escena. */
+      activities() {
+        return g.world.activities.summary();
+      },
+      /** Lugar más cercano al jugador de una actividad ('ropa', 'futbol'...), o null. */
+      activitySpot(kind, street = null) {
+        const s = g.world.activities.nearest(kind, g.player.x, g.player.z, (q) => street == null || !!q.street === street);
+        return s ? { ...JSON.parse(JSON.stringify(s)), gy: groundHeight(s.x, s.z) } : null;
+      },
       /** Gesto que está haciendo el jugador (o null). */
       playerGesture() {
         return g.player.rig.gesture ?? null;

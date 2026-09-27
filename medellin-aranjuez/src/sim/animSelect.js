@@ -21,7 +21,15 @@ export function unit(a, b = 0) {
 export const FIDGETS = {
   stand: ['idle_look', 'idle_scratch', 'idle_yawn', 'idle_stretch', 'idle_cough'],
   sit: ['sit_look', 'sit_scratch', 'sit_yawn', 'sit_shrug', 'sit_think'],
+  // Sentado a la mesa (dominó): los brazos se quedan sobre la mesa.
+  table: ['sit_table_look', 'sit_table_think', 'sit_table_shrug'],
 };
+
+/** Reposo de un peatón (no todos respiran igual): 'idle', 'idle_b' o 'idle_wait', estable por id. */
+export function idleVariant(id) {
+  const r = unit(id, 41);
+  return r < 0.45 ? 'idle' : r < 0.75 ? 'idle_b' : 'idle_wait';
+}
 
 /**
  * Próximo gesto de relleno: uno de la lista que exista (`has`), distinto del
