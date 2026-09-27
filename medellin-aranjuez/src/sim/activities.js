@@ -155,7 +155,14 @@ export function fieldMatch(fr, goals) {
     hu: (along ? fr.hu : fr.hv) - (goals === 'porteria' ? 1.5 : 0.8),
     hv: (along ? fr.hv : fr.hu) - 0.6,
   };
-  const big = frame.hu > 20;
+  // Cancha grande: ocho o diez muchachos no juegan en 90 m; arman el
+  // picadito en el centro, a lo ancho del campo, con arquitos portátiles.
+  if (frame.hu > 24) {
+    frame.hu = 18;
+    frame.hv = Math.min(frame.hv, 12);
+    goals = 'arquitos';
+  }
+  const big = frame.hu > 15;
   return { x: fr.x, z: fr.z, yaw: 0, frame, goals, goalW: goals === 'porteria' ? 2.4 : 1.4, goalH: goals === 'porteria' ? 2.1 : 1.9, players: big ? 10 : 8 };
 }
 

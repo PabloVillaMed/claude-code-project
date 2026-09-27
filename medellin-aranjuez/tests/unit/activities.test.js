@@ -62,7 +62,12 @@ describe('lugares de las actividades', () => {
     // El eje largo del campo es el de los arcos.
     expect(f.frame.hu).toBeCloseTo(23.5, 5);
     expect(f.frame.ux).toBe(0);
+    expect(f.goals).toBe('porteria');
     expect(f.players).toBe(10);
+    // En una cancha enorme juegan en el centro con arquitos.
+    const big = fieldMatch({ ...fr, hv: 45 }, 'porteria');
+    expect(big.frame.hu).toBeLessThanOrEqual(18);
+    expect(big.goals).toBe('arquitos');
     const edges = Array.from({ length: 200 }, (_, id) => ({ id, cls: 'residential', width: 7, pts: [[id * 100, 0], [id * 100 + 60, 0]] }));
     const spots = activitySpots({ buildings: [], props: [{ type: 'fieldPoly', frame: fr, placa: true }] }, { edges });
     const futbol = spots.filter((s) => s.kind === 'futbol');
