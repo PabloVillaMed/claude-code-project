@@ -11,6 +11,7 @@ import { pointInPoly } from '../sim/geom2d.js';
 import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
+import { walkStyle, standingActivity, walkingActivity, speechGesture } from '../sim/animSelect.js';
 
 let nextId = 1;
 
@@ -93,6 +94,12 @@ export class PedEntity {
     this.alerted = false;
     this.aggroRange = opts.aggroRange ?? 35;
     this.speech = 0;
+    // Forma de caminar (pandilleros sobrados, rumberos de noche, gente de paseo).
+    this.walkStyle = walkStyle({ id: this.id, faction: this.faction, female: !!look.female, hour: world.game?.env?.timeOfDay });
+    this.stops = 0; // paradas / tramos: cada uno elige qué hace con las manos
+    this.activity = null;
+    this.lastMode = null;
+    this.lastSpeech = null;
   }
 
   get alive() {
@@ -516,6 +523,7 @@ export class World {
       p.rig.root.visible = visible;
       if (visible) {
         p.rig.setShadow(dc < this.quality.shadowChars);
+        const body = this._body(p, s, dt);
         p.rig.animate(dt, {
           speed: s.speed ?? 0,
           onGround: true,
@@ -523,9 +531,51 @@ export class World {
           aiming: s.mode === 'attack' && !!p.weapon && s.speed < 0.5,
           dead: !p.alive,
           aimPitch: 0,
+          style: body.style,
+          upper: body.upper,
+          fidget: body.fidget,
         });
       }
     }
+  }
+
+  /**
+   * Lenguaje corporal de un peatón visible: cómo camina, qué hace con las
+   * manos (celular, hablar, escuchar) y si se entretiene con gestos de
+   * relleno cuando está quieto. Las charlas y pregones vienen de dialogue.js:
+   * quien habla gesticula (saluda con la mano al saludar), quien escucha
+   * asiente de vez en cuando.
+   */
+  _body(p, s, dt) {
+    const dlg = this.game.dialogue;
+    const alive = p.alive;
+    // Cada parada o tramo de caminata elige otra actividad (estable por peatón).
+    if (s.mode !== p.lastMode) {
+      p.lastMode = s.mode;
+      p.stops++;
+      p.activity = s.fixed ? null : s.mode === 'idle' ? standingActivity(p.id, p.stops) : s.mode === 'walk' ? walkingActivity(p.id, p.stops) : null;
+    }
+    const u = alive ? (dlg?.speechOf?.(p) ?? null) : null;
+    if (u !== p.lastSpeech) {
+      p.lastSpeech = u;
+      const g = u ? speechGesture(u.line.cat) : null;
+      if (g?.gesture) p.rig.play(g.gesture, { fadeIn: 0.25 });
+      // El ventero a veces llama con la mano al empezar el pregón.
+      else if (u && u.line.cat.startsWith('pregon') && Math.random() < 0.35) p.rig.play('wave', { fadeIn: 0.25 });
+    }
+    let upper = null;
+    const listening = alive && !u && !!dlg?.listening?.(p);
+    if (u) upper = speechGesture(u.line.cat).upper;
+    else if (listening) {
+      upper = 'listen';
+      // (Azar visual con Math.random: no gasta el generador de la simulación.)
+      if (!p.rig.gesture && Math.random() < dt * 0.12) p.rig.play(Math.random() < 0.8 ? 'nod' : 'laugh', { fadeIn: 0.3 });
+    } else if (p.faction === 'civil' && (s.mode === 'idle' || s.mode === 'walk')) upper = p.activity;
+    return {
+      style: alive && p.health < 45 ? 'injured' : p.walkStyle,
+      upper,
+      fidget: alive && (s.fixed || s.mode === 'idle' || (p.faction === 'police' && (s.speed ?? 0) < 0.1)),
+    };
   }
 
   // ------------------------------------------------------------- policía

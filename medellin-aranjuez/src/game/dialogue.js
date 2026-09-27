@@ -623,6 +623,17 @@ export class Dialogue {
     return this.active.some((u) => u.speaker === speaker && !u.done);
   }
 
+  /** Línea que está diciendo `q` ahora (o null): world.js le pone gestos al cuerpo. */
+  speechOf(q) {
+    for (const u of this.active) if (u.speaker === q && u.started && !u.done) return u;
+    return null;
+  }
+
+  /** ¿`q` escucha a su pareja en una charla de vecinos? */
+  listening(q) {
+    return this._inConversation(q) && !this._speaking(q);
+  }
+
   /** Dice una línea de la categoría con la voz del hablante. Devuelve la voz o null. */
   speak(speaker, cat, opts = {}) {
     const voice = opts.voice ?? (speaker.radio ? null : this.voiceOf(speaker));

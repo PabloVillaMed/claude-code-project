@@ -471,8 +471,16 @@ export class StoryDirector {
         c.speech = this.say(lines[c.lineIdx]);
         c.speaker = STORY_LINE[lines[c.lineIdx]].who;
         c.lineIdx++;
+        // Quien habla mueve los brazos (gesto de conversación en bucle).
+        for (const r of [g.player.rig, this.abuela]) r.stopGesture?.(0.3);
+        const who = c.speaker === 'santi' ? (act ? g.player.rig : null) : c.speaker === 'rosa' ? this.abuela : null;
+        if (who?.hasClip?.('talk')) who.play('talk', { loop: true, mask: 'upper', fadeIn: 0.3 });
       }
     }
+    if (c.speech?.done && !c.gestureOff) {
+      c.gestureOff = true;
+      for (const r of [g.player.rig, this.abuela]) r.stopGesture?.(0.4);
+    } else if (c.speech && !c.speech.done) c.gestureOff = false;
     const talking = c.speech && !c.speech.done ? c.speaker : null;
     // Cámara (las tomas con diálogo se mueven despacio mientras dure).
     const linesDone = c.lineIdx >= lines.length && (!c.speech || c.speech.done);

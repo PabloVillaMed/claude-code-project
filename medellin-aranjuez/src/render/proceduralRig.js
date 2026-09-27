@@ -244,6 +244,25 @@ export class ProceduralRig {
     this.punchTimer = 0.35;
   }
 
+  // Sin clips de captura: los gestos (characterRig.SkinnedRig.play) no hacen nada.
+  play() {
+    return null;
+  }
+
+  stopGesture() {}
+
+  hasClip() {
+    return false;
+  }
+
+  clipInfo() {
+    return null;
+  }
+
+  get gesture() {
+    return null;
+  }
+
   /**
    * Anima el personaje. state = {speed, onGround, aiming, crouching,
    * driving ('car'|'moto'|null), dead, aimPitch}

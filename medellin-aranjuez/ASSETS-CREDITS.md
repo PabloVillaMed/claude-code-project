@@ -32,7 +32,7 @@ MIT, CC-BY (con atribución aquí y en el menú de créditos).
 | Microsoft Rocketbox — Civiles mujeres (Female_Adult_08, Female_Adult_12, Female_Party_02, Female_Adult_03) | `public/models/personajes/civil-f1.glb` … `civil-f4.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Avatars/Adults` | Microsoft (equipo original de Rocketbox Studios) | MIT |
 | Microsoft Rocketbox — Policías (Police_Male_01 y Police_Male_03, teñidos verde oliva + chaleco verde limón) | `public/models/personajes/policia-1.glb`, `policia-2.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Avatars/Professions` | Microsoft (equipo original de Rocketbox Studios) | MIT |
 | Microsoft Rocketbox — Pandilleros (Male_Adult_18, Male_Adult_10) | `public/models/personajes/pandilla-1.glb`, `pandilla-2.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Avatars/Adults` | Microsoft (equipo original de Rocketbox Studios) | MIT |
-| Microsoft Rocketbox — Animaciones (reposo, caminar, trotar, correr, agachado, sentado; hombre y mujer) | `public/models/personajes/animaciones.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Animations` | Microsoft (equipo original de Rocketbox Studios) | MIT |
+| Microsoft Rocketbox — Animaciones de captura de movimiento (61 clips, hombre y mujer: reposo, caminar, trotar, correr, agachado, sentado; estilos de caminar cojeando / borracho / paseando / sobrado; gestos de relleno de pie y sentado; celular, hablar, escuchar, asentir, reír; saludar, celebrar, aplaudir, bailar, encogerse de hombros; recibir, beber; abrir la puerta del carro, sentarse girando y levantarse). Mismo esqueleto Biped que los avatares (sin retargeting); recortados, remuestreados y empacados por `scripts/assets/rocketbox.mjs` | `public/models/personajes/animaciones.glb` | [microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) `Assets/Animations/all_animations_max_motextr_{static,xy,xyz}` | Microsoft (equipo original de Rocketbox Studios) | MIT |
 | Vehículo: taxi ("Ace '11 - Low Poly model", hatchback moderno tipo Sonic/Aveo, pintura teñida de amarillo) | `public/models/vehiculos/hatchback.glb` | [Sketchfab 055ff8a2…](https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd) (GLB vía [Objaverse](https://huggingface.co/datasets/allenai/objaverse)) | Daniel Zhabotinsky | CC BY 4.0 (créditos en `public/models/vehiculos/CREDITOS.txt`) |
 | Vehículo: sedán ("Kiri '10 - Low poly model") | `public/models/vehiculos/sedan.glb` | [Sketchfab 7fd6e157…](https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6) (GLB vía Objaverse) | Daniel Zhabotinsky | CC BY 4.0 |
 | Vehículo: camioneta y patrulla ("Urban '10 - Low poly model", SUV compacta tipo Duster) | `public/models/vehiculos/suv.glb` | [Sketchfab 2866efdf…](https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d) (GLB vía Objaverse) | Daniel Zhabotinsky | CC BY 4.0 |
@@ -78,6 +78,21 @@ MIT, CC-BY (con atribución aquí y en el menú de créditos).
 | Arma: fusil de asalto ("M4A1 Assault Rifle", PBR; 9,236 triángulos) | `public/models/armas/rifle.glb`, `public/models/armas/iconos/rifle.png` | [https://opengameart.org/content/m4a1-assault-rifle](https://opengameart.org/content/m4a1-assault-rifle) (publicado en OGA por nisu; origen: 3dmodelscc0.com, ya fuera de línea) | nisu / 3dmodelscc0.com | CC0 |
 | Ícono de puños (silueta SVG dibujada para el juego) | `public/models/armas/iconos/fists.svg`, `fists.png` | `scripts/assets/armas.mjs` | Proyecto | Propio |
 | Tipografías del HUD y los menús: Barlow y Barlow Condensed | paquetes `@fontsource/barlow`, `@fontsource/barlow-condensed` (empaquetadas en la compilación) | [https://github.com/jpt/barlow](https://github.com/jpt/barlow) | Jeremy Tribby | OFL 1.1 |
+
+### Bibliotecas de animación evaluadas
+
+Todas las animaciones de los personajes son capturas de movimiento de
+**Microsoft Rocketbox** (MIT, 471 clips en el repositorio oficial): usan el
+mismo esqueleto Biped que los avatares, así que no hace falta retargeting y
+se pueden redistribuir dentro del juego. Se evaluaron además:
+
+- **Quaternius Universal Animation Library** (CC0, descarga oficial en
+  [quaternius.itch.io/universal-animation-library](https://quaternius.itch.io/universal-animation-library)):
+  saltos, golpes, reacciones, muertes y manejo, pero con un esqueleto tipo
+  mannequin distinto; no se incluyó (hace falta retargeting al Biped y lo que
+  aporta ya lo resuelven las capas por código del rig).
+- **Mixamo** (Adobe): requiere cuenta y su licencia no permite redistribuir
+  los archivos de animación sueltos; descartado.
 
 ## Sonidos de armas
 
