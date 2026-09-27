@@ -829,7 +829,8 @@ export class Game {
     const s = v.state;
     // Subiéndose: el vehículo espera frenado hasta que el personaje esté sentado.
     if (this._stepBoarding(dt, a)) {
-      stepVehicle(s, { throttle: 0, brake: 1, steer: 0, handbrake: true }, dt, { groundHeight, collision: this.city.collision });
+      // (Freno solo si va hacia delante: quieto, el freno es reversa.)
+      stepVehicle(s, { throttle: s.forwardSpeed < -0.3 ? 0.6 : 0, brake: s.forwardSpeed > 0.3 ? 1 : 0, steer: 0, handbrake: true }, dt, { groundHeight, collision: this.city.collision });
       this.audio.setEngine(true, 0.2, s.type);
       return;
     }

@@ -18,8 +18,8 @@
 export const BOARD = {
   walk: 2.2, // m/s al acercarse a la puerta
   maxApproach: 1.2, // s como máximo caminando hacia la puerta
-  doorSpeed: 1.6, // velocidad del gesto de abrir la puerta
-  sitSpeed: 1.9, // ... de sentarse
+  doorSpeed: 1.8, // velocidad del gesto de abrir la puerta
+  sitSpeed: 2.1, // ... de sentarse
   standSpeed: 1.8, // ... de levantarse
   step: 0.32, // s del paso de la puerta al arranque de sentarse
   slide: 0.4, // s deslizándose al puesto (o al borde, al bajarse)
