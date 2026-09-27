@@ -13,6 +13,7 @@ import { registerAssets } from './assetManifest.js';
 import { GRID, terrainHeight } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
 import { buildVegetation } from './vegetation.js';
+import { wireLines } from './wires.js';
 
 export const PROP_MODELS = [
   'silla_plastica',
@@ -482,7 +483,7 @@ function buildPoles(r, poles, cables) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  r.root.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x151515 })));
+  r.root.add(wireLines(g, 0x1c1c1c));
   return true;
 }
 

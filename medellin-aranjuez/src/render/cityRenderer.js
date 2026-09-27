@@ -18,6 +18,7 @@ import { densify, drapePolygon, drapeTris, orientedQuad, polylineFrames, polyWal
 import { buildRoof, roofParapet } from './roofs.js';
 import { buildMetro } from './metro.js';
 import { applyGroundLights } from './groundLights.js';
+import { wireLines } from './wires.js';
 
 const FACADE_M = 12; // metros que cubre una textura de fachada
 
@@ -871,7 +872,7 @@ export class CityRenderer {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.root.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x151515 })));
+    this.root.add(wireLines(g, 0x1c1c1c));
   }
 
   _benches(benches) {
