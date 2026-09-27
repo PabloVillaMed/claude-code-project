@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { makeRng } from '../sim/rng.js';
 import { VALLEY_FLOOR, GEO_REF, urbanAmount, valleyAsl, valleyHeight } from '../sim/geography.js';
 
-const D_MIN = 1400;
+const D_MIN = 600; // empieza antes del plano lejano de la cámara: sin franja de cielo entre el fondo y el horizonte
 const D_MAX = 34000;
 const R = 400; // radio del cilindro de proyección (unidades del mundo)
 
