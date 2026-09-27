@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
 import { ENGINE_PROFILES, coupledRpm, createEngineState, firingRate, stepEngine } from '../../src/sim/engineModel.js';
+import { SOUND_PROFILES, trafficMix, workletProfile } from '../../src/game/engineSound.js';
+import { VEHICLE_VARIANTS, engineProfile } from '../../src/sim/vehicleVariants.js';
+
+describe('motor: sonido', () => {
+  it('cada variante tiene perfil mecánico y de sonido, y los bancos existen', () => {
+    const man = JSON.parse(fs.readFileSync('public/sounds/motor/motor.json', 'utf8'));
+    for (const [id, v] of Object.entries(VEHICLE_VARIANTS)) {
+      const p = engineProfile(v.type, id);
+      expect(ENGINE_PROFILES[p], id).toBeTruthy();
+      expect(SOUND_PROFILES[p], id).toBeTruthy();
+      const w = workletProfile(p);
+      expect(man.bancos[w.off], `${id} ${w.off}`).toBeTruthy();
+      expect(man.bancos[w.on], `${id} ${w.on}`).toBeTruthy();
+      expect(man.bancos[w.off].granos.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('Doppler y distancia: más agudo al acercarse, más bajo y apagado lejos', () => {
+    const cerca = trafficMix(5, 15);
+    const lejos = trafficMix(60, -15);
+    expect(cerca.pitch).toBeGreaterThan(1.03);
+    expect(lejos.pitch).toBeLessThan(0.97);
+    expect(cerca.gain).toBeGreaterThan(lejos.gain * 4);
+    expect(cerca.lp).toBeGreaterThan(lejos.lp * 3);
+    expect(trafficMix(10, 0).pitch).toBeCloseTo(1);
+  });
+});
 
 /** Acelera de 0 a `vmax` a fondo (aceleración constante simple) y registra el motor. */
 function run(id, { vmax = 40, accel = 6, secs = 14, throttle = 1, from = 0, dt = 1 / 60 } = {}) {
