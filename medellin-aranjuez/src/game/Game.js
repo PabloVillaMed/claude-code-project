@@ -19,6 +19,9 @@ import { CityRenderer } from '../render/cityRenderer.js';
 import { NightLights } from '../render/nightLights.js';
 import { Environment } from '../render/environment.js';
 import { Horizon } from '../render/horizon.js';
+import { BirdRenderer } from '../render/birds.js';
+import { BirdSim, pigeonHomes } from '../sim/birds.js';
+import { playBirdEvents } from './birdSounds.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
@@ -48,7 +51,7 @@ const MENU_SHOTS = [
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, musicVolume: 0.8, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, musicVolume: 0.8, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true, vehicleView: 'cerca', camSmoothing: 0.5, firstPerson: false };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -210,6 +213,7 @@ export class Game {
     this.input.invertY = this.settings.invertY;
     this.camRig = new CameraRig(this.camera, this.city.collision);
     this.camRig.baseFov = this.settings.fov;
+    this.applyCameraSettings();
     this.wanted = new WantedSystem();
     this.missions = new MissionSystem(createMissionDefs(this.city));
     const sp = this.city.spawn;
@@ -220,6 +224,7 @@ export class Game {
     this.world = new World(this);
     this.pickups = new Pickups(this);
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
+    this._initBirds();
     this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
     this.radio = new RadioSystem(this); // radio de los vehículos y parlantes de los locales
     this.wheel = new WeaponWheel(this);
@@ -318,6 +323,17 @@ export class Game {
   }
 
   /** Activa/desactiva la resolución dinámica (al desactivarla vuelve a la resolución completa). */
+  /** Cámara según la configuración: vista de vehículo por defecto, suavizado y primera persona. */
+  applyCameraSettings() {
+    const s = this.settings;
+    this.camRig.smoothing = s.camSmoothing ?? 0.5;
+    this.camRig.setFirstPerson(!!s.firstPerson);
+    if (s.vehicleView !== this._appliedVehicleView) {
+      this._appliedVehicleView = s.vehicleView;
+      this.camRig.setVehicleView(s.vehicleView ?? 'cerca');
+    }
+  }
+
   setDynamicResolution(on) {
     this.dynamicRes = on;
     this._dres = null;
@@ -463,6 +479,7 @@ export class Game {
     this.cityRenderer.updateLod(this.camera.position);
     this.nightLights.update(running ? dt : 0, this.camera.position, this.env.night, this.world.vehicles, this.player.vehicle);
     if (running) this.effects.update(dt);
+    this._updateBirds(running ? dt : 0);
     this.postfx.setNight(this.env.night);
     this.player.damageFlash = Math.max(0, this.player.damageFlash - dt * 1.5);
     this.postfx.setDamage(this.player.damageFlash + (this.player.health < 25 && !this.player.dead ? 0.25 : 0));
@@ -575,6 +592,11 @@ export class Game {
     if (a.camera) {
       this.camRig.cycleZoom();
       if (this.player.inVehicle) this.hud.toast(`Cámara: ${{ cerca: 'cerca', lejos: 'lejos', capo: this.player.vehicle.type === 'moto' ? 'sobre el hombro' : 'capó' }[this.camRig.vehicleViewName]}`, 1.2);
+      else this.hud.toast(`Cámara: ${{ normal: 'normal', lejos: 'lejos', cerca: 'cerca', primera: 'primera persona' }[this.camRig.footViewName]}`, 1.2);
+    }
+    if (a.shoulder && !this.player.inVehicle) {
+      this.camRig.swapShoulder();
+      this.hud.toast(`Cámara: hombro ${this.camRig.side > 0 ? 'derecho' : 'izquierdo'}`, 1.2);
     }
 
     // Rueda de armas.
@@ -620,6 +642,7 @@ export class Game {
       moto: !!v && (v.type === 'moto' || v.state.spec.wheels === 2 || v.state.type === 'moto'),
       aiming: p.aiming,
       sprinting: p.state.sprinting,
+      crouching: !v && p.state.crouching,
       lookBehind: a.lookBehind,
       lookX,
       lookY,
@@ -655,6 +678,37 @@ export class Game {
       this.save();
     }
     this.hud.update(realDt, this._hudState());
+  }
+
+  /** Palomas en las plazas, gallinazos en las térmicas y loros al amanecer y al atardecer. */
+  _initBirds() {
+    const col = this.city.collision;
+    const homes = pigeonHomes(this.city.pois, groundHeight, (x, z) => col.pointBlocked(x, z, groundHeight(x, z) + 0.3));
+    this.birds = new BirdSim({ homes, groundHeight });
+    this.birdView = new BirdRenderer(this.scene);
+    this._nearVehicles = [];
+    // Tiros y explosiones espantan a las palomas.
+    this.events?.on('shot', (e) => this.birds.alarm(e.x, e.z));
+    this.events?.on('explosion', (e) => this.birds.alarm(e.x, e.z, 70));
+  }
+
+  _updateBirds(dt) {
+    if (!this.birds) return;
+    const p = this.player;
+    const playing = this.state === 'playing' || this.state === 'paused';
+    const focus = playing ? p : this.camera.position;
+    if (dt > 0) {
+      const near = this._nearVehicles;
+      near.length = 0;
+      for (const v of this.world.vehicles) {
+        const s = v.state;
+        if (Math.abs(s.x - focus.x) < 120 && Math.abs(s.z - focus.z) < 120) near.push({ x: s.x, z: s.z, speed: Math.abs(s.forwardSpeed ?? 0) });
+      }
+      const who = playing ? { x: p.x, y: p.y, z: p.z, speed: p.inVehicle ? Math.abs(p.vehicle.state.forwardSpeed ?? 0) : p.state.speed ?? 0, inVehicle: p.inVehicle, dead: p.dead } : { x: focus.x, y: focus.y, z: focus.z, speed: 0, inVehicle: false, dead: true };
+      this.birds.update(dt, { player: who, vehicles: near, hour: this.env.timeOfDay, focus: { x: focus.x, z: focus.z } });
+      playBirdEvents(this.audio, this.birds.events);
+    }
+    this.birdView.update(dt, this.birds.list, this.camera.position);
   }
 
   /** Sonido ambiente según dónde está el jugador y la hora. */
@@ -726,6 +780,8 @@ export class Game {
       dt,
       { groundHeight, collision: this.city.collision, obstacles },
     );
+    // Primera persona: el cuerpo mira hacia donde mira la cámara.
+    if (this.camRig.firstPerson && !p.dead) p.state.yaw = this.camRig.yaw;
     this.stats.distance += p.state.speed * dt;
     this._checkRunOver(dt);
     if (p.state.landedImpact > 13) {
@@ -1543,6 +1599,21 @@ export class Game {
       boarding() {
         const b = g.player.boarding;
         return b ? { mode: b.mode, t: b.t, total: b.plan.total } : null;
+      },
+      /** Pájaros: bandadas de palomas (estado y dónde), gallinazos, loros y cuántos se dibujan. */
+      birds() {
+        const b = g.birds;
+        return {
+          homes: b.flocks.map((f) => ({ id: f.home.id, x: f.home.x, z: f.home.z, active: f.active, state: f.state, n: f.birds?.length ?? 0, flying: f.birds?.filter((q) => q.state !== 'ground').length ?? 0 })),
+          vultures: b.vultures.length,
+          parrots: b.parrots.reduce((s, f) => s + f.birds.length, 0),
+          drawn: g.birdView.mesh.count,
+        };
+      },
+      /** Simula pájaros sin esperar al render (pruebas): segundos de juego. */
+      advanceBirds(seconds, step = 1 / 30) {
+        for (let t = 0; t < seconds; t += step) g._updateBirds(step);
+        return this.birds();
       },
       /** Actividades del barrio: lugares por tipo y las que están en escena. */
       activities() {
