@@ -1,21 +1,12 @@
-// Cielo físico, sol con sombras que siguen al jugador, ciclo día/noche,
-// niebla atmosférica del valle y reflejos (PMREM) del cielo.
+// Cielo (render/sky.js: dispersión horneada, nubes, luna y estrellas), sol
+// con sombras que siguen al jugador, ciclo día/noche, niebla atmosférica del
+// valle y reflejos (PMREM) del cielo.
 
 import * as THREE from 'three';
-import { Sky } from 'three/examples/jsm/objects/Sky.js';
-import { clamp, smoothstep } from '../sim/math.js';
+import { smoothstep } from '../sim/math.js';
+import { sunDirection, moonDirection, cloudCover, sunMoved } from '../sim/sky.js';
 import { dayEnvironment } from './photoMaterials.js';
-
-/**
- * El disco solar del cielo físico llega a valores HDR enormes que desbordan
- * los búferes de media precisión del postprocesado (pantalla blanca y NaN).
- * Se limita su radiancia máxima.
- */
-function clampSky(sky, max) {
-  const m = sky.material;
-  m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', `gl_FragColor = vec4( min( texColor, vec3( ${max.toFixed(1)} ) ), 1.0 );`);
-  m.needsUpdate = true;
-}
+import { SkyDome } from './sky.js';
 
 export class Environment {
   constructor(renderer, scene, quality) {
@@ -27,18 +18,10 @@ export class Environment {
     this.paused = false;
     this.brightness = 1; // ajuste del jugador (multiplica la exposición)
 
-    this.sky = new Sky();
-    this.sky.scale.setScalar(20000);
-    // Por debajo del umbral del bloom (5): el halo del sol ya no lava la imagen
-    // cuando se mira hacia él (antes todo el occidente quedaba blanco en la tarde).
-    clampSky(this.sky, 4.2);
-    const u = this.sky.material.uniforms;
-    u.turbidity.value = 5;
-    u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.76;
-    this.sky.renderOrder = -20; // primero el cielo, luego el horizonte (render/horizon.js)
-    scene.add(this.sky);
+    // Nubosidad del día (cambia un poco de un día al otro, ver sim/sky.js cloudCover).
+    this.day = 0.5;
+    this.skyDome = new SkyDome(renderer, { skyLow: !!quality.skyLow });
+    scene.add(this.skyDome.mesh);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = quality.shadows > 0;
@@ -61,89 +44,27 @@ export class Environment {
     scene.fog = new THREE.FogExp2(0xc9d6df, 0.0003);
 
     this.pmrem = new THREE.PMREMGenerator(renderer);
-    this.envScene = new THREE.Scene();
-    this.envSky = new Sky();
-    this.envSky.scale.setScalar(1000);
-    clampSky(this.envSky, 16);
-    this.envScene.add(this.envSky);
     this.envTarget = null;
-    this.envTimer = 0;
+    this.envSun = null; // sol con el que se hicieron los reflejos
+    this.envNight = -1;
+    this.envRefreshes = 0;
     // HDRI real (Poly Haven, CC0) para la luz ambiental y reflejos de día.
     this.dayEnv = dayEnvironment(this.pmrem);
     this.sunDir = new THREE.Vector3();
+    this.moonDir = new THREE.Vector3();
     this.night = 0;
-    this._stars();
-    this._cityGlow();
+    this.cover = 0.4;
     this.update(0, new THREE.Vector3());
     this._refreshEnv();
   }
 
-  _stars() {
-    const n = 1500;
-    const pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const u = Math.random() * 2 - 1;
-      const t = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(1 - u * u);
-      pos.set([r * Math.cos(t) * 9000, Math.abs(u) * 9000 + 300, r * Math.sin(t) * 9000], i * 3);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    // Estrellas pegadas al plano lejano (como el cielo) y dibujadas antes que
-    // las montañas del horizonte, que las tapan.
-    const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.3, sizeAttenuation: false, transparent: false, blending: THREE.AdditiveBlending, opacity: 0, depthWrite: false, fog: false });
-    mat.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  gl_Position.z = gl_Position.w;');
-    };
-    this.stars = new THREE.Points(g, mat);
-    this.stars.frustumCulled = false;
-    this.stars.renderOrder = -15;
-    this.scene.add(this.stars);
+  /** Objetos del cielo (para medir su costo aparte). */
+  skyObjects() {
+    return [this.skyDome.mesh];
   }
 
-  /**
-   * Resplandor de la ciudad en el cielo nocturno: el valle de Aburrá iluminado
-   * con sodio tiñe de naranja pardo la bruma cerca del horizonte. Una cúpula
-   * con degradado (aditiva, una sola llamada) entre el cielo y el horizonte.
-   */
-  _cityGlow() {
-    const mat = new THREE.ShaderMaterial({
-      uniforms: { uStrength: { value: 0 } },
-      vertexShader: /* glsl */ `
-        varying vec3 vDir;
-        void main() {
-          vDir = normalize( position );
-          gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-          gl_Position.z = gl_Position.w; // en el plano lejano, como el cielo
-        }`,
-      fragmentShader: /* glsl */ `
-        uniform float uStrength;
-        varying vec3 vDir;
-        void main() {
-          float h = max( vDir.y, 0.0 );
-          // Fuerte en el horizonte, se apaga hacia los ~25°; un poco más hacia el sur y el occidente (el centro).
-          float g = exp( -h * 9.0 ) * ( 0.75 + 0.25 * max( 0.0, -vDir.x * 0.6 + vDir.z * 0.4 ) );
-          vec3 c = mix( vec3( 0.16, 0.12, 0.10 ), vec3( 0.55, 0.32, 0.16 ), exp( -h * 16.0 ) );
-          gl_FragColor = vec4( c * g * uStrength, 1.0 );
-        }`,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: true,
-      side: THREE.BackSide,
-      fog: false,
-    });
-    this.glow = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.05), mat);
-    this.glow.frustumCulled = false;
-    this.glow.renderOrder = -16; // después del cielo, antes de estrellas y montañas
-    this.scene.add(this.glow);
-  }
-
-  /** El cielo estrellado acompaña a la cámara (está "en el infinito"). */
-  followCamera(pos) {
-    this.stars.position.copy(pos);
-    this.glow.position.copy(pos);
-  }
+  /** La cúpula no necesita seguir a la cámara (usa solo la rotación de la vista). */
+  followCamera() {}
 
   get hours() {
     return Math.floor(this.timeOfDay);
@@ -157,36 +78,42 @@ export class Environment {
 
   setTime(h) {
     this.timeOfDay = ((h % 24) + 24) % 24;
-    this.envTimer = 999;
+    this.envSun = null; // reflejos al día con la nueva hora
   }
 
   _refreshEnv() {
-    const u = this.envSky.material.uniforms;
-    const su = this.sky.material.uniforms;
-    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) u[k].value = su[k].value;
-    u.sunPosition.value.copy(this.sunDir);
-    // De día: HDRI fotográfico. Al atardecer y de noche: el cielo físico
-    // (sigue la hora y el color del sol).
+    this.envSun = this.sunDir.clone();
+    this.envNight = this.night;
+    // De día: HDRI fotográfico. Al atardecer y de noche: el mismo cielo horneado
+    // (textura equirectangular pequeña: el PMREM sale mucho más barato que
+    // volver a dibujar un cielo completo en un cubo).
     if (this.dayEnv && this.night < 0.2 && this.sunDir.y > 0.18) {
       this.scene.environment = this.dayEnv;
       this.scene.environmentIntensity = 0.5;
       return;
     }
-    if (this.envTarget) this.envTarget.dispose();
-    this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 2000);
+    this.skyDome.bake(this.sunDir);
+    this.envTarget = this.pmrem.fromEquirectangular(this.skyDome.lut.texture, this.envTarget);
+    this.envRefreshes++;
     this.scene.environment = this.envTarget.texture;
-    // De noche el cielo físico queda negro: bajamos la intensidad del entorno.
+    // De noche el cielo queda casi negro: bajamos la intensidad del entorno.
     this.scene.environmentIntensity = 0.2 + 0.35 * (1 - this.night);
   }
 
   update(dt, focus) {
-    if (!this.paused) this.timeOfDay = (this.timeOfDay + (dt * this.timeScale) / 3600) % 24;
+    if (!this.paused) {
+      const t = this.timeOfDay + (dt * this.timeScale) / 3600;
+      // Día nuevo, cielo nuevo: unos días amanecen más nublados que otros.
+      if (t >= 24) this.day = Math.random();
+      this.timeOfDay = t % 24;
+    }
     // Medellín está cerca del ecuador: el sol sale ~6:00 y se pone ~18:00.
     // Oriente = +X en nuestro mapa (la montaña): el sol sale por detrás de ella
     // y se pone sobre la ladera occidental. Un poco inclinado hacia el sur.
-    const a = ((this.timeOfDay - 6) / 12) * Math.PI;
-    this.sunDir.set(Math.cos(a), Math.sin(a), 0.3).normalize();
-    this.sky.material.uniforms.sunPosition.value.copy(this.sunDir);
+    const sd = sunDirection(this.timeOfDay);
+    this.sunDir.set(sd.x, sd.y, sd.z);
+    const md = moonDirection(this.timeOfDay);
+    this.moonDir.set(md.x, md.y, md.z);
 
     const dayF = smoothstep(-0.12, 0.25, this.sunDir.y);
     this.night = 1 - smoothstep(-0.18, 0.08, this.sunDir.y);
@@ -215,7 +142,6 @@ export class Environment {
     this.hemi.intensity = 0.12 + 0.38 * dayF + 0.28 * n;
     this.hemi.color.setRGB(0.55 + 0.2 * dayF - 0.05 * n, 0.65 + 0.2 * dayF - 0.03 * n, 0.9);
     this.hemi.groundColor.setRGB(0.28 * (0.3 + dayF) + 0.2 * n, 0.24 * (0.3 + dayF) + 0.12 * n, 0.2 * (0.3 + dayF) + 0.05 * n);
-    this.glow.material.uniforms.uStrength.value = n;
 
     // Niebla: bruma dorada al atardecer, azul noche, neblina clara de día.
     const fog = this.scene.fog;
@@ -228,14 +154,17 @@ export class Environment {
     // Aire del valle: la misma bruma que usa el horizonte lejano (render/horizon.js),
     // así las laderas cercanas y las montañas se ven con la misma distancia.
     fog.density = 0.00018 + 0.0002 * golden;
-    // Con la luz de la ciudad apenas se ven unas pocas estrellas.
-    this.stars.material.opacity = clamp(this.night * 0.5, 0, 0.5);
+    // Cielo: nubosidad según la hora (mañanas despejadas, tardes de cúmulos).
+    this.cover = cloudCover(this.timeOfDay, this.day);
+    const h = this.timeOfDay;
+    const cirrus = 0.35 + 0.45 * (1 - smoothstep(9, 13, h)) * smoothstep(5, 7, h);
+    this.skyDome.update({ sunDir: this.sunDir, moonDir: this.moonDir, night: this.night, cover: this.cover, cirrus, fog: c, dt });
     this.renderer.toneMappingExposure = (0.62 + 0.28 * dayF + 0.6 * this.night) * this.brightness;
 
-    this.envTimer += dt;
-    if (this.envTimer > 8) {
-      this.envTimer = 0;
-      this._refreshEnv();
-    }
+    // Reflejos: solo si el sol se movió de verdad (o cambió la noche); con el
+    // HDRI de día no hay nada que rehacer.
+    const wantDay = !!this.dayEnv && this.night < 0.2 && this.sunDir.y > 0.18;
+    const usingDay = this.scene.environment === this.dayEnv;
+    if (!this.envSun || wantDay !== usingDay || (!wantDay && (sunMoved(this.envSun, this.sunDir, 2) || Math.abs(this.night - this.envNight) > 0.08))) this._refreshEnv();
   }
 }

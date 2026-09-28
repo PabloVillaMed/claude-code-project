@@ -47,7 +47,7 @@ const MENU_SHOTS = [
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true, vehicleView: 'cerca', camSmoothing: 0.5, firstPerson: false };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -209,6 +209,7 @@ export class Game {
     this.input.invertY = this.settings.invertY;
     this.camRig = new CameraRig(this.camera, this.city.collision);
     this.camRig.baseFov = this.settings.fov;
+    this.applyCameraSettings();
     this.wanted = new WantedSystem();
     this.missions = new MissionSystem(createMissionDefs(this.city));
     const sp = this.city.spawn;
@@ -316,6 +317,17 @@ export class Game {
   }
 
   /** Activa/desactiva la resolución dinámica (al desactivarla vuelve a la resolución completa). */
+  /** Cámara según la configuración: vista de vehículo por defecto, suavizado y primera persona. */
+  applyCameraSettings() {
+    const s = this.settings;
+    this.camRig.smoothing = s.camSmoothing ?? 0.5;
+    this.camRig.setFirstPerson(!!s.firstPerson);
+    if (s.vehicleView !== this._appliedVehicleView) {
+      this._appliedVehicleView = s.vehicleView;
+      this.camRig.setVehicleView(s.vehicleView ?? 'cerca');
+    }
+  }
+
   setDynamicResolution(on) {
     this.dynamicRes = on;
     this._dres = null;
@@ -571,6 +583,11 @@ export class Game {
     if (a.camera) {
       this.camRig.cycleZoom();
       if (this.player.inVehicle) this.hud.toast(`Cámara: ${{ cerca: 'cerca', lejos: 'lejos', capo: this.player.vehicle.type === 'moto' ? 'sobre el hombro' : 'capó' }[this.camRig.vehicleViewName]}`, 1.2);
+      else this.hud.toast(`Cámara: ${{ normal: 'normal', lejos: 'lejos', cerca: 'cerca', primera: 'primera persona' }[this.camRig.footViewName]}`, 1.2);
+    }
+    if (a.shoulder && !this.player.inVehicle) {
+      this.camRig.swapShoulder();
+      this.hud.toast(`Cámara: hombro ${this.camRig.side > 0 ? 'derecho' : 'izquierdo'}`, 1.2);
     }
 
     // Rueda de armas.
@@ -616,6 +633,7 @@ export class Game {
       moto: !!v && (v.type === 'moto' || v.state.spec.wheels === 2 || v.state.type === 'moto'),
       aiming: p.aiming,
       sprinting: p.state.sprinting,
+      crouching: !v && p.state.crouching,
       lookBehind: a.lookBehind,
       lookX,
       lookY,
@@ -722,6 +740,8 @@ export class Game {
       dt,
       { groundHeight, collision: this.city.collision, obstacles },
     );
+    // Primera persona: el cuerpo mira hacia donde mira la cámara.
+    if (this.camRig.firstPerson && !p.dead) p.state.yaw = this.camRig.yaw;
     this.stats.distance += p.state.speed * dt;
     this._checkRunOver(dt);
     if (p.state.landedImpact > 13) {

@@ -217,6 +217,10 @@ function loadSettingsUi() {
   $('set-dynres').checked = s.dynamicRes !== false;
   $('set-bright').value = s.brightness ?? 1;
   $('set-bright-val').textContent = `${Math.round((s.brightness ?? 1) * 100)} %`;
+  $('set-vehview').value = s.vehicleView ?? 'cerca';
+  $('set-smooth').value = s.camSmoothing ?? 0.5;
+  $('set-smooth-val').textContent = `${Math.round((s.camSmoothing ?? 0.5) * 100)} %`;
+  $('set-fp').checked = !!s.firstPerson;
   $('set-full').checked = isFullscreen();
 }
 
@@ -262,6 +266,11 @@ function applySettings() {
   s.dynamicRes = $('set-dynres').checked;
   s.brightness = +$('set-bright').value;
   $('set-bright-val').textContent = `${Math.round(s.brightness * 100)} %`;
+  s.vehicleView = $('set-vehview').value;
+  s.camSmoothing = +$('set-smooth').value;
+  $('set-smooth-val').textContent = `${Math.round(s.camSmoothing * 100)} %`;
+  s.firstPerson = $('set-fp').checked;
+  game.applyCameraSettings();
   if (game.env) game.env.brightness = s.brightness;
   game.setDynamicResolution(s.dynamicRes);
   game.input.sensitivity = s.sensitivity;
@@ -271,7 +280,7 @@ function applySettings() {
   game.hud.showFps(s.showFps);
   saveSettings(s);
 }
-for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
+for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright', 'set-vehview', 'set-smooth', 'set-fp']) $(id).addEventListener('input', applySettings);
 
 // ---------------------------------------------------------------- navegación con teclado y mando
 function visibleButtons() {

@@ -118,6 +118,7 @@ export class Input {
       map: h('KeyM'),
       pause: h('Escape') || h('KeyP'),
       camera: h('KeyV'),
+      shoulder: h('KeyX'),
       lookBehind: k('KeyC'),
       throttle: k('KeyW') || k('ArrowUp') ? 1 : 0,
       brake: k('KeyS') || k('ArrowDown') ? 1 : 0,
@@ -144,7 +145,7 @@ export class Input {
         a.lookY += ax(3) * 0.035 * this.sensitivity * (this.invertY ? -1 : 1);
         // Xbox: A saltar, B agacharse/freno de mano, X recargar, Y subir/bajar,
         // LB/RB cambiar arma, LT apuntar/frenar, RT disparar/acelerar,
-        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos, View mapa, Menu pausa.
+        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos / ← cambiar de hombro, View mapa, Menu pausa.
         a.sprint ||= b(10);
         a.jump ||= b(0);
         a.crouch ||= b(1);
@@ -161,6 +162,7 @@ export class Input {
         a.pause ||= bh(9);
         a.map ||= bh(8);
         a.camera ||= bh(11);
+        a.shoulder ||= bh(14);
         a.throttle = Math.max(a.throttle, bv(7));
         a.brake = Math.max(a.brake, bv(6));
         a.steer += ax(0);
