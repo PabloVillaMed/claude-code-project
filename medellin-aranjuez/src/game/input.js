@@ -125,6 +125,9 @@ export class Input {
       phone: h('KeyT'),
       help: h('F1'),
       emote: h('KeyG'),
+      // Radio del vehículo: Q siguiente emisora, Z la anterior.
+      radioNext: h('KeyQ'),
+      radioPrev: h('KeyZ'),
     };
     for (let i = 1; i <= 6; i++) if (h(`Digit${i}`) || h(`Numpad${i}`)) a.weaponSlot = i;
 
@@ -144,7 +147,7 @@ export class Input {
         a.lookY += ax(3) * 0.035 * this.sensitivity * (this.invertY ? -1 : 1);
         // Xbox: A saltar, B agacharse/freno de mano, X recargar, Y subir/bajar,
         // LB/RB cambiar arma, LT apuntar/frenar, RT disparar/acelerar,
-        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos, View mapa, Menu pausa.
+        // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos / ← → emisora, View mapa, Menu pausa.
         a.sprint ||= b(10);
         a.jump ||= b(0);
         a.crouch ||= b(1);
@@ -165,6 +168,9 @@ export class Input {
         a.brake = Math.max(a.brake, bv(6));
         a.steer += ax(0);
         a.horn ||= b(10);
+        // Cruceta ← → cambia de emisora (solo en vehículo).
+        a.radioNext ||= bh(15);
+        a.radioPrev ||= bh(14);
       }
       this.padPrev = pad.buttons.map((x) => x.pressed);
     }

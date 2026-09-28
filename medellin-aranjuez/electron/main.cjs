@@ -163,10 +163,18 @@ app.whenReady().then(() => {
     if (!file.startsWith(DIST)) return new Response('Prohibido', { status: 403 });
     try {
       const body = await fs.readFile(file);
-      return new Response(body, {
-        status: 200,
-        headers: { 'Content-Type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'Access-Control-Allow-Origin': 'app://juego' },
-      });
+      const headers = { 'Content-Type': MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream', 'Access-Control-Allow-Origin': 'app://juego', 'Accept-Ranges': 'bytes' };
+      // Pedidos por rangos: la música de la radio se reproduce en streaming
+      // con <audio>, que los usa para arrancar a mitad de una canción.
+      const m = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '');
+      if (m && (m[1] || m[2])) {
+        const n = body.length;
+        const a = m[1] ? +m[1] : Math.max(0, n - +m[2]);
+        const b = m[1] && m[2] ? Math.min(+m[2], n - 1) : n - 1;
+        if (a >= n || a > b) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${n}` } });
+        return new Response(body.subarray(a, b + 1), { status: 206, headers: { ...headers, 'Content-Range': `bytes ${a}-${b}/${n}`, 'Content-Length': String(b - a + 1) } });
+      }
+      return new Response(body, { status: 200, headers });
     } catch {
       return new Response('No encontrado', { status: 404 });
     }

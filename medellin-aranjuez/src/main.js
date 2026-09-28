@@ -210,6 +210,7 @@ function loadSettingsUi() {
   $('set-quality').value = s.quality;
   $('set-sens').value = s.sensitivity;
   $('set-vol').value = s.volume;
+  $('set-music').value = s.musicVolume ?? 0.8;
   $('set-fov').value = s.fov;
   $('set-invert').checked = s.invertY;
   $('set-fps').checked = s.showFps;
@@ -255,6 +256,7 @@ function applySettings() {
   s.quality = $('set-quality').value;
   s.sensitivity = +$('set-sens').value;
   s.volume = +$('set-vol').value;
+  s.musicVolume = +$('set-music').value;
   s.fov = +$('set-fov').value;
   s.invertY = $('set-invert').checked;
   s.showFps = $('set-fps').checked;
@@ -267,11 +269,12 @@ function applySettings() {
   game.input.sensitivity = s.sensitivity;
   game.input.invertY = s.invertY;
   game.audio.setVolume(s.volume);
+  game.radio?.setMusicVolume(s.musicVolume);
   game.camRig.baseFov = s.fov;
   game.hud.showFps(s.showFps);
   saveSettings(s);
 }
-for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
+for (const id of ['set-quality', 'set-sens', 'set-vol', 'set-music', 'set-fov', 'set-invert', 'set-fps', 'set-subs', 'set-dynres', 'set-bright']) $(id).addEventListener('input', applySettings);
 
 // ---------------------------------------------------------------- navegación con teclado y mando
 function visibleButtons() {

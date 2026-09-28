@@ -24,6 +24,7 @@ import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
 import { Input } from './input.js';
 import { AudioSystem } from './audio.js';
+import { RadioSystem } from './radio.js';
 import { World, VehicleEntity } from './world.js';
 import { Combat } from './combat.js';
 import { CameraRig } from './cameraRig.js';
@@ -47,7 +48,7 @@ const MENU_SHOTS = [
 const SETTINGS_KEY = 'aranjuez.settings.v1';
 const SAVE_KEY = 'aranjuez.save.v1';
 
-export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true };
+export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, musicVolume: 0.8, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true };
 
 function safeStorage(fn, fallback = null) {
   try {
@@ -220,6 +221,7 @@ export class Game {
     this.pickups = new Pickups(this);
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
     this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
+    this.radio = new RadioSystem(this); // radio de los vehículos y parlantes de los locales
     this.wheel = new WeaponWheel(this);
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, this.quality);
     await step(0.92);
@@ -448,6 +450,7 @@ export class Game {
       if (a.map || a.pause) this.closeMap();
       else this.hud.drawFullMap(this._hudState());
     }
+    this.radio.update(dt);
     const focus = (this._focus ??= new THREE.Vector3());
     if (this.state === 'playing' || this.state === 'paused') focus.set(this.player.x, this.player.y, this.player.z);
     else focus.copy(this.camRig.pos).setY(0);
@@ -665,7 +668,7 @@ export class Game {
     for (const s of this._shopSpots) shopDist = Math.min(shopDist, Math.hypot(s.x - p.x, s.z - p.z));
     const d = (q) => (q ? Math.hypot(q.x - p.x, q.z - p.z) : Infinity);
     // En carro, con las ventanas arriba, casi no se oye la música de afuera.
-    this.audio.updateAmbient(dt, { night: this.env.night, shopDist: p.inVehicle ? Infinity : shopDist, churchDist: d(this._church), parkDist: d(this._park), hour: this.env.timeOfDay });
+    this.audio.updateAmbient(dt, { night: this.env.night, shopDist: p.inVehicle || this.radio.parlantesSonando ? Infinity : shopDist, churchDist: d(this._church), parkDist: d(this._park), hour: this.env.timeOfDay });
   }
 
   /** En un derrape la cámara mira hacia donde va el carro, no hacia donde apunta. */
@@ -897,6 +900,8 @@ export class Game {
     this._skid(v, a, dt);
     this.audio.horn(a.horn);
     if (a.horn) this.world.addThreat(s.x, s.z, 12, 0.3);
+    if (a.radioNext) this.radio.cambiar(1);
+    if (a.radioPrev) this.radio.cambiar(-1);
 
     // Disparar desde el vehículo (drive-by) con armas de una mano.
     const inv = p.inventory;
@@ -1592,6 +1597,12 @@ export class Game {
       vehicleTypes: () => Object.keys(VEHICLE_TYPES),
       vehicleVariants: () => Object.keys(VEHICLE_VARIANTS),
       engineStatus: () => g.audio.engineStatus?.() ?? null,
+      /** Radio: emisora, pista, ducking, parlantes que suenan; y cambiar de emisora (+1 / -1). */
+      radio: () => g.radio.status(),
+      radioStep: (paso = 1) => {
+        g.radio.cambiar(paso);
+        return g.radio.status();
+      },
       /** Vehículos por clase (traffic/parked/police) y variante. */
       vehicleCensus() {
         const out = {};
