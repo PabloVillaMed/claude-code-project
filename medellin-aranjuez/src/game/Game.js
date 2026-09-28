@@ -25,6 +25,8 @@ import { playBirdEvents } from './birdSounds.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
+import { applyOutfit } from '../render/outfit.js';
+import { ROPA_BY_ID, buyOrWear, deserializeWardrobe, newWardrobe, serializeWardrobe, storeCatalog, takeOff } from '../sim/ropa.js';
 import { Input } from './input.js';
 import { AudioSystem } from './audio.js';
 import { RadioSystem } from './radio.js';
@@ -81,6 +83,9 @@ class Player {
     this.state = createPlayerState(x, z, groundHeight);
     this.rig = new CharacterRig(PLAYER_LOOK);
     game.scene.add(this.rig.root);
+    // Ropa: lo que tiene puesto y lo que ha comprado (sim/ropa.js).
+    this.wardrobe = newWardrobe();
+    applyOutfit(this.rig, this.wardrobe.outfit);
     this.inventory = new Inventory(['fists']);
     this.health = 100;
     this.armor = 0;
@@ -359,6 +364,8 @@ export class Game {
     p.money = 500;
     p.dead = false;
     p.inventory = new Inventory(['fists']);
+    p.wardrobe = deserializeWardrobe(save?.ropa ?? null);
+    applyOutfit(p.rig, p.wardrobe.outfit);
     this.discovered.clear();
     this.missions.completed.clear();
     this.stats = { kills: 0, missions: 0, distance: 0, playTime: 0 };
@@ -416,6 +423,7 @@ export class Game {
       time: this.env.timeOfDay,
       pos: { x: p.x, z: p.z },
       story: this.storyDir.serialize(),
+      ropa: serializeWardrobe(p.wardrobe),
     };
     safeStorage(() => localStorage.setItem(SAVE_KEY, JSON.stringify(data)));
   }
@@ -1114,11 +1122,11 @@ export class Game {
     // Marcadores de dadores de misión / tiendas cuando no hay misión activa.
     for (const poi of this.city.pois) {
       const giver = !a && this.missions.available(poi.id) && !this.missions.completed.has(this.missions.available(poi.id).id);
-      const shop = poi.type === 'shop' || poi.type === 'food' || poi.id === 'hospital' || poi.id === 'taller';
+      const shop = poi.type === 'shop' || poi.type === 'food' || poi.type === 'ropa' || poi.id === 'hospital' || poi.id === 'taller';
       // Solo los cercanos: cada marcador son tres mallas más por cuadro.
       const near = Math.abs(poi.x - p.x) < 260 && Math.abs(poi.z - p.z) < 260;
       if ((giver || shop) && near) {
-        const color = giver ? 0xffd200 : poi.id === 'armeria' ? 0xe63946 : poi.type === 'food' ? 0xf4a261 : 0x3a86ff;
+        const color = giver ? 0xffd200 : poi.id === 'armeria' ? 0xe63946 : poi.type === 'food' ? 0xf4a261 : poi.type === 'ropa' ? 0xc2185b : 0x3a86ff;
         this.effects.setMarker(`poi-${poi.id}`, new THREE.Vector3(poi.x, groundHeight(poi.x, poi.z), poi.z), color);
       } else {
         this.effects.removeMarker(`poi-${poi.id}`);
@@ -1220,6 +1228,7 @@ export class Game {
     if (sp) return sp;
     const m = this.missions.available(poi.id);
     if (poi.id === 'armeria') return 'Presiona <kbd>E</kbd> para comprar armas, munición y chaleco.';
+    if (poi.type === 'ropa') return `Presiona <kbd>E</kbd> para ver la ropa de <b>${poi.name}</b>.`;
     if (poi.type === 'food') return `Presiona <kbd>E</kbd> para pedir en <b>${poi.name}</b>${m && !this.missions.completed.has(m.id) ? ' (tienen un encargo para vos)' : ''}.`;
     if (poi.id === 'hospital') return 'Presiona <kbd>E</kbd> para curarte ($200).';
     if (poi.id === 'taller') return this.player.inVehicle ? 'Presiona <kbd>E</kbd> para reparar el vehículo ($300).' : m ? `Presiona <kbd>E</kbd> para iniciar: <b>${m.title}</b> ($${m.reward}).` : null;
@@ -1230,7 +1239,7 @@ export class Game {
   interact(poi) {
     const p = this.player;
     if (this.storyDir.onInteract(poi)) return;
-    if (poi.id === 'armeria' || poi.type === 'food') return this.openShop(poi);
+    if (poi.id === 'armeria' || poi.type === 'food' || poi.type === 'ropa') return this.openShop(poi);
     if (poi.id === 'hospital') {
       if (p.health >= 100) return this.hud.toast('Estás sano, parce.');
       if (p.money < 200) return this.hud.toast('No te alcanza la plata.');
@@ -1405,6 +1414,7 @@ export class Game {
       this.audio.ui('fail');
       return false;
     }
+    if (item.kind === 'ropa' || item.kind === 'quitar') return this._dress(item);
     if (item.kind === 'weapon') {
       p.inventory.give(item.id);
       p.inventory.select(item.id);
@@ -1442,8 +1452,46 @@ export class Game {
     return true;
   }
 
+  /** Comprar / ponerse / quitarse ropa en un almacén (sin gesto: se ve de una). */
+  _dress(item) {
+    const p = this.player;
+    if (item.kind === 'quitar') {
+      p.wardrobe = { ...p.wardrobe, outfit: takeOff(p.wardrobe.outfit, item.slot) };
+    } else {
+      const r = buyOrWear(p.wardrobe, item.ropa, p.money);
+      if (!r.ok) {
+        this.hud.toast('No te alcanza la plata, parce.');
+        this.audio.ui('fail');
+        return false;
+      }
+      p.wardrobe = r.wardrobe;
+      if (r.cost > 0) {
+        p.money -= r.cost;
+        this.audio.ui('money');
+        this.hud.toast(`Estrenando: ${item.ropa.name}`);
+      } else this.audio.ui('ok');
+    }
+    applyOutfit(p.rig, p.wardrobe.outfit);
+    this.save();
+    return true;
+  }
+
   shopItems() {
     const poi = this.shopPoi;
+    if (poi?.type === 'ropa') {
+      const w = this.player.wardrobe;
+      const worn = new Set(Object.values(w.outfit));
+      const items = storeCatalog(poi.store).map((r) => {
+        const owned = w.owned.has(r.id);
+        return { kind: 'ropa', id: r.id, ropa: r, name: r.name, icon: 'ropa', price: owned ? 0 : r.price, desc: r.desc, label: worn.has(r.id) ? 'Puesto' : owned ? 'Ponerse' : undefined, disabled: worn.has(r.id) };
+      });
+      // Quitarse lo que sobra (gorra, gafas, cadena, canguro).
+      for (const [slot, what] of [['cabeza', 'la gorra'], ['ojos', 'las gafas'], ['cuello', 'la cadena'], ['cintura', 'el canguro']]) {
+        const id = w.outfit[slot];
+        if (id) items.push({ kind: 'quitar', id: `quitar-${slot}`, slot, ropa: ROPA_BY_ID[id], name: `Quitarse ${what}`, icon: 'ropa', price: 0, desc: ROPA_BY_ID[id]?.name ?? '', label: 'Quitar' });
+      }
+      return items;
+    }
     if (poi?.menu) {
       const items = poi.menu.map((f) => ({ kind: 'food', id: f.id, name: f.name, icon: 'food', price: f.price, heal: f.heal, desc: `${f.desc} · +${f.heal} de salud` }));
       const m = this.missions.available(poi.id);
@@ -1633,6 +1681,25 @@ export class Game {
       },
       setTime(h) {
         g.env.setTime(h);
+      },
+      /** Locales con vitrina: nombre, tipo de interior y punto del frente (capturas). */
+      storefronts() {
+        return g.cityRenderer.facades.shops.map((s) => ({ ...s }));
+      },
+      /** Ropa del jugador: {outfit, owned}. */
+      outfit() {
+        const w = g.player.wardrobe;
+        return { outfit: { ...w.outfit }, owned: [...w.owned] };
+      },
+      /** Viste al jugador (pruebas y capturas): {cabeza: 'gorra-plana-negra', ...}; null = la de siempre. */
+      setOutfit(o) {
+        const w = deserializeWardrobe({ outfit: o ?? undefined, owned: [...g.player.wardrobe.owned] });
+        g.player.wardrobe = w;
+        return applyOutfit(g.player.rig, w.outfit);
+      },
+      /** Voltea al jugador (capturas de la ropa). */
+      facePlayer(yaw) {
+        g.player.state.yaw = yaw;
       },
       pois() {
         return g.city.pois.map((p) => ({ id: p.id, name: p.name, x: p.x, z: p.z }));

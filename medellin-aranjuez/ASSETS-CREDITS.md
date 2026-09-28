@@ -273,3 +273,28 @@ Las texturas con carpeta `hd/` son la misma foto en 2048 px (calidades Alta y
 Ultra). Las rejas, puertas, interiores de locales, avisos, toldos, placas de
 nomenclatura y carretas de venteros son procedurales (canvas), hechos para
 este juego. Los nombres de negocios son inventados.
+
+## Interiores de locales y ropa paisa
+
+No se incluye ninguna foto ni recurso externo nuevo. El atlas de interiores
+(`src/render/shopInteriors.js`: paredes con estantes, baldosa roja, granito,
+ajedrez, cielo raso con tubos, vitrinas de pan, carne, helado y comida,
+góndolas de mecato, víveres y droguería, neveras, percheros, gorras) está
+pintado en canvas por código; la utilería (mostradores, canastas, sillas de
+barbero, mesa de billar, maniquíes) y la ropa del jugador (gorras, capota,
+cadena, canguro, gafas) son geometría hecha para este juego. Los productos
+no llevan marcas ni letras de marca, y las camisetas "de fútbol" son solo
+colores (sin escudos). Los almacenes (Almacén Moda Paisa, Boutique Estilo La
+92, Remates Carabobo, Deportes La Cancha, Gorras y Tenis La 52) son inventados.
+
+Referencias visuales consultadas (solo para mirar, nada copiado ni incluido):
+
+| Referencia | Qué se tomó | Fuente |
+|---|---|---|
+| "Tiendas de barrio en Colombia" (SciELO Colombia) | Distribución típica: mostrador, estantería detrás, nevera y canastas | [scielo.org.co](http://www.scielo.org.co/scielo.php?script=sci_arttext&pid=S1657-62762012000100001) |
+| El Yucal, tienda mixta de Medellín (El Colombiano) | Mostrador de madera, estanterías llenas, avisos de cartulina | [elcolombiano.com](https://www.elcolombiano.com/antioquia/historia-de-la-tienda-mixta-el-yucal-y-de-su-dueno-alfonso-naranjo-HJ14484939) |
+| Tiendas de barrio en El Poblado (Gente) | Casas viejas convertidas en local, portón y reja | [gente.com.co](https://gente.com.co/Tiendas-de-barrio-en-El-Poblado-Medellin) |
+| Wikimedia Commons, categoría de edificios de Medellín | Búsqueda de fotos libres de locales (no se usó ninguna) | [commons.wikimedia.org](https://commons.wikimedia.org/wiki/Category:Buildings_in_Medell%C3%ADn) |
+
+La textura del cuerpo del avatar del jugador (Microsoft Rocketbox, MIT, ver
+arriba) se recolorea en el shader para la ropa; el archivo no se modificó.

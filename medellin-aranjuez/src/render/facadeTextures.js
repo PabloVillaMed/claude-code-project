@@ -1,6 +1,6 @@
 // Texturas procedurales (canvas) para las fachadas modeladas: rejas, puertas
-// metálicas, interiores de los locales, avisos con el nombre de cada negocio,
-// toldos y suciedad de las paredes. Se generan una vez al arrancar; cada una
+// metálicas, avisos con el nombre de cada negocio, toldos y suciedad de las
+// paredes (los interiores de los locales están en shopInteriors.js). Se generan una vez al arrancar; cada una
 // es un atlas para que todas las casas compartan material (pocas llamadas de
 // dibujo). Las coordenadas de cada casilla las da `slot()`.
 
@@ -191,176 +191,9 @@ export function doorAtlas() {
   return atlasTexture(c);
 }
 
-// ------------------------------------------------------------------ interiores de locales
-export const INTERIOR_KINDS = ['tienda', 'panaderia', 'drogueria', 'carniceria', 'fruteria', 'peluqueria', 'ferreteria', 'papeleria', 'heladeria', 'cafeteria', 'billares', 'nevera'];
-export const INTERIOR_COLS = 4;
-export const INTERIOR_ROWS = 3;
-
-/** Pared del fondo de cada tipo de local (se ve por la cortina abierta). */
-export function interiorAtlas() {
-  const W = 512;
-  const H = 256;
-  const c = canvas(W * INTERIOR_COLS, H * INTERIOR_ROWS);
-  const ctx = c.getContext('2d');
-  const rng = makeRng(777);
-  const bright = ['#e63946', '#f1c40f', '#2a9d8f', '#e76f51', '#457b9d', '#8ac926', '#ff6f91', '#ffffff', '#6a4c93', '#f4a261', '#1d3557', '#ffd166'];
-  const shelves = (x, y, w, h, rows, itemFn) => {
-    for (let r = 0; r < rows; r++) {
-      const sy = y + ((r + 1) * h) / rows;
-      ctx.fillStyle = '#6b5a45';
-      ctx.fillRect(x, sy - 6, w, 6);
-      let px = x + 4;
-      while (px < x + w - 10) {
-        const iw = itemFn(px, sy - 6, h / rows - 12);
-        px += iw + 2;
-      }
-    }
-  };
-  const boxItem = (colors, minW = 8, maxW = 22) => (px, base, maxH) => {
-    const w = rng.range(minW, maxW);
-    const h = rng.range(maxH * 0.45, maxH * 0.95);
-    ctx.fillStyle = rng.pick(colors);
-    ctx.fillRect(px, base - h, w, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillRect(px, base - h, 2, h);
-    return w;
-  };
-  INTERIOR_KINDS.forEach((kind, i) => {
-    const ox = (i % INTERIOR_COLS) * W;
-    const oy = Math.floor(i / INTERIOR_COLS) * H;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(ox, oy, W, H);
-    ctx.clip();
-    const wallC = { tienda: '#efe6cf', panaderia: '#f5deb3', drogueria: '#f4f8fb', carniceria: '#f0f0f0', fruteria: '#dfe9c8', peluqueria: '#f3d9e8', ferreteria: '#d8d4c8', papeleria: '#eef3f8', heladeria: '#ffd6e7', cafeteria: '#e9d2b0', billares: '#3b2f2a', nevera: '#e8eef2' }[kind];
-    ctx.fillStyle = wallC;
-    ctx.fillRect(ox, oy, W, H);
-    if (kind === 'tienda' || kind === 'papeleria' || kind === 'drogueria') {
-      const cols = kind === 'drogueria' ? ['#ffffff', '#cfe8ff', '#8fd3a8', '#f2f2f2', '#6fa8dc'] : kind === 'papeleria' ? ['#e63946', '#457b9d', '#f1c40f', '#2a9d8f', '#ffffff', '#6a4c93'] : bright;
-      shelves(ox + 10, oy + 10, W - 20, H - 20, 4, boxItem(cols));
-      if (kind === 'drogueria') {
-        ctx.fillStyle = '#1e9e4a';
-        ctx.fillRect(ox + W / 2 - 12, oy + 8, 24, 60);
-        ctx.fillRect(ox + W / 2 - 30, oy + 26, 60, 24);
-      }
-    } else if (kind === 'panaderia') {
-      shelves(ox + 10, oy + 10, W - 20, H - 20, 3, (px, base, maxH) => {
-        const w = rng.range(24, 40);
-        ctx.fillStyle = rng.pick(['#c68642', '#a0612b', '#e0a458', '#8b4a1f']);
-        ctx.beginPath();
-        ctx.ellipse(px + w / 2, base - maxH * 0.3, w / 2, maxH * 0.3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        return w;
-      });
-    } else if (kind === 'carniceria') {
-      for (let y = 0; y < H; y += 24) for (let x = 0; x < W; x += 24) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-        ctx.strokeRect(ox + x, oy + y, 24, 24);
-      }
-      ctx.fillStyle = '#9a9a9a';
-      ctx.fillRect(ox + 20, oy + 30, W - 40, 5);
-      for (let x = 40; x < W - 30; x += 46) {
-        ctx.fillStyle = rng.pick(['#9b2226', '#ae2012', '#bb3e03', '#e9c46a']);
-        ctx.beginPath();
-        ctx.ellipse(ox + x, oy + 90, 16, 50, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else if (kind === 'fruteria') {
-      for (let r = 0; r < 3; r++) {
-        for (let k = 0; k < 6; k++) {
-          const x = ox + 12 + k * 82;
-          const y = oy + 30 + r * 72;
-          ctx.fillStyle = '#8b5a2b';
-          ctx.fillRect(x, y + 36, 74, 26);
-          const fc = rng.pick(['#f4d03f', '#e67e22', '#27ae60', '#c0392b', '#8e44ad', '#f39c12']);
-          for (let f = 0; f < 9; f++) {
-            ctx.fillStyle = fc;
-            ctx.beginPath();
-            ctx.arc(x + 8 + (f % 5) * 15, y + 34 - Math.floor(f / 5) * 12, 8, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-    } else if (kind === 'peluqueria') {
-      for (let k = 0; k < 3; k++) {
-        const x = ox + 30 + k * 160;
-        ctx.fillStyle = '#c9d6df';
-        ctx.fillRect(x, oy + 30, 110, 110);
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.fillRect(x + 10, oy + 36, 20, 98);
-        ctx.fillStyle = '#2b2b2b';
-        ctx.fillRect(x + 25, oy + 160, 60, 70);
-        ctx.fillRect(x + 15, oy + 150, 80, 16);
-      }
-    } else if (kind === 'ferreteria') {
-      ctx.fillStyle = '#c8a878';
-      ctx.fillRect(ox + 10, oy + 10, W - 20, 130);
-      for (let k = 0; k < 40; k++) {
-        ctx.fillStyle = rng.pick(['#555', '#777', '#b22', '#224', '#dd2']);
-        ctx.fillRect(ox + 20 + rng.next() * (W - 60), oy + 20 + rng.next() * 100, rng.range(6, 30), rng.range(4, 18));
-      }
-      shelves(ox + 10, oy + 140, W - 20, 110, 2, boxItem(['#c0392b', '#2980b9', '#f1c40f', '#ecf0f1', '#27ae60'], 14, 26));
-    } else if (kind === 'heladeria') {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(ox + 20, oy + 150, W - 40, 90);
-      for (let k = 0; k < 10; k++) {
-        ctx.fillStyle = rng.pick(['#ff9ecd', '#fff3b0', '#a3e635', '#7dd3fc', '#8b5a2b', '#f87171']);
-        ctx.fillRect(ox + 30 + k * 46, oy + 160, 38, 34);
-      }
-      ctx.fillStyle = '#e11d74';
-      ctx.font = 'bold 44px Arial';
-      ctx.fillText('HELADOS', ox + 150, oy + 90);
-    } else if (kind === 'cafeteria') {
-      ctx.fillStyle = '#2d2d2d';
-      ctx.fillRect(ox + 60, oy + 20, 260, 110);
-      ctx.fillStyle = '#f5f5f5';
-      ctx.font = 'bold 22px Arial';
-      ['TINTO  $1.500', 'EMPANADA $2.000', 'AREPA  $3.500', 'JUGO  $4.000'].forEach((t, k) => ctx.fillText(t, ox + 76, oy + 48 + k * 24));
-      for (let k = 0; k < 3; k++) {
-        ctx.fillStyle = '#6b4226';
-        ctx.fillRect(ox + 40 + k * 160, oy + 190, 100, 10);
-        ctx.fillRect(ox + 85 + k * 160, oy + 200, 10, 50);
-      }
-    } else if (kind === 'billares') {
-      ctx.fillStyle = 'rgba(255,220,150,0.35)';
-      ctx.fillRect(ox + 150, oy, 200, 60);
-      ctx.fillStyle = '#146b3a';
-      ctx.fillRect(ox + 110, oy + 150, 290, 70);
-      ctx.fillStyle = '#4a2c1a';
-      ctx.fillRect(ox + 100, oy + 140, 310, 12);
-      for (let k = 0; k < 4; k++) {
-        ctx.fillStyle = rng.pick(['#e63946', '#f1c40f', '#1d3557', '#ffffff']);
-        ctx.fillRect(ox + 20 + k * 20, oy + 40, 12, 90);
-      }
-    } else {
-      // Nevera de gaseosas (frente de vidrio con botellas).
-      ctx.fillStyle = '#0d1b2a';
-      ctx.fillRect(ox + 20, oy + 10, W - 40, H - 20);
-      for (let r = 0; r < 4; r++) {
-        ctx.fillStyle = '#9aa';
-        ctx.fillRect(ox + 24, oy + 60 + r * 52, W - 48, 3);
-        for (let x = 30; x < W - 40; x += 18) {
-          ctx.fillStyle = rng.pick(['#e63946', '#f77f00', '#2a9d8f', '#ffd166', '#8ecae6', '#6a040f']);
-          ctx.fillRect(ox + x, oy + 22 + r * 52, 12, 38);
-        }
-      }
-      ctx.fillStyle = 'rgba(220,240,255,0.18)';
-      ctx.fillRect(ox + 20, oy + 10, 60, H - 20);
-    }
-    // Viñeta: más oscuro en los bordes (profundidad).
-    const g = ctx.createRadialGradient(ox + W / 2, oy + H / 2, 40, ox + W / 2, oy + H / 2, W * 0.7);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.35)');
-    ctx.fillStyle = g;
-    ctx.fillRect(ox, oy, W, H);
-    ctx.restore();
-  });
-  return atlasTexture(c);
-}
-
 // ------------------------------------------------------------------ avisos
 export const SIGN_COLS = 4;
-export const SIGN_ROWS = 13; // 52 casillas: genéricos + locales con nombre propio
+export const SIGN_ROWS = 14; // 56 casillas: genéricos + locales con nombre propio
 
 const SIGN_STYLES = [
   ['#c1121f', '#ffffff'],
@@ -399,7 +232,7 @@ export function signAtlas() {
       ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
     }
     ctx.fillText(name, ox + W / 2, oy + H * 0.42);
-    const sub = { tienda: 'Víveres · Rancho · Licores', panaderia: 'Pan caliente todo el día', drogueria: 'Drogas · Perfumería', carniceria: 'Res · Cerdo · Pollo', fruteria: 'Frutas y verduras', peluqueria: 'Cortes · Tintes · Barbería', ferreteria: 'Todo para la casa', papeleria: 'Fotocopias · Minutos', heladeria: 'Helados · Postres', cafeteria: 'Tinto · Desayunos', billares: 'Cerveza fría' }[kind];
+    const sub = { tienda: 'Víveres · Rancho · Licores', panaderia: 'Pan caliente todo el día', drogueria: 'Drogas · Perfumería', carniceria: 'Res · Cerdo · Pollo', fruteria: 'Frutas y verduras', peluqueria: 'Cortes · Tintes · Barbería', ferreteria: 'Todo para la casa', papeleria: 'Fotocopias · Minutos', heladeria: 'Helados · Postres', cafeteria: 'Tinto · Desayunos', billares: 'Cerveza fría', ropa: 'Ropa para toda la familia' }[kind];
     const subText = own ?? sub;
     ctx.font = 'bold 22px "Segoe UI", Arial, sans-serif';
     ctx.fillText(subText, ox + W / 2, oy + H * 0.78);
