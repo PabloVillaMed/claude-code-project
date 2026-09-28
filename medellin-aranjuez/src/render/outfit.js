@@ -232,7 +232,6 @@ function capGeo(m, it) {
   const visor = new THREE.ExtrudeGeometry(sh, { depth: 0.007, bevelEnabled: false, curveSegments: 14 });
   // De XY (Y = hacia delante) a XZ con Z hacia delante.
   visor.rotateX(Math.PI / 2);
-  visor.scale(1, 1, -1);
   const p = visor.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i);
@@ -242,13 +241,13 @@ function capGeo(m, it) {
   }
   visor.computeVertexNormals();
   visor.rotateX(flat ? 0.02 : 0.2);
-  visor.translate(s.cx, base - (flat ? 0.002 : 0.004), s.cz + rz * 0.9);
+  visor.translate(s.cx, base + 0.01, s.cz + rz * 0.9);
   paint(visor, flat ? it.color : it.color2 ?? it.color);
   parts.push(visor);
   // Calcomanía dorada en la visera plana (la de siempre, sin marca).
   if (flat) {
     const st = new THREE.BoxGeometry(0.018, 0.0015, 0.018);
-    st.translate(s.cx + vw * 0.45, base + 0.004, s.cz + rz * 0.9 + 0.035);
+    st.translate(s.cx + vw * 0.45, base + 0.012, s.cz + rz * 0.9 + 0.035);
     parts.push(paint(st, 0xd8a93a));
   }
   const btn = new THREE.CylinderGeometry(0.008, 0.009, 0.006, 10);
@@ -263,7 +262,8 @@ function hoodGeo(m, it) {
   const parts = [];
   const ring = new THREE.TorusGeometry(0.085, 0.032, 8, 18, Math.PI * 1.35);
   ring.rotateX(Math.PI / 2);
-  ring.rotateY(Math.PI / 2 + Math.PI * 0.675 - Math.PI);
+  // La abertura (el hueco del arco) queda adelante, en +Z.
+  ring.rotateY(Math.PI * 1.175);
   ring.scale(1.15, 0.8, 1.0);
   ring.translate(n.x, n.y - 0.035, (m.collar.front + m.collar.back) / 2 - 0.01);
   parts.push(paint(ring, it.color));
