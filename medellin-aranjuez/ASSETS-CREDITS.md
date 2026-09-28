@@ -190,6 +190,16 @@ como referencia están en `CAST` de `scripts/assets/voces.mjs`):
 | r1 | Central (radio) | `cof_07508` |
 | r2 | Patrulla (radio) | `com_08421` |
 
+## Cielo y pájaros
+
+No usan archivos externos: todo se genera al cargar el juego.
+
+| Recurso | Ruta en el proyecto | Fuente | Autor | Licencia |
+|---|---|---|---|---|
+| Modelo de cielo de Preetham (dispersión atmosférica), portado del ejemplo Sky de three.js y horneado en una textura | `src/render/sky.js`, `src/sim/sky.js` | [three.js examples/jsm/objects/Sky.js](https://github.com/mrdoob/three.js/blob/dev/examples/jsm/objects/Sky.js) | three.js authors (Preetham, Shirley y Smits, 1999) | MIT |
+| Nubes, luna y estrellas (ruido fractal precalculado) | `src/render/sky.js` | Hecho para este juego | — | Igual que el juego |
+| Pájaros (palomas, gallinazos, loros) y sus sonidos sintetizados | `src/render/birds.js`, `src/game/birdSounds.js` | Hecho para este juego | — | Igual que el juego |
+
 ## Datos geográficos
 
 El trazado del mapa (orden de los lugares, nombres de calles y carreras) se

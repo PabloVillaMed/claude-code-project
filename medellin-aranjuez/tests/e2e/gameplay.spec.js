@@ -408,3 +408,103 @@ test('configuración: brillo y pantalla completa', async () => {
   expect((await st()).state).toBe('playing');
   expect(errors).toEqual([]);
 });
+
+test('cámara: X cambia de hombro, primera persona desde Configuración y vista de vehículo por defecto', async () => {
+  const cam = () =>
+    G(() => {
+      const g = window.__gameInstance;
+      const c = g.camera.position;
+      const yaw = g.camRig.yaw;
+      const p = g.player;
+      // Lado de la cámara respecto a la mirada: > 0 a la derecha del jugador.
+      return { side: (c.x - p.x) * Math.cos(yaw) - (c.z - p.z) * Math.sin(yaw), dy: c.y - p.y, view: g.camRig.footViewName, veh: g.camRig.vehicleViewName };
+    });
+  await G(([x, z]) => window.__game.teleport(x, z), [S.x, S.z]);
+  await G(() => window.__game.look(0, -0.1));
+  await frames(20);
+  const a = await cam();
+  await page.keyboard.press('KeyX');
+  await frames(25);
+  const b = await cam();
+  expect(Math.sign(a.side)).not.toBe(Math.sign(b.side));
+  await page.keyboard.press('KeyX');
+  // Configuración: primera persona y capó por defecto.
+  await page.keyboard.press('Escape');
+  await frames(2);
+  await page.locator('#pause [data-action="settings"]').click();
+  await page.locator('#set-fp').check();
+  await page.locator('#set-vehview').selectOption('capo');
+  await page.locator('#set-smooth').fill('0.8');
+  await expect(page.locator('#set-smooth-val')).toHaveText('80 %');
+  const saved = await G(() => JSON.parse(localStorage.getItem('aranjuez.settings.v1')));
+  expect(saved.firstPerson).toBe(true);
+  expect(saved.vehicleView).toBe('capo');
+  await page.locator('#settings [data-action="back"]').click();
+  await page.locator('#pause [data-action="resume"]').click();
+  await frames(2);
+  for (let i = 0; i < 4 && (await cam()).view !== 'primera'; i++) {
+    await page.keyboard.press('KeyV');
+    await frames(3);
+  }
+  await frames(10);
+  const fp = await cam();
+  expect(fp.view).toBe('primera');
+  expect(fp.dy).toBeGreaterThan(1.3);
+  expect(fp.dy).toBeLessThan(1.8);
+  expect(fp.veh).toBe('capo');
+  // Dejar la cámara y la configuración como estaban.
+  await G(() => {
+    const g = window.__gameInstance;
+    Object.assign(g.settings, { firstPerson: false, vehicleView: 'cerca', camSmoothing: 0.5 });
+    g._appliedVehicleView = null;
+    g.applyCameraSettings();
+  });
+  expect((await cam()).view).toBe('normal');
+  expect(errors).toEqual([]);
+});
+
+test('pájaros: palomas en el parque que se espantan con un tiro; gallinazos de día', async () => {
+  await G(() => window.__game.setTime(12));
+  const home = await G(() => window.__game.birds().homes.find((h) => h.id === 'parque'));
+  expect(home).toBeTruthy();
+  await G(([x, z]) => window.__game.teleport(x, z), [home.x + 25, home.z]);
+  await frames(2);
+  let b = await G(() => window.__game.advanceBirds(2));
+  const h = b.homes.find((q) => q.id === 'parque');
+  expect(h.active).toBe(true);
+  expect(h.n).toBeGreaterThan(3);
+  expect(h.state).toBe('ground');
+  expect(b.vultures).toBeGreaterThan(0);
+  await frames(3);
+  expect((await G(() => window.__game.birds())).drawn).toBeGreaterThan(3);
+  // Un tiro cerca (el mismo evento que emite el combate).
+  await G(([x, z]) => window.__gameInstance.events.emit('shot', { x, z, by: 'player', weapon: 'pistol' }), [home.x + 10, home.z]);
+  b = await G(() => window.__game.advanceBirds(2));
+  const h2 = b.homes.find((q) => q.id === 'parque');
+  expect(h2.state).toBe('fly');
+  expect(h2.flying).toBe(h2.n);
+  expect(errors).toEqual([]);
+});
+
+test('cielo: nubes según la hora y el cielo se rehornea solo si el sol se mueve', async () => {
+  const sky = () => G(() => ({ cover: window.__gameInstance.env.cover, bakes: window.__gameInstance.env.skyDome.bakes }));
+  await G(() => window.__game.setTime(8));
+  await frames(3);
+  const morning = await sky();
+  await G(() => window.__game.setTime(15.5));
+  await frames(3);
+  const afternoon = await sky();
+  expect(afternoon.cover).toBeGreaterThan(morning.cover);
+  expect(afternoon.bakes).toBeGreaterThan(morning.bakes);
+  await G(() => window.__game.pause());
+  await frames(5);
+  const paused = await sky();
+  await frames(10);
+  expect((await sky()).bakes).toBe(paused.bakes);
+  await G(() => window.__game.resume());
+  await G(() => window.__game.setTime(20));
+  await frames(3);
+  expect(await G(() => window.__gameInstance.env.night)).toBeGreaterThan(0.9);
+  await G(() => window.__game.setTime(16.5));
+  expect(errors).toEqual([]);
+});
