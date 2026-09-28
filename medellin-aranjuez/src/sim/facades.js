@@ -84,6 +84,12 @@ export const LOCALES = [
   ['Veterinaria La 92', 'drogueria', 'Centro médico veterinario'],
   ['Efi Carnes', 'carniceria', 'Res · Cerdo · Pollo'],
   ['Spa de Uñas', 'peluqueria', 'Manicure · Pedicure'],
+  // Almacenes de ropa de la 92 y de Carabobo (inventados).
+  ['Almacén Moda Paisa', 'ropa', 'Camisetas · Busos · Jeans'],
+  ['Boutique Estilo La 92', 'ropa', 'Moda · Gafas · Accesorios'],
+  ['Remates Carabobo', 'ropa', 'Todo en promoción · Precios de fábrica'],
+  ['Deportes La Cancha', 'ropa', 'Camisetas · Sudaderas · Tenis'],
+  ['Gorras y Tenis La 52', 'ropa', 'Gorras planas y curvas · Tenis'],
 ];
 
 /** Todos los avisos pintados, en el orden del atlas de letreros. */

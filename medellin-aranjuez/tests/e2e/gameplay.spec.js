@@ -314,6 +314,48 @@ test('locales: en Mandingas La 92 se pide comida y se acepta el encargo', async 
   });
 });
 
+test('ropa: en Gorras y Tenis La 52 se compra una gorra, se pone, se quita y queda guardada', async () => {
+  await G(() => {
+    window.__gameInstance.addMoney(2000);
+    const p = window.__game.pois().find((x) => x.id === 'gorras52');
+    window.__game.teleport(p.x, p.z);
+  });
+  await frames(3);
+  await page.keyboard.press('KeyE');
+  await expect(page.locator('#shop')).toBeVisible();
+  await expect(page.locator('#shop-title')).toHaveText('Gorras y Tenis La 52');
+  await expect(page.locator('#shop-kicker')).toHaveText('Almacén de ropa');
+  const m0 = (await st()).money;
+  const row = page.locator('.shop-item', { hasText: 'Gorra plana roja' });
+  await expect(row.locator('button')).toHaveText('$90');
+  await row.locator('button').click();
+  await expect(row.locator('button')).toHaveText('Puesto');
+  expect((await st()).money).toBe(m0 - 90);
+  expect((await G(() => window.__game.outfit())).outfit.cabeza).toBe('gorra-plana-roja');
+  // La gorra va pegada al hueso de la cabeza del avatar.
+  const onHead = () => G(() => {
+    let bone = null;
+    window.__gameInstance.player.rig.root.traverse((o) => {
+      if (o.name === 'ropa-gorra-plana-roja') bone = o.parent?.name ?? null;
+    });
+    return bone;
+  });
+  expect(await onHead()).toBe('Bip01_Head');
+  // Quitársela y volvérsela a poner (ya es suya: gratis).
+  await page.locator('.shop-item', { hasText: 'Quitarse la gorra' }).locator('button').click();
+  expect((await G(() => window.__game.outfit())).outfit.cabeza).toBeUndefined();
+  expect(await onHead()).toBe(null);
+  await expect(row.locator('button')).toHaveText('Ponerse');
+  await row.locator('button').click();
+  expect((await st()).money).toBe(m0 - 90);
+  await page.locator('button[data-action="close-shop"]').click();
+  await expect(page.locator('#shop')).toBeHidden();
+  // Queda en el guardado.
+  const saved = await G(() => JSON.parse(localStorage.getItem('aranjuez.save.v1')).ropa);
+  expect(saved.outfit.cabeza).toBe('gorra-plana-roja');
+  expect(saved.owned).toContain('gorra-plana-roja');
+});
+
 test('policía: con estrellas aparecen patrullas', async () => {
   await G((S) => {
     window.__game.teleport(S.x, S.z);

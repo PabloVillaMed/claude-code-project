@@ -8,7 +8,7 @@ import '@fontsource/barlow-condensed/latin-500.css';
 import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import { Game, loadSave, saveSettings } from './game/Game.js';
-import { LINE_ICONS, weaponIconHtml } from './ui/icons.js';
+import { LINE_ICONS, ropaIconHtml, weaponIconHtml } from './ui/icons.js';
 import { creditsHtml } from './ui/credits.js';
 import pkg from '../package.json';
 
@@ -85,11 +85,11 @@ game.onOpenShop = () => {
 
 function renderShop() {
   $('shop-title').textContent = game.shopPoi?.name ?? 'Armería El Parcero';
-  $('shop-kicker').textContent = game.shopPoi?.menu ? 'Pedido' : 'Tienda';
+  $('shop-kicker').textContent = game.shopPoi?.menu ? 'Pedido' : game.shopPoi?.type === 'ropa' ? 'Almacén de ropa' : 'Tienda';
   $('shop-money').textContent = `Tu plata: $${game.player.money.toLocaleString('es-CO')}`;
   const items = game.shopItems();
   $('shop-items').innerHTML = items
-    .map((it, i) => `<div class="shop-item"><div class="ico">${LINE_ICONS[it.icon] ?? weaponIconHtml(it.icon)}</div><div class="info"><div class="name">${escapeHtml(it.name)}</div><div class="desc">${escapeHtml(it.desc)}</div></div><button data-i="${i}" ${game.player.money < it.price ? 'disabled' : ''}>${it.label ?? `$${it.price.toLocaleString('es-CO')}`}</button></div>`)
+    .map((it, i) => `<div class="shop-item"><div class="ico">${it.ropa ? ropaIconHtml(it.ropa) : (LINE_ICONS[it.icon] ?? weaponIconHtml(it.icon))}</div><div class="info"><div class="name">${escapeHtml(it.name)}</div><div class="desc">${escapeHtml(it.desc)}</div></div><button data-i="${i}" ${game.player.money < it.price || it.disabled ? 'disabled' : ''}>${it.label ?? `$${it.price.toLocaleString('es-CO')}`}</button></div>`)
     .join('');
   $('shop-items').querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => {

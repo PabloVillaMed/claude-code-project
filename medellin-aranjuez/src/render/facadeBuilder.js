@@ -15,32 +15,20 @@ import { photoMaterial, PHOTO_TEXTURES } from './photoMaterials.js';
 import { CURTAIN_COLORS, FACADE, FRAME_COLORS, METAL_COLORS, SIGN_NAMES, ZOCALO_COLORS, faceFrame } from '../sim/facades.js';
 import { MAP_MIN_X, MAP_MIN_Z } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
-import {
-  AWNING_SLOTS,
-  DOOR_SLOTS,
-  GRILLE_SLOTS,
-  INTERIOR_COLS,
-  INTERIOR_KINDS,
-  INTERIOR_ROWS,
-  SIGN_COLS,
-  SIGN_ROWS,
-  awningAtlas,
-  doorAtlas,
-  grilleAtlas,
-  interiorAtlas,
-  signAtlas,
-  slot,
-  wallDirt,
-} from './facadeTextures.js';
+import { AWNING_SLOTS, DOOR_SLOTS, GRILLE_SLOTS, SIGN_COLS, SIGN_ROWS, awningAtlas, doorAtlas, grilleAtlas, signAtlas, slot, wallDirt } from './facadeTextures.js';
+import { ATLAS, BACK_M, INTERIOR_KINDS, SIDE_M, interiorAtlas, shopProps } from './shopInteriors.js';
 
 const CHUNK = 360; // m por lado de cada trozo (menos llamadas de dibujo en el mapa grande)
+// Utilería de adentro de los locales: celdas más chicas, que solo se dibujan
+// cerca (de lejos queda el cuarto pintado: fondo, paredes, piso y techo).
+const CELL = 80;
 // Materiales de detalle: se ocultan de lejos.
 const DETAIL = new Set(['detail', 'grille']);
 // Relieve de la fachada (jambas, vigas, columnas, balcones, toldos): a media
 // distancia ya no se distingue y en el mapa real son millones de triángulos.
 const MID = new Set(['trim', 'awning', 'railingBars']);
 // Materiales que no proyectan sombra (planos finos o hundidos en el muro).
-const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopBox', 'sign', 'detail', 'gres', 'granito', 'door']);
+const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopProps', 'shopTex', 'sign', 'detail', 'gres', 'granito', 'door']);
 const LIT_WARM = [1, 0.77, 0.5];
 const LIT_COOL = [0.72, 0.82, 1];
 
@@ -55,6 +43,10 @@ const WALLS = {
 };
 
 const WHITE = [1, 1, 1];
+const UP_ = [0, 1, 0];
+const DOWN_ = [0, -1, 0];
+// Piso de cada tipo de local (los demás: baldosa roja o granito al azar).
+const FLOORS = { carniceria: 'piso-granito', drogueria: 'piso-granito', peluqueria: 'piso-ajedrez', heladeria: 'piso-ajedrez', ropa: 'piso-granito', billares: 'piso-rojo' };
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _c = new THREE.Vector3();
@@ -74,12 +66,29 @@ function face(g, pts, n, uvs, color = WHITE) {
 
 const lighten = (c, k = 1.1, add = 0.04) => c.map((v) => Math.min(1, v * k + add));
 
+/**
+ * Luz propia por vértice: el color hasta 1 tiñe (y se ilumina un poco con la
+ * luz del local); lo que pase de 1 brilla (tubos, neveras, lámparas). Así la
+ * utilería y los interiores van en un solo material cada uno.
+ */
+function selfLit(m, key) {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <color_fragment>', 'vec3 litBase = min( vColor, vec3( 1.0 ) );\n  vec3 litGlow = max( vColor - 1.0, vec3( 0.0 ) );\n  diffuseColor.rgb *= litBase;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= litBase + litGlow * 2.0;');
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
+
 export class FacadeBuilder {
   constructor(r) {
     this.r = r;
     this.quality = r.quality;
     this.groups = new Map();
     this.chunks = new Map(); // clave -> {minX,maxX,minZ,maxZ, detail: []}
+    this.cells = new Map(); // celdas de utilería de los locales: clave -> {minX,maxX,minZ,maxZ, meshes: []}
+    this.shops = []; // locales dibujados: nombre, tipo y frente (capturas y pruebas)
     this.mats = this._materials();
   }
 
@@ -131,8 +140,10 @@ export class FacadeBuilder {
       grille: std({ vertexColors: true, alphaMap: grilleAtlas(), alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.35, roughness: 0.55 }),
       door: std({ map: doorAtlas(), vertexColors: true, metalness: 0.3, roughness: 0.5 }),
       shutter: photoMaterial('painted_metal_shutter', { uvMeters: 1, vertexColors: true, extra: { metalness: 0.35 } }) ?? std({ vertexColors: true, metalness: 0.4, roughness: 0.5 }),
-      interior: night(std({ map: interiorTex, emissiveMap: interiorTex, emissive: 0xffffff, emissiveIntensity: 0.3, roughness: 0.85 }), 0.7, 0.3),
-      shopBox: night(std({ vertexColors: true, roughness: 0.85, emissive: 0xfff4e0, emissiveIntensity: 0.12 }), 0.35, 0.12),
+      // Cuarto de cada local (atlas pintado) y la utilería de adentro; los
+      // tubos del cielo raso los alumbran de día y de noche.
+      interior: night(selfLit(std({ map: interiorTex, emissiveMap: interiorTex, vertexColors: true, emissive: 0xfff6ea, emissiveIntensity: 0.32, roughness: 0.8 }), 'interior-local'), 0.55, 0.32),
+      shopProps: night(selfLit(std({ vertexColors: true, emissive: 0xfff6ea, emissiveIntensity: 0.22, roughness: 0.65, metalness: 0.1 }), 'utileria-local'), 0.4, 0.22),
 
       sign: night(std({ map: signTex, emissiveMap: signTex, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.7 }), 0.45),
       awning: std({ map: awningAtlas(), side: THREE.DoubleSide, roughness: 0.92 }),
@@ -140,6 +151,7 @@ export class FacadeBuilder {
       granito: photoMaterial('granite_tile', { uvMeters: 1, roughness: 0.5 }) ?? std({ color: 0x777777, roughness: 0.5 }),
       zinc: photoMaterial('corrugated_iron_02', { uvMeters: 1, vertexColors: true, extra: { metalness: 0.4, side: THREE.DoubleSide } }) ?? std({ vertexColors: true, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide }),
     };
+    m.shopTex = m.interior;
     for (const [k, id] of Object.entries(WALLS)) m[k] = wall(id);
     return m;
   }
@@ -157,6 +169,18 @@ export class FacadeBuilder {
     c.maxX = Math.max(c.maxX, b.maxX);
     c.minZ = Math.min(c.minZ, b.minZ);
     c.maxZ = Math.max(c.maxZ, b.maxZ);
+    return key;
+  }
+
+  /** Celda de utilería de los locales que contiene el punto (x, z). */
+  _cellOf(x, z) {
+    const key = `c:${Math.floor((x - MAP_MIN_X) / CELL)},${Math.floor((z - MAP_MIN_Z) / CELL)}`;
+    let c = this.cells.get(key);
+    if (!c) this.cells.set(key, (c = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, meshes: [] }));
+    c.minX = Math.min(c.minX, x - 4);
+    c.maxX = Math.max(c.maxX, x + 4);
+    c.minZ = Math.min(c.minZ, z - 4);
+    c.maxZ = Math.max(c.maxZ, z + 4);
     return key;
   }
 
@@ -405,35 +429,58 @@ export class FacadeBuilder {
   /** Local comercial: cortina enrollable a medio subir, interior, mostrador, nevera, aviso y toldo. */
   _shop(G, P, N, R, L_, fq, fbox, reveal, o, L, trimColor, rng) {
     const shop = L.shop;
+    const mid = P((o.u0 + o.u1) / 2, 0);
+    this.shops.push({ name: shop.name, kind: shop.interior, x: mid[0], y: mid[1], z: mid[2], nx: N[0], nz: N[2], w: o.u1 - o.u0 });
     const D = 0.22;
     const depth = 3.2;
     const w = o.u1 - o.u0;
     const h = o.v1 - o.v0;
     reveal(o, D, trimColor, false);
-    // Interior: fondo con el tipo de negocio, paredes, piso y techo claros.
-    const kindIdx = Math.max(0, INTERIOR_KINDS.indexOf(shop.interior));
-    const uvBack = slot(kindIdx, INTERIOR_COLS, INTERIOR_ROWS);
-    face(G('interior'), [P(o.u0, 0, -depth), P(o.u1, 0, -depth), P(o.u1, h + 0.3, -depth), P(o.u0, h + 0.3, -depth)], N, [[uvBack[0], uvBack[1]], [uvBack[2], uvBack[1]], [uvBack[2], uvBack[3]], [uvBack[0], uvBack[3]]]);
-    const wallC = [0.93, 0.9, 0.84];
-    const box = G('shopBox');
-    face(box, [P(o.u0, 0, -D), P(o.u0, 0, -depth), P(o.u0, h + 0.3, -depth), P(o.u0, h + 0.3, -D)], R, [[0, 0], [1, 0], [1, 1], [0, 1]], wallC);
-    face(box, [P(o.u1, 0, -D), P(o.u1, 0, -depth), P(o.u1, h + 0.3, -depth), P(o.u1, h + 0.3, -D)], L_, [[0, 0], [1, 0], [1, 1], [0, 1]], wallC);
-    face(box, [P(o.u0, 0.01, -D), P(o.u1, 0.01, -D), P(o.u1, 0.01, -depth), P(o.u0, 0.01, -depth)], [0, 1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], [0.55, 0.5, 0.45]);
-    face(box, [P(o.u0, h, -D), P(o.u1, h, -D), P(o.u1, h, -depth), P(o.u0, h, -depth)], [0, -1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], [0.97, 0.97, 0.95]);
-    // Mostrador.
-    if (shop.counter && w > 2.4) {
-      const c0 = o.u0 + w * 0.3;
-      const c1 = o.u1 - 0.3;
-      fbox(G('detail'), c0, c1, 0, 1.0, -1.9, -1.35, rng.pick([[0.45, 0.3, 0.2], [0.75, 0.75, 0.72], [0.35, 0.36, 0.38]]));
-    }
-    // Nevera de gaseosas junto a la entrada.
-    if (w > 2.0) {
-      const n0 = o.u0 + 0.12;
-      const n1 = n0 + 0.75;
-      fbox(G('detail'), n0, n1, 0, 1.9, -1.15, -0.45, [0.92, 0.92, 0.94]);
-      const uvF = slot(INTERIOR_KINDS.indexOf('nevera'), INTERIOR_COLS, INTERIOR_ROWS);
-      fq(G('interior'), n0 + 0.04, n1 - 0.04, 0.15, 1.8, -0.448, [[uvF[0], uvF[1]], [uvF[2], uvF[1]], [uvF[2], uvF[3]], [uvF[0], uvF[3]]]);
-    }
+    const kind = INTERIOR_KINDS.includes(shop.interior) ? shop.interior : 'tienda';
+    const atlasUv = (r) => [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
+    // Recorte de una casilla: fracción `fu` del ancho (centrada o desde un lado) y `fv` del alto.
+    const crop = (r, fu, fv = 1, from = 0.5) => {
+      const du = (r[2] - r[0]) * Math.min(1, fu);
+      const u0 = r[0] + (r[2] - r[0] - du) * from;
+      return [u0, r[1], u0 + du, r[1] + (r[3] - r[1]) * Math.min(1, fv)];
+    };
+    // ---- el cuarto (siempre visible): fondo, paredes, piso y techo pintados
+    const g = G('interior');
+    const tint = rng.pick([[1, 1, 1], [1, 0.97, 0.9], [0.95, 1, 0.95], [0.94, 0.97, 1], [1, 0.95, 0.94]]);
+    face(g, [P(o.u0, 0, -depth), P(o.u1, 0, -depth), P(o.u1, h, -depth), P(o.u0, h, -depth)], N, atlasUv(crop(ATLAS[`back:${kind}`], w / BACK_M)), tint);
+    const fs = (depth - D) / SIDE_M;
+    face(g, [P(o.u0, 0, -D), P(o.u0, 0, -depth), P(o.u0, h, -depth), P(o.u0, h, -D)], R, atlasUv(crop(ATLAS[`side:${kind}`], fs, 1, 0)), tint);
+    const rs = crop(ATLAS[`side:${kind}`], fs, 1, 1);
+    face(g, [P(o.u1, 0, -D), P(o.u1, 0, -depth), P(o.u1, h, -depth), P(o.u1, h, -D)], L_, atlasUv([rs[2], rs[1], rs[0], rs[3]]), tint);
+    const floor = FLOORS[kind] ?? rng.pick(['piso-rojo', 'piso-granito']);
+    face(g, [P(o.u0, 0.01, -D), P(o.u1, 0.01, -D), P(o.u1, 0.01, -depth), P(o.u0, 0.01, -depth)], [0, 1, 0], atlasUv(crop(ATLAS[floor], w / 4, (depth - D) / 4)));
+    face(g, [P(o.u0, h, -D), P(o.u1, h, -D), P(o.u1, h, -depth), P(o.u0, h, -depth)], [0, -1, 0], atlasUv(ATLAS.techo));
+    // ---- utilería 3D (solo de cerca): celdas propias
+    const inner = P((o.u0 + o.u1) / 2, 0, -depth / 2);
+    const cell = this._cellOf(inner[0], inner[2]);
+    const GP = this._g(cell, 'shopProps');
+    const GT = this._g(cell, 'shopTex');
+    const X = o.u0;
+    const FW = [N[0], 0, N[2]];
+    const api = {
+      // Caja sin cara de atrás ni de abajo (no se ven desde la calle).
+      box: (u0, u1, v0, v1, d0, d1, c) => {
+        const a = X + u0;
+        const b = X + u1;
+        face(GP, [P(a, v0, -d0), P(b, v0, -d0), P(b, v1, -d0), P(a, v1, -d0)], FW, [[0, 0], [1, 0], [1, 1], [0, 1]], c);
+        face(GP, [P(b, v0, -d0), P(b, v0, -d1), P(b, v1, -d1), P(b, v1, -d0)], R, [[0, 0], [1, 0], [1, 1], [0, 1]], c);
+        face(GP, [P(a, v0, -d1), P(a, v0, -d0), P(a, v1, -d0), P(a, v1, -d1)], L_, [[0, 0], [1, 0], [1, 1], [0, 1]], c);
+        face(GP, [P(a, v1, -d0), P(b, v1, -d0), P(b, v1, -d1), P(a, v1, -d1)], UP_, [[0, 0], [1, 0], [1, 1], [0, 1]], c);
+        if (v0 > 1.6) face(GP, [P(a, v0, -d0), P(b, v0, -d0), P(b, v0, -d1), P(a, v0, -d1)], DOWN_, [[0, 0], [1, 0], [1, 1], [0, 1]], c);
+      },
+      front: (name, u0, u1, v0, v1, d, c = WHITE) => fq(GT, X + u0, X + u1, v0, v1, -d, atlasUv(ATLAS[name]), c),
+      side: (name, u, v0, v1, d0, d1, dir, c = WHITE) => {
+        const r = ATLAS[name];
+        const uv = dir > 0 ? atlasUv(r) : atlasUv([r[2], r[1], r[0], r[3]]);
+        face(GT, [P(X + u, v0, -d0), P(X + u, v0, -d1), P(X + u, v1, -d1), P(X + u, v1, -d0)], dir > 0 ? R : L_, uv, c);
+      },
+    };
+    shopProps(api, kind, w, depth, makeRng(Math.floor(Math.abs(inner[0] * 131 + inner[2] * 71))));
     // Cortina metálica: guías a los lados y la lámina enrollada a medio subir.
     const sc = METAL_COLORS[shop.shutterColor] ?? METAL_COLORS[4];
     const shutterTop = o.v1;
@@ -482,7 +529,8 @@ export class FacadeBuilder {
       mesh.updateMatrix();
       root.add(mesh);
       out.push(mesh);
-      if (DETAIL.has(key)) this.chunks.get(chunk)?.detail.push(mesh);
+      if (chunk.startsWith('c:')) this.cells.get(chunk)?.meshes.push(mesh);
+      else if (DETAIL.has(key)) this.chunks.get(chunk)?.detail.push(mesh);
       else if (MID.has(key)) this.chunks.get(chunk)?.mid.push(mesh);
     }
     this.groups.clear();
@@ -499,6 +547,14 @@ export class FacadeBuilder {
       const d = Math.hypot(dx, dz);
       for (const m of c.detail) m.visible = d < far;
       for (const m of c.mid) m.visible = d < mid;
+    }
+    // Utilería de los locales: de cerca (de lejos queda el cuarto pintado).
+    const near = this.quality?.shopDraw ?? Math.min(90, Math.max(35, far * 0.45));
+    for (const c of this.cells.values()) {
+      const dx = Math.max(c.minX - camPos.x, 0, camPos.x - c.maxX);
+      const dz = Math.max(c.minZ - camPos.z, 0, camPos.z - c.maxZ);
+      const on = Math.hypot(dx, dz) < near;
+      for (const m of c.meshes) m.visible = on;
     }
   }
 }

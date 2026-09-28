@@ -1394,6 +1394,13 @@ export const LOCAL_SPOTS = [
   { id: 'veterinaria92', name: 'Veterinaria La 92', at: [303, -237] },
   { id: 'eficarnes', name: 'Efi Carnes', at: [760, -518] },
   { id: 'spaunas', name: 'Spa de Uñas', at: [-174, -98] },
+  // Almacenes de ropa (inventados) en la 92 y en Carabobo (Cra. 52): `store`
+  // es el surtido de sim/ropa.js; `street`, la calle a la que tiene que dar.
+  { id: 'modapaisa', name: 'Almacén Moda Paisa', at: [365, -245], street: 'Calle 92', store: 'modapaisa', desc: 'Camisetas, busos con capota y jeans de fábrica paisa.' },
+  { id: 'boutique92', name: 'Boutique Estilo La 92', at: [520, -252], street: 'Calle 92', store: 'boutique92', desc: 'Pa salir el viernes: camisetas, jeans entubados, gafas, cadenas y canguros.' },
+  { id: 'remates', name: 'Remates Carabobo', at: [-126, 150], street: 'Carrera 52', store: 'remates', desc: 'Todo en promoción: lo básico a precio de fábrica.' },
+  { id: 'deportes', name: 'Deportes La Cancha', at: [-138, -30], street: 'Carrera 52', store: 'deportes', desc: 'Camisetas de fútbol sin escudo, sudaderas y tenis.' },
+  { id: 'gorras52', name: 'Gorras y Tenis La 52', at: [-100, -200], street: 'Carrera 52', store: 'gorras52', desc: 'Gorras planas y curvas de todos los colores, y tenis.' },
 ];
 
 /** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */
@@ -1411,9 +1418,10 @@ function placeLocales(ctx) {
     if (r && COMMERCIAL_STREETS.has(MAPA.edges[r.edge].name) && crng.chance(0.55)) b.style = 'tienda';
   }
   const kinds = new Map(LOCALES.map(([n, k]) => [n, k]));
-  const fronts = (b) => {
+  const fronts = (b, street = null) => {
     const f = b.frame;
-    return !!roadAt(f.x + f.nx * (f.hv + GRID.sidewalk + 1.5), f.z + f.nz * (f.hv + GRID.sidewalk + 1.5), 1);
+    const r = roadAt(f.x + f.nx * (f.hv + GRID.sidewalk + 1.5), f.z + f.nz * (f.hv + GRID.sidewalk + 1.5), 1);
+    return !!r && (!street || MAPA.edges[r.edge].name === street);
   };
   for (const L of LOCAL_SPOTS) {
     let tx;
@@ -1430,7 +1438,7 @@ function placeLocales(ctx) {
       if (b.interior || b.shop || b.local || !['ladrillo', 'pintada', 'tienda'].includes(b.style) || b.floors > 5 || b.frame.hu < 2.4) continue;
       const f = b.frame;
       const d = Math.hypot(f.x + f.nx * f.hv - tx, f.z + f.nz * f.hv - tz);
-      if (d < bd && fronts(b)) {
+      if (d < bd && fronts(b, L.street)) {
         bd = d;
         best = b;
       }
@@ -1438,8 +1446,12 @@ function placeLocales(ctx) {
     if (!best) continue;
     best.style = 'tienda';
     best.local = { name: L.name, kind: kinds.get(L.name) ?? L.kind ?? 'cafeteria' };
-    if (!L.menu) continue;
     const f = best.frame;
+    if (L.store) {
+      city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'ropa', store: L.store, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
+      continue;
+    }
+    if (!L.menu) continue;
     city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'food', menu: L.menu, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
     if (L.chair) {
       // Silla plástica propia junto a la puerta (la de la abuela: la historia la sienta ahí).
