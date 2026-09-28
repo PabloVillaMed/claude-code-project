@@ -378,7 +378,8 @@ test('ropa: en Gorras y Tenis La 52 se compra una gorra, se pone, se quita y que
   await expect(page.locator('#shop-title')).toHaveText('Gorras y Tenis La 52');
   await expect(page.locator('#shop-kicker')).toHaveText('Almacén de ropa');
   const m0 = (await st()).money;
-  const row = page.locator('.shop-item', { hasText: 'Gorra plana roja' });
+  // La fila de la gorra por su nombre exacto (la de "Quitarse la gorra" también la menciona).
+  const row = page.locator('.shop-item').filter({ has: page.locator('.name', { hasText: /^Gorra plana roja$/ }) });
   await expect(row.locator('button')).toHaveText('$90');
   await row.locator('button').click();
   await expect(row.locator('button')).toHaveText('Puesto');
