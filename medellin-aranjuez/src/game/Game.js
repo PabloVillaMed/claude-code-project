@@ -568,7 +568,10 @@ export class Game {
       document.querySelector('#pause [data-action="controls"]').click();
       return;
     }
-    if (a.camera) this.camRig.cycleZoom();
+    if (a.camera) {
+      this.camRig.cycleZoom();
+      if (this.player.inVehicle) this.hud.toast(`Cámara: ${{ cerca: 'cerca', lejos: 'lejos', capo: this.player.vehicle.type === 'moto' ? 'sobre el hombro' : 'capó' }[this.camRig.vehicleViewName]}`, 1.2);
+    }
 
     // Rueda de armas.
     if (a.weaponWheel && !this.wheel.open && !p.dead) this.wheel.show(p.inventory);
@@ -610,6 +613,7 @@ export class Game {
       vehicleHeading: v ? this._driveCamHeading(v.state) : 0,
       vehicleSpeed: v?.state.forwardSpeed ?? 0,
       vehicleSize: v ? v.state.spec.length : 0,
+      moto: !!v && (v.type === 'moto' || v.state.spec.wheels === 2 || v.state.type === 'moto'),
       aiming: p.aiming,
       sprinting: p.state.sprinting,
       lookBehind: a.lookBehind,
