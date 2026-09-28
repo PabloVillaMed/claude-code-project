@@ -100,7 +100,11 @@ function procesar(em, p, force) {
 function tablaCreditos() {
   const filas = ['| Recurso | Ruta en el proyecto | Fuente | Autor | Licencia |', '|---|---|---|---|---|'];
   for (const em of EMISORAS)
-    for (const p of em.pistas) filas.push(`| Música: "${p.titulo}" (${em.nombre} ${em.frecuencia}) | \`public/${rutaPista(em, p)}\` | [${p.fuente.replace(/^https?:\/\//, '')}](${p.fuente}) | ${p.artista} | [${p.licencia}](${p.licenciaUrl}) |`);
+    for (const p of em.pistas) {
+      const usa = (p.usa ?? []).map((u) => `"${u.titulo}" de ${u.autor} ([${u.url.replace(/^https?:\/\//, '')}](${u.url}), ${u.licencia})`);
+      const autor = p.artista + (usa.length ? `; remezcla que usa ${usa.join(' y ')}` : '');
+      filas.push(`| Música: "${p.titulo}" (${em.nombre} ${em.frecuencia}) | \`public/${rutaPista(em, p)}\` | [${p.fuente.replace(/^https?:\/\//, '')}](${p.fuente}) | ${autor} | [${p.licencia}](${p.licenciaUrl}) |`);
+    }
   return filas.join('\n');
 }
 

@@ -190,6 +190,62 @@ como referencia están en `CAST` de `scripts/assets/voces.mjs`):
 | r1 | Central (radio) | `cof_07508` |
 | r2 | Patrulla (radio) | `com_08421` |
 
+## Música de la radio
+
+Las cuatro emisoras del juego (nombres y frecuencias inventados; ver
+`src/game/radioStations.js`) usan solo música cuya licencia permite
+redistribuirla dentro de un juego comercial. Criterios y decisiones:
+
+- **No se incluyen canciones comerciales** (reguetón, salsa, dancehall de
+  artistas conocidos): tienen todos los derechos reservados. En su lugar se
+  escogió música libre de esos géneros.
+- Se aceptan **CC0** y **CC BY** (2.5, 3.0 o 4.0) con atribución aquí, en la
+  pantalla de créditos y en el letrero de la radio (título, artista y licencia
+  de cada pista al empezar). **Nada con NC** (no comercial) **ni ND** (sin
+  derivadas): en ccMixter y Jamendo abundan, y se descartaron todas.
+- Kevin MacLeod (incompetech.com): licencia CC BY 4.0 declarada en la página de
+  cada pieza ("Creative Commons: By Attribution 4.0 License").
+- ccMixter: la licencia de cada pista se leyó en su página (API
+  `api/query?ids=…`) y se revisaron sus fuentes (`api/query?sources=…`):
+  todas las obras incorporadas por las remezclas son también CC BY, y se
+  acreditan en la columna Autor. ccMixter no permite publicar una remezcla con
+  una licencia más abierta que la de sus fuentes.
+- Cambios hechos (permitidos por CC BY y declarados aquí): las pistas de más de
+  3:20 se recortan con fundido de salida; todas se normalizan a -16 LUFS
+  (EBU R128, pico verdadero -1,5 dBTP) y se recodifican a Opus estéreo
+  (64 kb/s; 48 kb/s en la emisora lo-fi) con `scripts/assets/musica.mjs`.
+  Total: 24 pistas, ≈ 35 MB.
+
+Los parlantes de billares, fritangas, tiendas y mesas de dominó reproducen
+estas mismas pistas.
+
+| Recurso | Ruta en el proyecto | Fuente | Autor | Licencia |
+|---|---|---|---|---|
+| Música: "No Frills Salsa" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/no-frills-salsa.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100133](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100133) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "No Frills Cumbia" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/no-frills-cumbia.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100892](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100892) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Arroz Con Pollo" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/arroz-con-pollo.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1800011](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1800011) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Notanico Merengue" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/notanico-merengue.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100130](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100130) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Del Rio Bravo" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/del-rio-bravo.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1900031](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1900031) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Lamadio Tiado (Hot Cha Cha Mix)" (La Sabrosa 92.4) | `public/sounds/musica/sabrosa/lamadio-tiado.ogg` | [ccmixter.org/files/Coruscate/70326](https://ccmixter.org/files/Coruscate/70326) | Coruscate; remezcla que usa "Lamadio Tiado Vocals" de SackJo22 ([ccmixter.org/files/SackJo22/33441](https://ccmixter.org/files/SackJo22/33441), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Wayo Wayo (Summer Edition)" (Perreo FM 100.6) | `public/sounds/musica/perreo/wayo-wayo.ogg` | [ccmixter.org/files/wellman/22358](https://ccmixter.org/files/wellman/22358) | wellman; remezcla que usa "Jhonblack - Wayo Wayo" de Andrés Franco (andrewfranco), voz de Jhonblack ([ccmixter.org/files/andrewfranco/21090](https://ccmixter.org/files/andrewfranco/21090), CC BY 3.0) y "hooked on fonics synth" de cdk ([ccmixter.org/files/cdk/6936](https://ccmixter.org/files/cdk/6936), CC BY 2.5) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Put Your Hands Up (dotjot's summer party mix)" (Perreo FM 100.6) | `public/sounds/musica/perreo/put-your-hands-up-dotjot.ogg` | [ccmixter.org/files/dotjot/67321](https://ccmixter.org/files/dotjot/67321) | dotjot; remezcla que usa "Put your Hands Up (Acapella)" de Andrés Franco (andrewfranco) ([ccmixter.org/files/andrewfranco/23076](https://ccmixter.org/files/andrewfranco/23076), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Sacúdete" (Perreo FM 100.6) | `public/sounds/musica/perreo/sacudete.ogg` | [ccmixter.org/files/yuyomc/3428](https://ccmixter.org/files/yuyomc/3428) | Yuyo MC | [CC BY 2.5](https://creativecommons.org/licenses/by/2.5/) |
+| Música: "Don't Worry (original mix '12)" (Perreo FM 100.6) | `public/sounds/musica/perreo/dont-worry.ogg` | [ccmixter.org/files/DanScrew/40426](https://ccmixter.org/files/DanScrew/40426) | DanScrew; remezcla que usa "Brake Dance" de Andrés Franco (andrewfranco) ([ccmixter.org/files/andrewfranco/33929](https://ccmixter.org/files/andrewfranco/33929), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Hands Up (cdk Island Mix)" (Perreo FM 100.6) | `public/sounds/musica/perreo/hands-up-cdk.ogg` | [ccmixter.org/files/cdk/39541](https://ccmixter.org/files/cdk/39541) | cdk; remezcla que usa "Put your Hands Up (Acapella)" de Andrés Franco (andrewfranco) ([ccmixter.org/files/andrewfranco/23076](https://ccmixter.org/files/andrewfranco/23076), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Put Your Hands Up (island of the sirens mix)" (Perreo FM 100.6) | `public/sounds/musica/perreo/island-of-the-sirens.ogg` | [ccmixter.org/files/shagrugge/23788](https://ccmixter.org/files/shagrugge/23788) | shagrugge; remezcla que usa "Put your Hands Up (Acapella)" de Andrés Franco (andrewfranco) ([ccmixter.org/files/andrewfranco/23076](https://ccmixter.org/files/andrewfranco/23076), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Put Your Hands Up" (Parce Radio 97.8) | `public/sounds/musica/parce/put-your-hands-up-reiswerk.ogg` | [ccmixter.org/files/Reiswerk/56836](https://ccmixter.org/files/Reiswerk/56836) | Reiswerk; remezcla que usa "Put your Hands Up (Acapella)" de Andrés Franco (andrewfranco) ([ccmixter.org/files/andrewfranco/23076](https://ccmixter.org/files/andrewfranco/23076), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Latin Industries" (Parce Radio 97.8) | `public/sounds/musica/parce/latin-industries.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1200015](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1200015) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Electro Cabello" (Parce Radio 97.8) | `public/sounds/musica/parce/electro-cabello.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1400048](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400048) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "La Tripleta" (Parce Radio 97.8) | `public/sounds/musica/parce/la-tripleta.ogg` | [ccmixter.org/files/virtualdjmax/16150](https://ccmixter.org/files/virtualdjmax/16150) | virtualdjmax | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Future Cha Cha" (Parce Radio 97.8) | `public/sounds/musica/parce/future-cha-cha.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100374](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100374) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Ethernight Club" (Parce Radio 97.8) | `public/sounds/musica/parce/ethernight-club.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN2100002](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN2100002) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Good Night" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/good-night.ogg` | [ccmixter.org/files/JohnDope/60163](https://ccmixter.org/files/JohnDope/60163) | John Dope; remezcla que usa "Kalimba Impromptu June 05,2018" de HanAra ([ccmixter.org/files/HanAra/57730](https://ccmixter.org/files/HanAra/57730), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "perspective" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/perspective.ogg` | [ccmixter.org/files/mactonite/65604](https://ccmixter.org/files/mactonite/65604) | Darkroom (mactonite); remezcla que usa "Perspectives" de SackJo22 ([ccmixter.org/files/SackJo22/60306](https://ccmixter.org/files/SackJo22/60306), CC BY 3.0) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) |
+| Música: "Chill" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/chill.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100375](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100375) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Chillin Hard" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/chillin-hard.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1600028](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600028) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Hackbeat" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/hackbeat.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1100805](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100805) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Música: "Bossa Antigua" (Chill Comuna 4 88.2) | `public/sounds/musica/chill/bossa-antigua.ogg` | [incompetech.com/music/royalty-free/index.html?isrc=USUAN1700069](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1700069) | Kevin MacLeod | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+
 ## Datos geográficos
 
 El trazado del mapa (orden de los lugares, nombres de calles y carreras) se

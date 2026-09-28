@@ -1,0 +1,110 @@
+{
+ "version": 1,
+ "lufs": -16,
+ "emisoras": {
+  "sabrosa": {
+   "no-frills-salsa": {
+    "dur": 167.2,
+    "bytes": 1495353
+   },
+   "no-frills-cumbia": {
+    "dur": 200,
+    "bytes": 1734726
+   },
+   "arroz-con-pollo": {
+    "dur": 162.1,
+    "bytes": 1419767
+   },
+   "notanico-merengue": {
+    "dur": 181.1,
+    "bytes": 1556234
+   },
+   "del-rio-bravo": {
+    "dur": 200,
+    "bytes": 1674272
+   },
+   "lamadio-tiado": {
+    "dur": 174.1,
+    "bytes": 1464842
+   }
+  },
+  "perreo": {
+   "wayo-wayo": {
+    "dur": 200,
+    "bytes": 1577020
+   },
+   "put-your-hands-up-dotjot": {
+    "dur": 200,
+    "bytes": 1664777
+   },
+   "sacudete": {
+    "dur": 137.8,
+    "bytes": 1200389
+   },
+   "dont-worry": {
+    "dur": 200,
+    "bytes": 1650894
+   },
+   "hands-up-cdk": {
+    "dur": 200,
+    "bytes": 1637201
+   },
+   "island-of-the-sirens": {
+    "dur": 200,
+    "bytes": 1606803
+   }
+  },
+  "parce": {
+   "put-your-hands-up-reiswerk": {
+    "dur": 200,
+    "bytes": 1591871
+   },
+   "latin-industries": {
+    "dur": 200,
+    "bytes": 2096419
+   },
+   "electro-cabello": {
+    "dur": 190.8,
+    "bytes": 1661078
+   },
+   "la-tripleta": {
+    "dur": 200,
+    "bytes": 1665748
+   },
+   "future-cha-cha": {
+    "dur": 200,
+    "bytes": 1783367
+   },
+   "ethernight-club": {
+    "dur": 200,
+    "bytes": 1875208
+   }
+  },
+  "chill": {
+   "good-night": {
+    "dur": 200,
+    "bytes": 1253355
+   },
+   "perspective": {
+    "dur": 168.6,
+    "bytes": 991701
+   },
+   "chill": {
+    "dur": 200,
+    "bytes": 1505969
+   },
+   "chillin-hard": {
+    "dur": 200,
+    "bytes": 1213892
+   },
+   "hackbeat": {
+    "dur": 200,
+    "bytes": 1243211
+   },
+   "bossa-antigua": {
+    "dur": 200,
+    "bytes": 1243866
+   }
+  }
+ }
+}
