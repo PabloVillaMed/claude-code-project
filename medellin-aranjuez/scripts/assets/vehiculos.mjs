@@ -81,6 +81,68 @@ const SOURCES = {
     author: 'Emanuel Restrepo Vélez (e-restrepo1114)',
     url: 'https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5',
   },
+  // Variantes del tráfico (todas CC BY 4.0). En el juego llevan nombres
+  // genéricos y se les quitan logos y placas.
+  duster: {
+    path: 'glbs/000-020/30bc2e09de66426bb67be72c95fa2476.glb',
+    title: '2011 Dacia (Renault) Duster',
+    author: 'razor24',
+    url: 'https://sketchfab.com/3d-models/2011-dacia-renault-duster-30bc2e09de66426bb67be72c95fa2476',
+  },
+  tucson: {
+    path: 'glbs/000-037/7674a3bd168a451daf73fc0a33d39589.glb',
+    title: '2015 Hyundai Tucson',
+    author: 'razor24',
+    url: 'https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589',
+  },
+  r4: {
+    path: 'glbs/000-111/cfb86acde13541a7a6e45b46183580c3.glb',
+    title: 'renault 4L',
+    author: 'Mohamed Fsili (medraphc)',
+    url: 'https://sketchfab.com/3d-models/renault-4l-cfb86acde13541a7a6e45b46183580c3',
+  },
+  micra: {
+    path: 'glbs/000-142/b174848b63704c9990c164c03eaac9f6.glb',
+    title: 'Low Poly Nissan Micra K11',
+    author: 'tatsuteb',
+    url: 'https://sketchfab.com/3d-models/low-poly-nissan-micra-k11-b174848b63704c9990c164c03eaac9f6',
+  },
+  logan: {
+    path: 'glbs/000-128/e4f9463f6e004b90bb977d12f6375b9c.glb',
+    title: 'Renault Logan 2004',
+    author: 'Denis Petrushin (goooddenis)',
+    url: 'https://sketchfab.com/3d-models/renault-logan-2004-e4f9463f6e004b90bb977d12f6375b9c',
+  },
+  milano: {
+    path: 'glbs/000-065/122a22d210234596ad23623588d0d166.glb',
+    title: "Milano '95 - Low poly model",
+    author: 'Daniel Zhabotinsky',
+    url: 'https://sketchfab.com/3d-models/milano-95-low-poly-model-122a22d210234596ad23623588d0d166',
+  },
+  rx115: {
+    path: 'glbs/000-118/c05d91c775e947c5afa27197db08687a.glb',
+    title: 'RX115',
+    author: 'Emanuel Restrepo Vélez (e-restrepo1114)',
+    url: 'https://sketchfab.com/3d-models/rx115-c05d91c775e947c5afa27197db08687a',
+  },
+  dt125b: {
+    path: 'glbs/000-037/c541e042f7804c3e814db6104a95b28d.glb',
+    title: 'Dt125',
+    author: 'Emanuel Restrepo Vélez (e-restrepo1114)',
+    url: 'https://sketchfab.com/3d-models/dt125-c541e042f7804c3e814db6104a95b28d',
+  },
+  akttt: {
+    path: 'glbs/000-017/e9c1ff9a40494ea59c2263fd3d6ea477.glb',
+    title: 'Akt Tt Ds 200',
+    author: 'Emanuel Restrepo Vélez (e-restrepo1114)',
+    url: 'https://sketchfab.com/3d-models/akt-tt-ds-200-e9c1ff9a40494ea59c2263fd3d6ea477',
+  },
+  dio: {
+    path: 'glbs/000-109/ef6060608fe04cacbf6d4c817f494d6c.glb',
+    title: 'honda-smart-dio-z4-2006-1',
+    author: 'PhotoCanon (AlexanderChen394)',
+    url: 'https://sketchfab.com/3d-models/honda-smart-dio-z4-2006-1-ef6060608fe04cacbf6d4c817f494d6c',
+  },
 };
 
 const isHtml = (buf) => /^\s*<(!doctype|html)/i.test(buf.subarray(0, 64).toString('latin1'));
@@ -694,16 +756,464 @@ async function moto() {
   return write(build(buckets, { crease: 40 }), 'moto');
 }
 
+// --------------------------------------------------------------- genéricos
+// Para los modelos nuevos (variantes del tráfico) no hay una función por
+// modelo: cada uno se describe con una configuración (ver VARIANTES) que dice
+// qué piezas son ruedas, qué materiales son pintura, vidrio, faros o stops y
+// qué se omite (logos, interiores). Lo demás se convierte a color de vértice
+// ("detalle"): colores planos por triángulo muestreados de la textura, sin
+// texturas que descargar y sin letreros ni logos legibles.
+
+const toSrgb = (l) => (l <= 0.0031308 ? 12.92 * l : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
+
+/** Ruta de nombres de nodos (de la raíz a la malla), para reconocer piezas. */
+function nodePath(o) {
+  const names = [];
+  for (let n = o; n; n = n.parent) if (n.name) names.unshift(n.name);
+  return names.join('/');
+}
+
+/** Color sRGB (0-255) de un triángulo: textura (si la hay) por el color base del material. */
+async function colorer(tex) {
+  const px = new Map();
+  for (const [k, v] of tex) if (v.color) px.set(k, await sampler(v.color));
+  return (mat, tri) => {
+    const f = tex.get(mat)?.factor ?? [1, 1, 1, 1];
+    const s = px.get(mat);
+    let base = [255, 255, 255];
+    if (s && tri.uv) {
+      // Centro y puntos intermedios hacia los vértices: menos ruido que un solo píxel.
+      const c = triUV(tri);
+      const pts = [c, ...tri.uv.map((u) => u.clone().lerp(c, 0.5))];
+      base = [0, 0, 0];
+      for (const p of pts) {
+        const q = s(p);
+        for (let i = 0; i < 3; i++) base[i] += q[i] / pts.length;
+      }
+    }
+    return base.map((v, i) => Math.round(Math.min(255, v * toSrgb(f[i]))));
+  };
+}
+
+/** Saturación y brillo (0-1) de un color sRGB 0-255. */
+const hsv = ([r, g, b]) => {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return { s: max ? (max - min) / max : 0, v: max / 255 };
+};
+
+/** Quita de la escena las mallas que `ignore(path, material)` descarta (planos de piso, capas invisibles). */
+function prune3(scene, ignore) {
+  if (!ignore) return;
+  const out = [];
+  scene.traverse((o) => o.isMesh && ignore(nodePath(o), o.material?.name ?? '') && out.push(o));
+  for (const o of out) o.removeFromParent();
+  scene.updateMatrixWorld(true);
+}
+
+/**
+ * Reduce (meshoptimizer) las geometrías de las partes que cumplen `test`
+ * hasta `target` triángulos en total. Con textura se bloquean los bordes
+ * (costuras de UV); los colores de vértice pueden mezclarse un poco.
+ */
+async function reduce(buckets, test, target, error = 0.02) {
+  await MeshoptSimplifier.ready;
+  let total = 0;
+  const list = [];
+  for (const [part, mats] of buckets) {
+    if (!test(part)) continue;
+    for (const [mat, geos] of mats) {
+      const n = geos.reduce((a, g) => a + g.attributes.position.count / 3, 0);
+      total += n;
+      list.push([mats, mat, geos, n]);
+    }
+  }
+  if (total <= target) return total;
+  const ratio = target / total;
+  let out = 0;
+  for (const [mats, mat, geos, n] of list) {
+    if (n < 64) {
+      out += n;
+      continue;
+    }
+    const g = mergeGeometries(geos, false);
+    if (g.attributes.normal && !g.attributes.uv) g.deleteAttribute('normal');
+    const merged = mergeVertices(g, 1e-4);
+    const idx = new Uint32Array(merged.index.array);
+    const want = Math.max(12, Math.floor((idx.length * ratio) / 3)) * 3;
+    const [res] = MeshoptSimplifier.simplify(idx, merged.attributes.position.array, 3, want, error, merged.attributes.uv ? ['LockBorder'] : []);
+    merged.setIndex(new THREE.BufferAttribute(res, 1));
+    const ni = merged.toNonIndexed();
+    mats.set(mat, [ni]);
+    out += ni.attributes.position.count / 3;
+  }
+  return out;
+}
+
+/**
+ * Logos y letras de marca: piezas sueltas pequeñas (menos de `max` m) cerca
+ * del eje central, en el frente o en la cola del vehículo. Devuelve el
+ * conjunto de triángulos (triKey) que se omiten.
+ */
+function badges(scene, pre, test, { max = 0.24, zone = 0.16 } = {}) {
+  const tris = [];
+  const box = new THREE.Box3();
+  collect(scene, pre, (mesh, mat, tri) => {
+    for (const p of tri.p) box.expandByPoint(p);
+    if (test(mesh, mat)) tris.push(tri);
+    return null;
+  });
+  const parent = new Map();
+  const find = (k) => {
+    while (parent.get(k) !== k) {
+      parent.set(k, parent.get(parent.get(k)));
+      k = parent.get(k);
+    }
+    return k;
+  };
+  const vk = (p) => `${Math.round(p.x * 2e3)},${Math.round(p.y * 2e3)},${Math.round(p.z * 2e3)}`;
+  for (const tri of tris) {
+    const ks = tri.p.map(vk);
+    for (const k of ks) if (!parent.has(k)) parent.set(k, k);
+    for (let i = 1; i < 3; i++) {
+      const a = find(ks[0]);
+      const b = find(ks[i]);
+      if (a !== b) parent.set(b, a);
+    }
+  }
+  const pieces = new Map();
+  for (const tri of tris) {
+    const r = find(vk(tri.p[0]));
+    if (!pieces.has(r)) pieces.set(r, { tris: [], b: new THREE.Box3() });
+    const pc = pieces.get(r);
+    pc.tris.push(tri);
+    for (const p of tri.p) pc.b.expandByPoint(p);
+  }
+  const L = box.max.z - box.min.z;
+  const out = new Set();
+  let n = 0;
+  for (const pc of pieces.values()) {
+    const s = pc.b.getSize(new THREE.Vector3());
+    const c = pc.b.getCenter(new THREE.Vector3());
+    const ends = c.z < box.min.z + L * zone || c.z > box.max.z - L * zone;
+    if (Math.max(s.x, s.y, s.z) < max && Math.abs(c.x) < 0.14 && ends && c.y > 0.3) {
+      n++;
+      for (const t of pc.tris) out.add(triKey(t));
+    }
+  }
+  console.log(`   logos omitidos: ${n} piezas, ${out.size} triángulos`);
+  return out;
+}
+
+/**
+ * Carro genérico. `c`: {src, out, rotY, length, wheel(path, mat) -> bool
+ * (triángulos de las ruedas), cylinder (también van a la rueda los triángulos
+ * dentro de su cilindro: rines de mallas unidas), key(mat, path, color,
+ * centro) -> clave | null (se omite) | undefined (detalle con color),
+ * skip(path, mat, centro), budget (triángulos de la carrocería), wheelBudget
+ * (por rueda), keep {material: {key, size}} (conserva su textura)}.
+ */
+async function carro(c) {
+  const { scene, tex } = await loadSource(c.src);
+  prune3(scene, c.ignore);
+  const pre = fit(scene, c.rotY ?? 0, c.length);
+  const colorOf = await colorer(tex);
+  const paths = new Map();
+  scene.traverse((o) => o.isMesh && paths.set(o, nodePath(o)));
+  // Cilindro de cada rueda (por cuadrante) a partir de sus triángulos.
+  const boxes = new Map();
+  // Solo cuentan las piezas de rueda abajo y a los lados (no la de repuesto
+  // ni el timón).
+  const isWheel = (mesh, mat, cen) => c.wheel(paths.get(mesh), mat) && Math.abs(cen.x) > 0.35 && cen.y < 0.8;
+  collect(scene, pre, (mesh, mat, tri) => {
+    if (!isWheel(mesh, mat, centroid(tri))) return null;
+    const q = quadWheel(centroid(tri));
+    if (!boxes.has(q)) boxes.set(q, new THREE.Box3());
+    for (const p of tri.p) boxes.get(q).expandByPoint(p);
+    return null;
+  });
+  const wheels = [...boxes].map(([part, b]) => {
+    const r = Math.max(b.max.y - b.min.y, b.max.z - b.min.z) / 2;
+    return { part, c: b.getCenter(new THREE.Vector3()), r, hw: (b.max.x - b.min.x) / 2 };
+  });
+  for (const w of wheels) console.log(`   ${w.part} centro ${w.c.toArray().map((v) => v.toFixed(2))} radio ${w.r.toFixed(3)} ancho ${(w.hw * 2).toFixed(2)}`);
+  if (wheels.length !== 4) throw new Error(`${c.out}: se esperaban 4 ruedas y hay ${wheels.length}`);
+  const inWheel = (tri) => wheels.find((w) => tri.p.every((p) => Math.abs(p.x - w.c.x) < w.hw + 0.015 && Math.hypot(p.z - w.c.z, p.y - w.c.y) < w.r + 0.012));
+  const nearest = (p) => wheels.reduce((a, w) => (a && a.c.distanceTo(p) < w.c.distanceTo(p) ? a : w), null);
+  const badgeRe = c.badge ?? /chrome|metal|logo|emblem|badge|znak|text/i;
+  const logo = c.badge === false ? new Set() : badges(scene, pre, (mesh, mat) => !c.wheel(paths.get(mesh), mat) && (badgeRe.test(mat) || badgeRe.test(paths.get(mesh))), c.badgeOpts);
+  const keep = c.keep ?? {};
+  const textured = new Set(Object.values(keep).map((k) => k.key));
+  const stats = new Map();
+  const lamps = {};
+  const buckets = collect(
+    scene,
+    pre,
+    (mesh, mat, tri) => {
+      const path = paths.get(mesh);
+      const cen = centroid(tri);
+      if (c.skip?.(path, mat, cen) || logo.has(triKey(tri))) return null;
+      const color = colorOf(mat, tri);
+      let part = 'carroceria';
+      if (isWheel(mesh, mat, cen)) part = nearest(cen).part;
+      else if (c.cylinder) part = inWheel(tri)?.part ?? part;
+      let k = part === 'carroceria' ? c.key(mat, path, color, cen) : c.wheelKey?.(mat, path, color, cen);
+      if (k === null) return null;
+      if (k === undefined && keep[mat]) k = keep[mat].key;
+      const s = `${mat} -> ${k ?? 'detalle'}`;
+      stats.set(s, (stats.get(s) ?? 0) + 1);
+      if (k === 'faro' || k === 'stop') (lamps[k] ??= new THREE.Box3()).expandByPoint(cen);
+      if (k === undefined || k === 'detalle') return { part, mat: 'detalle', color };
+      return { part, mat: k };
+    },
+    textured,
+  );
+  if (process.env.DEBUG_VEH) for (const [s, n] of stats) console.log('     ', s, n);
+  // El frente va en -Z: los faros deben quedar adelante y los stops atrás.
+  for (const [k, b] of Object.entries(lamps)) console.log(`   ${k}: z ${b.min.z.toFixed(2)}..${b.max.z.toFixed(2)}`);
+  if (lamps.faro && lamps.faro.max.z > 0) throw new Error(`${c.out}: los faros quedaron atrás (revisar rotY)`);
+  const body = await reduce(buckets, (p) => p === 'carroceria', c.budget ?? 14000, c.error ?? 0.04);
+  let wt = 0;
+  for (const w of wheels) wt += await reduce(buckets, (p) => p === w.part, c.wheelBudget ?? 700, 0.01);
+  console.log(`   carrocería ${Math.round(body)} triángulos, ruedas ${Math.round(wt)}`);
+  const textures = {};
+  for (const [m, k] of Object.entries(keep)) textures[k.key] = { color: tex.get(m).color, size: k.size ?? 512, gain: k.gain };
+  return write(build(buckets, { textured, crease: c.crease ?? 35 }), c.out, textures);
+}
+
+/**
+ * Moto genérica (mismo método que `moto()`): las llantas salen de los
+ * triángulos que cumplen `c.tire` en el plano medio; dentro del cilindro de
+ * cada rueda gira solo lo que da la vuelta al eje, y lo demás de la delantera
+ * vira con la dirección ("horquilla_del"). `c.key` como en `carro`.
+ */
+async function motoGenerica(c) {
+  const { scene, tex } = await loadSource(c.src);
+  prune3(scene, c.ignore);
+  const pre = fit(scene, c.rotY ?? 0, c.length);
+  const colorOf = await colorer(tex);
+  const paths = new Map();
+  scene.traverse((o) => o.isMesh && paths.set(o, nodePath(o)));
+  const tires = { del: new THREE.Box3(), tras: new THREE.Box3() };
+  collect(scene, pre, (mesh, mat, tri) => {
+    const cen = centroid(tri);
+    if (Math.abs(cen.x) > (c.tireX ?? 0.08) || Math.abs(cen.z) < (c.tireZ ?? 0.28)) return null;
+    if (!c.tire(mat, paths.get(mesh), colorOf(mat, tri), cen)) return null;
+    for (const p of tri.p) tires[cen.z < 0 ? 'del' : 'tras'].expandByPoint(p);
+    return null;
+  });
+  const wheels = Object.entries(tires).map(([k, b]) => {
+    const r = (b.max.z - b.min.z) / 2;
+    const cc = new THREE.Vector3(0, b.min.y + r, (b.min.z + b.max.z) / 2);
+    const hw = Math.max(Math.abs(b.min.x), Math.abs(b.max.x));
+    console.log(`   llanta ${k}: y ${b.min.y.toFixed(3)}..${b.max.y.toFixed(3)} z ${b.min.z.toFixed(3)}..${b.max.z.toFixed(3)} x ${b.min.x.toFixed(3)}..${b.max.x.toFixed(3)}`);
+    return { part: `rueda_${k}`, c: cc, r, hw };
+  });
+  let spin = spinningPieces(scene, pre, wheels);
+  for (const w of wheels) {
+    const b = spin.boxes.get(w.part);
+    if (!b) continue;
+    w.r = (b.max.z - b.min.z) / 2;
+    w.c.set(0, b.min.y + w.r, (b.min.z + b.max.z) / 2);
+  }
+  for (const w of wheels) console.log(`   ${w.part} centro ${w.c.toArray().map((v) => v.toFixed(3))} radio ${w.r.toFixed(3)} ancho ${(w.hw * 2).toFixed(3)}`);
+  spin = spinningPieces(scene, pre, wheels);
+  const spinning = spin.keys;
+  const stats = new Map();
+  const buckets = collect(scene, pre, (mesh, mat, tri) => {
+    const path = paths.get(mesh);
+    const cen = centroid(tri);
+    if (c.skip?.(path, mat, cen)) return null;
+    const over = c.color?.(mat, path, cen, tri);
+    const color = over ?? colorOf(mat, tri);
+    const k = c.key(mat, path, color, cen, over);
+    if (k === null) return null;
+    const s = `${mat} -> ${k ?? 'detalle'}`;
+    stats.set(s, (stats.get(s) ?? 0) + 1);
+    for (const w of wheels) {
+      const inside = tri.p.every((p) => Math.abs(p.x) < w.hw + 0.012 && Math.hypot(p.z - w.c.z, p.y - w.c.y) < w.r + 0.01);
+      if (!inside) continue;
+      if (spinning.has(triKey(tri))) return { part: w.part, mat: 'detalle', color };
+      if (w.part === 'rueda_del') return k === 'pintura' ? { part: 'horquilla_del', mat: 'pintura' } : { part: 'horquilla_del', mat: 'detalle', color };
+      break;
+    }
+    if (k === undefined || k === 'detalle') return { part: 'carroceria', mat: 'detalle', color };
+    return { part: 'carroceria', mat: k };
+  });
+  if (process.env.DEBUG_VEH) for (const [s, n] of stats) console.log('     ', s, n);
+  const body = await reduce(buckets, (p) => !p.startsWith('rueda'), c.budget ?? 12000);
+  let wt = 0;
+  for (const w of wheels) wt += await reduce(buckets, (p) => p === w.part, c.wheelBudget ?? 1500, 0.01);
+  console.log(`   carrocería ${Math.round(body)} triángulos, ruedas ${Math.round(wt)}`);
+  return write(build(buckets, { crease: 40 }), c.out);
+}
+
+// Materiales de los modelos de razor24 (mismo formato en los dos).
+const RAZOR = { varnish: 'pintura', glass: 'vidrio', front_lamps: 'faro', brakelights_red: 'stop' };
+const razorWheel = (path) => /_(FR|FL|BR|BL)_wheel/.test(path);
+
+/** Configuración de cada variante nueva (ver `carro` y `motoGenerica`). */
+const VARIANTES = {
+  // Camioneta compacta (la más vista en Medellín, también de la Policía).
+  duster: () => carro({ src: 'duster', out: 'suv_compacta', rotY: Math.PI, length: 4.32, wheel: razorWheel, key: (m) => RAZOR[m], budget: 13000 }),
+  // Camioneta mediana moderna.
+  // Carro clásico (el "amigo fiel" de los barrios; versión furgoneta).
+  r4: () =>
+    carro({
+      src: 'r4',
+      out: 'clasico',
+      rotY: Math.PI / 2,
+      length: 3.7,
+      // Llanta (caucho) para ubicar cada rueda; el rin entra por el cilindro.
+      wheel: (p, m) => m === 'wheelBlack',
+      cylinder: true,
+      ignore: (p, m) => m === 'material' || m === 'lightFronttransp',
+      key: (m) => ({ metal: 'pintura', windows: 'vidrio', glass: 'vidrio', lightFrontEmission: 'faro', lightBackRed: 'stop', lightBackRedEmission: 'stop' })[m],
+      budget: 11000,
+    }),
+  // Hatchback pequeño (taxi y particular): perfil de los Picanto/Spark/i10.
+  micra: () =>
+    carro({
+      src: 'micra',
+      out: 'hatch_pequeno',
+      rotY: Math.PI,
+      length: 3.72,
+      wheel: (p) => /Circle/.test(p),
+      ignore: (p) => /Plane/.test(p),
+      key: (m) => ({ 'Material.002': 'pintura', 'Material.006': 'vidrio', 'Material.003': 'faro', Tail_Lamp: 'stop' })[m],
+      budget: 8000,
+    }),
+  // Sedán de entrada (el de tantos taxis y carros de familia en Colombia).
+  logan: () =>
+    carro({
+      src: 'logan',
+      out: 'sedan_compacto',
+      rotY: Math.PI,
+      length: 4.29,
+      wheel: (p) => /Rezina|Disk/.test(p),
+      // Placas, logos y bajos que no se ven (piso, exhosto, tanque, tornillería).
+      skip: (p) => /Lable|Nomer|Ramka_nomera|Dno|Vihlop|Bolt|Dop_|Bak_low/.test(p),
+      key: (m, p, color) => {
+        if (/Fara_1/.test(p)) return null; // mica de los faros (el faro queda debajo)
+        if (m === 'glass') return 'vidrio';
+        if (/Fara_2|Fara_lamp/.test(p)) return 'faro';
+        if (/Fonar/.test(p)) return hsv(color).s > 0.45 ? 'stop' : undefined;
+        // Latas: el rojo de la textura es la pintura.
+        if (/Kuzov_low|Kapot|Bagajnik_low|Dver/.test(p) && color[0] > color[1] * 1.6 && color[0] > 70) return 'pintura';
+        // Parachoques: pintados salvo el plástico negro (la textura tiene mugre).
+        if (/Bamper/.test(p)) return hsv(color).v > 0.3 && color[0] > color[1] * 1.25 ? 'pintura' : undefined;
+        return undefined;
+      },
+      budget: 10000,
+      wheelBudget: 600,
+    }),
+  // Hatchback compacto de los noventa.
+  milano: () =>
+    carro({
+      src: 'milano',
+      out: 'hatch_compacto',
+      rotY: -Math.PI / 2,
+      length: 3.85,
+      wheel: (p) => /Wheel_/.test(p),
+      skip: (p, m) => /BADGES|Numberplates/.test(m) || /Headlights_glass|Taillights_glass/.test(p),
+      key: (m, p) => {
+        if (m === 'body') return 'pintura';
+        if (/GLASS/.test(m)) return 'vidrio';
+        if (/Headlights_UCB/.test(p)) return 'faro';
+        if (/Taillights_UCB/.test(p)) return 'stop';
+        return undefined;
+      },
+      budget: 11000,
+    }),
+  // Moto de dos tiempos clásica (la "RX" de los barrios).
+  rx115: () =>
+    motoGenerica({
+      src: 'rx115',
+      out: 'moto_2t',
+      length: 1.95,
+      tire: (m, p, color) => /^caucho/.test(m) && Math.max(...color) < 70,
+      key: (m) => {
+        if (m === 'plastico_naranja') return 'pintura';
+        if (m === 'luces_rojas') return 'stop';
+        return undefined;
+      },
+    }),
+  // Enduro de dos tiempos (la de los mensajeros de las lomas).
+  dt125: () =>
+    motoGenerica({
+      src: 'dt125b',
+      out: 'moto_enduro',
+      length: 2.05,
+      // El guardabarros trasero también es de caucho: solo lo de abajo.
+      tire: (m, p, color, c) => /^caucho/.test(m) && Math.max(...color) < 70 && c.y < 0.55 && c.z < 0.95,
+      key: (m) => {
+        if (m === 'plastico_naranja') return 'pintura';
+        if (m === 'luces_rojas') return 'stop';
+        return undefined;
+      },
+    }),
+  // Doble propósito 200 (con maletas laterales).
+  // Scooter automática (la de los domicilios y del día a día).
+  dio: () =>
+    motoGenerica({
+      src: 'dio',
+      out: 'scooter',
+      rotY: Math.PI / 2,
+      length: 1.8,
+      tire: (m, p) => /pCylinder1[23]/.test(p),
+      // El modelo es gris de un solo material: los colores se ponen por
+      // zonas (llantas, rines, sillín, piso, manubrio y espejos).
+      color: (m, p, c) => {
+        if (/pCylinder1[23]/.test(p)) return Math.hypot(c.y - 0.23, c.z - (c.z < 0 ? -0.67 : 0.59)) > 0.15 ? [24, 24, 24] : [150, 152, 156];
+        if (c.y > 1.02) return [40, 40, 44];
+        if (c.y > 0.7 && c.z > -0.02 && c.z < 0.72) return [30, 30, 32];
+        if (c.y < 0.36 && c.z > -0.45 && c.z < 0.4) return [38, 38, 40];
+        return null;
+      },
+      key: (m, p, color, c, over) => (over ? 'detalle' : 'pintura'),
+    }),
+  akttt: () =>
+    motoGenerica({
+      src: 'akttt',
+      out: 'moto_tt',
+      length: 2.15,
+      tire: (m, p, color) => /^caucho/.test(m) && Math.max(...color) < 70,
+      key: (m) => {
+        if (m === 'RED_MATERIAL') return 'pintura';
+        if (m === 'GLASS') return 'vidrio';
+        return undefined;
+      },
+    }),
+  tucson: () => carro({ src: 'tucson', out: 'suv_mediana', rotY: Math.PI, length: 4.48, wheel: razorWheel, key: (m) => RAZOR[m], budget: 13000, badge: /chrome|metal|black_plastic/, badgeOpts: { max: 0.3 } }),
+};
+
 function credits() {
   const lines = [
     'Modelos 3D de vehículos (public/models/vehiculos/*.glb)',
     'Licencia de todos: Creative Commons Attribution 4.0 International (CC BY 4.0)',
     'https://creativecommons.org/licenses/by/4.0/',
     'Modificados para el juego: reorientados, escalados, materiales reagrupados,',
-    'ruedas separadas, texturas reducidas y comprimidas (scripts/assets/vehiculos.mjs).',
+    'ruedas separadas, texturas reducidas y comprimidas, logos y placas quitados,',
+    'mallas simplificadas y colores pasados a color de vértice (scripts/assets/vehiculos.mjs).',
     '',
   ];
-  const uses = { ace: 'hatchback.glb (taxi)', kiri: 'sedan.glb (sedán)', urban: 'suv.glb (camioneta y patrulla)', micruss: 'buseta.glb (buseta)', pulsar: 'moto.glb (moto)' };
+  const uses = {
+    ace: 'hatchback.glb (taxi)',
+    kiri: 'sedan.glb (sedán)',
+    urban: 'suv.glb (camioneta y patrulla)',
+    micruss: 'buseta.glb (buseta)',
+    pulsar: 'moto.glb (moto)',
+    duster: 'suv_compacta.glb (camioneta compacta)',
+    tucson: 'suv_mediana.glb (camioneta mediana)',
+    r4: 'clasico.glb (carro clásico, furgoneta)',
+    micra: 'hatch_pequeno.glb (hatchback pequeño, particular y taxi)',
+    logan: 'sedan_compacto.glb (sedán compacto, particular y taxi)',
+    milano: 'hatch_compacto.glb (hatchback compacto)',
+    rx115: 'moto_2t.glb (moto clásica de dos tiempos)',
+    dt125b: 'moto_enduro.glb (moto enduro)',
+    akttt: 'moto_tt.glb (moto doble propósito)',
+    dio: 'scooter.glb (scooter)',
+  };
   for (const [k, s] of Object.entries(SOURCES)) {
     lines.push(`${uses[k]}: "${s.title}" por ${s.author}`, `  ${s.url}`, `  This work is based on "${s.title}" (${s.url}) by ${s.author} licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)`, '');
   }
@@ -719,9 +1229,20 @@ async function main() {
     suv: () => zhabotinsky('urban', 'suv', 4.4, 'dust'),
     buseta,
     moto,
+    ...VARIANTES,
   };
   const res = [];
-  for (const [k, fn] of Object.entries(jobs)) if (!only.length || only.includes(k)) res.push(await fn());
+  const fallos = [];
+  for (const [k, fn] of Object.entries(jobs)) {
+    if (only.length && !only.includes(k)) continue;
+    try {
+      res.push(await fn());
+    } catch (e) {
+      console.error(`ERROR en ${k}:`, e.message);
+      fallos.push(k);
+    }
+  }
+  if (fallos.length) process.exitCode = 1;
   credits();
   const total = res.reduce((a, r) => a + r.bytes, 0);
   console.log('total', (total / 1e6).toFixed(2), 'MB');

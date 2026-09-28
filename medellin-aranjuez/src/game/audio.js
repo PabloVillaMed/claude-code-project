@@ -1,9 +1,19 @@
 // Audio con WebAudio: las armas usan grabaciones reales (public/sounds/armas,
 // ver sfxArmas.js) con eco de la calle, filtro por distancia y límite de
-// voces; mientras cargan (o si faltan) se sintetizan. Motor según RPM, pito,
-// sirena, explosiones y ambiente de ciudad siguen sintetizados.
+// voces; mientras cargan (o si faltan) se sintetizan. Los motores (del
+// jugador y del tráfico cercano) usan explosiones grabadas con síntesis
+// granular (engineSound.js) y una caja de cambios simulada (sim/engineModel.js);
+// sin AudioWorklet queda un motor sintetizado de respaldo. Pito, sirena,
+// explosiones y ambiente de ciudad siguen sintetizados.
 
 import { ARMAS_SFX, BancoSonidos, GRUPOS, RECARGAS, crearRespuestaUrbana, mezclaDistancia } from './sfxArmas.js';
+import { EngineVoice, loadEngineBanks, trafficMix } from './engineSound.js';
+import { createEngineState, stepEngine } from '../sim/engineModel.js';
+import { engineProfile } from '../sim/vehicleVariants.js';
+
+// Voces de motor para el tráfico (las más cercanas; el resto no suena).
+const MAX_VOCES_TRAFICO = 4;
+const RADIO_TRAFICO = 70;
 
 const MAX_VOCES_DISPARO = 14;
 const MAX_VOCES_EFECTO = 10;
@@ -44,6 +54,110 @@ export class AudioSystem {
     this._mezclaArmas();
     this.banco.decodificar(this.ctx);
     this._ambient();
+    // Motores grabados (asíncrono; mientras tanto, el de respaldo).
+    this.motores = null;
+    this.vocesTrafico = [];
+    loadEngineBanks(this.ctx)
+      .then((b) => {
+        if (!b) return;
+        this.motores = b;
+        // El bus de motores pasa por su propia ganancia (volumen relativo).
+        this.busMotor = this.ctx.createGain();
+        this.busMotor.gain.value = 0.8;
+        this.busMotor.connect(this.master);
+        if (this.engine) this.setEngine(false);
+      })
+      .catch((e) => console.warn('Motores grabados no disponibles:', e?.message ?? e));
+  }
+
+  /** ¿Está sonando el motor granular? (para pruebas) */
+  engineStatus() {
+    return { granular: !!this.motores, jugador: this.motorJugador ? { perfil: this.motorJugador.id, rpm: Math.round(this.motorJugador.modelo.rpm), marcha: this.motorJugador.modelo.gear } : null, trafico: (this.vocesTrafico ?? []).filter((v) => v.owner).length };
+  }
+
+  /**
+   * Motor del vehículo que maneja el jugador: la caja de cambios simulada
+   * decide rpm, marcha y carga a partir de la velocidad y el acelerador.
+   * state = estado de vehiclePhysics; input = {throttle, brake}.
+   */
+  drive(state, input, dt) {
+    if (!this.ctx) return;
+    const id = engineProfile(state.type, state.variant);
+    const J = this.motorJugador?.id === id ? this.motorJugador : (this.motorJugador = { id, modelo: createEngineState(id), voz: this.motorJugador?.voz ?? null });
+    const e = J.modelo;
+    const v = state.forwardSpeed;
+    // Frenando detenido va en reversa: el motor acelera con el freno.
+    const throttle = v < -0.3 ? input.brake ?? 0 : input.throttle ?? 0;
+    stepEngine(e, { speed: Math.abs(v), vmax: state.spec.maxSpeed, throttle: state.destroyed ? 0 : throttle, brake: input.brake ?? 0, dt });
+    if (!this.motores) {
+      // Respaldo sintetizado con las rpm del modelo.
+      const p = e.profile;
+      this.setEngine(true, Math.min(1, (e.rpm - p.idle * 0.8) / (p.redline - p.idle * 0.8)), state.type);
+      return;
+    }
+    if (!J.voz) J.voz = new EngineVoice(this.ctx, this.busMotor, this.motores, id);
+    J.voz.setProfile(id);
+    const moto = state.type === 'moto';
+    const crackle = moto && throttle < 0.05 && e.rpm > e.profile.redline * 0.45 && Math.abs(v) > 4 ? 1 : 0;
+    J.voz.set({ rpm: e.rpm, load: e.load, cut: e.limiting, crackle, gain: state.destroyed ? 0 : moto ? 0.55 : 0.5, pan: 0 });
+  }
+
+  /** Apaga el motor del jugador (bajarse, pausa). */
+  _apagarJugador() {
+    if (this.motorJugador?.voz) this.motorJugador.voz.silence(0.15);
+    this.motorJugador = this.motorJugador ? { ...this.motorJugador, modelo: createEngineState(this.motorJugador.id) } : null;
+  }
+
+  /**
+   * Motores del tráfico: solo los vehículos con conductor más cercanos (a lo
+   * sumo MAX_VOCES_TRAFICO voces reutilizadas), con distancia, paneo y
+   * efecto Doppler. `vehicles`: [{state, driver}], `exclude`: el del jugador.
+   */
+  updateTraffic(vehicles, dt, exclude = null) {
+    if (!this.motores || !this.ctx || this.ctx.state !== 'running') return;
+    const L = this.listener;
+    const lv = this._lvel ?? { x: 0, z: 0 };
+    if (this._lprev && dt > 0) {
+      lv.x += ((L.x - this._lprev.x) / dt - lv.x) * Math.min(1, dt * 6);
+      lv.z += ((L.z - this._lprev.z) / dt - lv.z) * Math.min(1, dt * 6);
+    }
+    this._lvel = lv;
+    this._lprev = { x: L.x, z: L.z };
+    const cands = [];
+    for (const v of vehicles) {
+      if (v === exclude || !v.driver || v.state.destroyed) continue;
+      const d = Math.hypot(v.state.x - L.x, v.state.z - L.z);
+      if (d < RADIO_TRAFICO) cands.push([d, v]);
+    }
+    cands.sort((a, b) => a[0] - b[0]);
+    const want = new Set(cands.slice(0, MAX_VOCES_TRAFICO).map((c) => c[1]));
+    // Liberar las voces de los que ya no están entre los más cercanos.
+    for (const voz of this.vocesTrafico) if (voz.owner && !want.has(voz.owner)) voz.silence(0.2);
+    for (const [d, v] of cands.slice(0, MAX_VOCES_TRAFICO)) {
+      let voz = this.vocesTrafico.find((x) => x.owner === v);
+      if (!voz) {
+        voz = this.vocesTrafico.find((x) => !x.owner);
+        const id = engineProfile(v.state.type, v.state.variant);
+        if (!voz && this.vocesTrafico.length < MAX_VOCES_TRAFICO) this.vocesTrafico.push((voz = new EngineVoice(this.ctx, this.busMotor, this.motores, id)));
+        if (!voz) continue;
+        voz.owner = v;
+        voz.setProfile(id);
+      }
+      const s = v.state;
+      const id = engineProfile(s.type, s.variant);
+      if (!v._motor || v._motor.id !== id) v._motor = createEngineState(id);
+      const e = v._motor;
+      stepEngine(e, { speed: Math.abs(s.forwardSpeed), vmax: s.spec.maxSpeed, throttle: s.throttle ?? 0, dt });
+      // Velocidad radial (positiva si se acerca al oyente) para el Doppler.
+      const dx = L.x - s.x;
+      const dz = L.z - s.z;
+      const n = Math.max(0.5, Math.hypot(dx, dz));
+      const vr = ((s.vx - lv.x) * dx + (s.vz - lv.z) * dz) / n;
+      const mix = trafficMix(d, vr);
+      const moto = s.type === 'moto';
+      const crackle = moto && (s.throttle ?? 0) < 0.05 && e.rpm > e.profile.redline * 0.45 ? 1 : 0;
+      voz.set({ rpm: e.rpm, load: e.load, cut: e.limiting, crackle, pitch: mix.pitch, gain: mix.gain * (moto ? 0.6 : s.type === 'buseta' ? 0.75 : 0.5), lp: mix.lp, pan: this._panFor({ x: s.x, y: s.y + 0.5, z: s.z }) }, 0.05);
+    }
   }
 
   // ------------------------------------------------------------ armas grabadas
@@ -292,6 +406,7 @@ export class AudioSystem {
 
   suspend(on) {
     if (!this.ctx) return;
+    if (on) for (const v of this.vocesTrafico ?? []) v.silence(0.05);
     if (on) this.ctx.suspend();
     else this.ctx.resume();
   }
@@ -475,8 +590,11 @@ export class AudioSystem {
   }
 
   /** Motor del vehículo del jugador (null = apagado). */
+  /** Motor sintetizado de respaldo (sin AudioWorklet o mientras cargan los granos). */
   setEngine(on, rpm = 0, type = 'car') {
     if (!this.ctx) return;
+    if (!on) this._apagarJugador();
+    if (on && this.motores) return;
     if (on && !this.engine) {
       const o1 = this.ctx.createOscillator();
       const o2 = this.ctx.createOscillator();

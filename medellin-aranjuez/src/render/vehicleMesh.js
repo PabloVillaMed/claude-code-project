@@ -10,7 +10,8 @@ import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
 import { textTexture } from './textures.js';
 import { registerAssets } from './assetManifest.js';
 import { assets } from './assets.js';
-import { VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
+import { vehicleSpec } from '../sim/vehiclePhysics.js';
+import { VEHICLE_VARIANTS, BOX_COLORS } from '../sim/vehicleVariants.js';
 import { groundHeight, terrainHeight } from '../sim/terrain.js';
 
 // Las vías se dibujan un poco por encima del terreno (cityRenderer: `lift` de
@@ -42,7 +43,7 @@ const chromeMat = () => shared('chrome', () => new THREE.MeshStandardMaterial({ 
 
 // ======================================================= modelos glTF externos
 registerAssets(
-  ['hatchback', 'sedan', 'suv', 'buseta', 'moto'].map((m) => ({ key: `vehiculos/${m}`, type: 'gltf', url: `models/vehiculos/${m}.glb` })),
+  [...new Set(Object.values(VEHICLE_VARIANTS).map((v) => v.model))].map((m) => ({ key: `vehiculos/${m}`, type: 'gltf', url: `models/vehiculos/${m}.glb` })),
 );
 
 /**
@@ -61,7 +62,24 @@ const MODEL_CFG = {
   buseta: { model: 'buseta', hBlend: 0.5, seat: { x: -0.24, z: -0.39, drop: 1.75 } },
   // Moto: el faro y el stop se añaden como mallas (medidas ya escaladas).
   moto: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.2 }, headY: 0.9, headZ: 0.24, tailY: 0.72, tailZ: 0.08 },
+  // Variantes (ver sim/vehicleVariants.js).
+  taxi_pequeno: { model: 'hatch_pequeno', hBlend: 0.3, seat: { x: -0.2, z: 0.02, drop: 1.05 } },
+  taxi_sedan: { model: 'sedan_compacto', hBlend: 0.3, seat: { x: -0.21, z: 0.04, drop: 1.24 } },
+  sedan_compacto: { model: 'sedan_compacto', hBlend: 0.3, seat: { x: -0.21, z: 0.04, drop: 1.24 } },
+  hatch_pequeno: { model: 'hatch_pequeno', hBlend: 0.3, seat: { x: -0.2, z: 0.02, drop: 1.05 } },
+  hatch_compacto: { model: 'hatch_compacto', hBlend: 0.3, seat: { x: -0.2, z: 0.04, drop: 1.05 } },
+  clasico: { model: 'clasico', hBlend: 0.4, seat: { x: -0.2, z: -0.08, drop: 1.32 } },
+  suv_compacta: { model: 'suv_compacta', hBlend: 0.3, seat: { x: -0.21, z: 0.02, drop: 0.98 } },
+  suv_mediana: { model: 'suv_mediana', hBlend: 0.3, seat: { x: -0.21, z: 0.0, drop: 1.08 } },
+  domicilio: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.2 }, headY: 0.9, headZ: 0.24, tailY: 0.72, tailZ: 0.08 },
+  moto_2t: { model: 'moto_2t', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.16 }, headY: 0.92, headZ: 0.22, tailY: 0.74, tailZ: 0.1 },
+  moto_enduro: { model: 'moto_enduro', uniform: true, seatAbs: { x: 0, y: 0.3, z: 0.12 }, headY: 1.0, headZ: 0.2, tailY: 0.8, tailZ: 0.1 },
+  moto_tt: { model: 'moto_tt', uniform: true, seatAbs: { x: 0, y: 0.3, z: 0.18 }, headY: 1.02, headZ: 0.24, tailY: 0.82, tailZ: 0.2 },
+  scooter: { model: 'scooter', uniform: true, seatAbs: { x: 0, y: 0.24, z: 0.2 }, headY: 0.9, headZ: 0.16, tailY: 0.72, tailZ: 0.06 },
 };
+
+/** Configuración del modelo de una variante (o la del tipo). */
+const cfgOf = (type, variant) => (variant && MODEL_CFG[variant]) || MODEL_CFG[type];
 
 // Materiales PBR compartidos por clave de material del modelo normalizado.
 const MODEL_MATS = {
@@ -205,14 +223,15 @@ const templates = new Map();
  * calcomanías, techo y puesto. Se crea una vez; cada instancia la clona
  * (comparte geometrías y materiales, salvo pintura y luces).
  */
-function modelTemplate(type) {
-  if (templates.has(type)) return templates.get(type);
-  const cfg = MODEL_CFG[type];
+function modelTemplate(type, variant = null) {
+  const key = variant && MODEL_CFG[variant] ? variant : type;
+  if (templates.has(key)) return templates.get(key);
+  const cfg = cfgOf(type, variant);
   const gltf = cfg && assets.gltf(`vehiculos/${cfg.model}`);
   const src = gltf?.scene?.getObjectByName('carroceria');
   // Sin modelo (no cargó o aún no se cargan los assets): respaldo procedural.
   if (!src) return null;
-  const spec = VEHICLE_TYPES[type];
+  const spec = vehicleSpec(type, variant);
   const root = src.parent;
   root.updateMatrixWorld(true);
   const bodyBox = new THREE.Box3().setFromObject(src);
@@ -331,7 +350,7 @@ function modelTemplate(type) {
   if (cfg.seat) tpl.seat = { x: cfg.seat.x * W, y: roofY - cfg.seat.drop, z: cfg.seat.z * L };
   else tpl.seat = { ...(cfg.seatAbs ?? { x: 0, y: 0.34, z: 0.12 }) };
   if (type === 'moto') tpl.ride = motoRidePoints(body, tpl.seat, box);
-  templates.set(type, tpl);
+  templates.set(key, tpl);
   return tpl;
 }
 
@@ -396,7 +415,8 @@ export class VehicleView {
     this.lights = { head: null, tail: null, bar: [] };
     this.color = opts.color ?? PAINTS[Math.floor(Math.random() * PAINTS.length)];
     this.lights.sign = null;
-    const tpl = opts.procedural ? null : modelTemplate(type);
+    this.variant = opts.variant ?? null;
+    const tpl = opts.procedural ? null : modelTemplate(type, this.variant);
     this.fromModel = !!tpl;
     if (tpl) this._buildFromModel(tpl, opts);
     else if (type === 'moto') this._buildMoto(opts);
@@ -445,6 +465,29 @@ export class VehicleView {
     bar.position.set(0, y, z);
     bar.traverse((o) => o.isMesh && (o.castShadow = true));
     this.chassis.add(bar);
+  }
+
+  /**
+   * Caja térmica de domicilios en la parrilla, detrás del conductor: un color
+   * de plataforma, tapa y franja reflectiva, sin logos.
+   */
+  _deliveryBox(tpl, opts) {
+    const color = opts.boxColor ?? BOX_COLORS[Math.floor(Math.random() * BOX_COLORS.length)];
+    const shell = shared(`box-${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.55 }));
+    const dark = shared('box-lid', () => new THREE.MeshStandardMaterial({ color: 0x1d1e20, roughness: 0.7 }));
+    const band = shared('box-band', () => new THREE.MeshStandardMaterial({ color: 0xd8dadc, roughness: 0.25, metalness: 0.6 }));
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(shared('box-geo', () => new RoundedBoxGeometry(0.44, 0.4, 0.42, 2, 0.04)), shell);
+    body.position.y = 0.2;
+    const lid = new THREE.Mesh(shared('box-lid-geo', () => new RoundedBoxGeometry(0.46, 0.05, 0.44, 2, 0.02)), dark);
+    lid.position.y = 0.41;
+    const strip = new THREE.Mesh(shared('box-band-geo', () => new THREE.BoxGeometry(0.445, 0.035, 0.425)), band);
+    strip.position.y = 0.12;
+    g.add(body, lid, strip);
+    // Sobre la parrilla: un poco más atrás del sillín, apoyada a su altura.
+    g.position.set(0, tpl.ride.seatY - 0.02, Math.min(tpl.box.max.z - 0.24, tpl.seat.z + 0.5));
+    g.traverse((o) => o.isMesh && ((o.castShadow = true), (o.receiveShadow = true)));
+    this.chassis.add(g);
   }
 
   /** Vehículo a partir del modelo glTF normalizado (ver modelTemplate). */
@@ -526,6 +569,7 @@ export class VehicleView {
         this.chassis.add(tl);
       }
     }
+    if (VEHICLE_VARIANTS[this.variant]?.box && tpl.ride) this._deliveryBox(tpl, opts);
     this.seat = { ...tpl.seat };
     // Para el personaje que la maneja (characterRig lee group.userData.ride).
     if (tpl.ride) this.group.userData.ride = { ...tpl.ride, speed: 0 };

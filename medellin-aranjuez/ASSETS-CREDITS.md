@@ -38,6 +38,16 @@ MIT, CC-BY (con atribución aquí y en el menú de créditos).
 | Vehículo: camioneta y patrulla ("Urban '10 - Low poly model", SUV compacta tipo Duster) | `public/models/vehiculos/suv.glb` | [Sketchfab 2866efdf…](https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d) (GLB vía Objaverse) | Daniel Zhabotinsky | CC BY 4.0 |
 | Vehículo: buseta ("Busscar Micruss", sillas simplificadas) | `public/models/vehiculos/buseta.glb` | [Sketchfab 60c006be…](https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0) (GLB vía Objaverse) | Red Fox (nokillnando) | CC BY 4.0 |
 | Vehículo: moto ("pulsar 135 ls", Bajaj Pulsar 135 LS) | `public/models/vehiculos/moto.glb` | [Sketchfab 36d04d99…](https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5) (GLB vía Objaverse) | Emanuel Restrepo Vélez (e-restrepo1114) | CC BY 4.0 |
+| Vehículo: camioneta compacta ("2011 Dacia (Renault) Duster"; logos quitados, detalles a color de vértice, malla simplificada) | `public/models/vehiculos/suv_compacta.glb` | [Sketchfab 30bc2e09…](https://sketchfab.com/3d-models/2011-dacia-renault-duster-30bc2e09de66426bb67be72c95fa2476) (GLB vía Objaverse) | razor24 | CC BY 4.0 |
+| Vehículo: camioneta mediana ("2015 Hyundai Tucson"; logos quitados, simplificada) | `public/models/vehiculos/suv_mediana.glb` | [Sketchfab 7674a3bd…](https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589) (GLB vía Objaverse) | razor24 | CC BY 4.0 |
+| Vehículo: carro clásico, furgoneta ("renault 4L") | `public/models/vehiculos/clasico.glb` | [Sketchfab cfb86acd…](https://sketchfab.com/3d-models/renault-4l-cfb86acde13541a7a6e45b46183580c3) (GLB vía Objaverse) | Mohamed Fsili (medraphc) | CC BY 4.0 |
+| Vehículo: hatchback pequeño, particular y taxi ("Low Poly Nissan Micra K11") | `public/models/vehiculos/hatch_pequeno.glb` | [Sketchfab b174848b…](https://sketchfab.com/3d-models/low-poly-nissan-micra-k11-b174848b63704c9990c164c03eaac9f6) (GLB vía Objaverse) | tatsuteb | CC BY 4.0 |
+| Vehículo: sedán compacto, particular y taxi ("Renault Logan 2004"; placas y letreros quitados, textura pasada a color de vértice) | `public/models/vehiculos/sedan_compacto.glb` | [Sketchfab e4f9463f…](https://sketchfab.com/3d-models/renault-logan-2004-e4f9463f6e004b90bb977d12f6375b9c) (GLB vía Objaverse) | Denis Petrushin (goooddenis) | CC BY 4.0 |
+| Vehículo: hatchback compacto ("Milano '95 - Low poly model"; sin insignias ni placas) | `public/models/vehiculos/hatch_compacto.glb` | [Sketchfab 122a22d2…](https://sketchfab.com/3d-models/milano-95-low-poly-model-122a22d210234596ad23623588d0d166) (GLB vía Objaverse) | Daniel Zhabotinsky | CC BY 4.0 |
+| Vehículo: moto clásica de dos tiempos ("RX115") | `public/models/vehiculos/moto_2t.glb` | [Sketchfab c05d91c7…](https://sketchfab.com/3d-models/rx115-c05d91c775e947c5afa27197db08687a) (GLB vía Objaverse) | Emanuel Restrepo Vélez (e-restrepo1114) | CC BY 4.0 |
+| Vehículo: moto enduro ("Dt125") | `public/models/vehiculos/moto_enduro.glb` | [Sketchfab c541e042…](https://sketchfab.com/3d-models/dt125-c541e042f7804c3e814db6104a95b28d) (GLB vía Objaverse) | Emanuel Restrepo Vélez (e-restrepo1114) | CC BY 4.0 |
+| Vehículo: moto doble propósito ("Akt Tt Ds 200") | `public/models/vehiculos/moto_tt.glb` | [Sketchfab e9c1ff9a…](https://sketchfab.com/3d-models/akt-tt-ds-200-e9c1ff9a40494ea59c2263fd3d6ea477) (GLB vía Objaverse) | Emanuel Restrepo Vélez (e-restrepo1114) | CC BY 4.0 |
+| Vehículo: scooter ("honda-smart-dio-z4-2006-1"; coloreado por zonas) | `public/models/vehiculos/scooter.glb` | [Sketchfab ef606060…](https://sketchfab.com/3d-models/honda-smart-dio-z4-2006-1-ef6060608fe04cacbf6d4c817f494d6c) (GLB vía Objaverse) | PhotoCanon (AlexanderChen394) | CC BY 4.0 |
 | Utilería: Plastic Monobloc Chair 01 (Silla plástica de tienda de barrio, 900 triángulos) | `public/models/utileria/silla_plastica.glb` | [https://polyhaven.com/a/plastic_monobloc_chair_01](https://polyhaven.com/a/plastic_monobloc_chair_01) | Kuutti Siitonen | CC0 |
 | Utilería: Plastic Crate 02 (Canasta de cerveza (tiendas), 716 triángulos) | `public/models/utileria/canasta.glb` | [https://polyhaven.com/a/plastic_crate_02](https://polyhaven.com/a/plastic_crate_02) | Fabi_G | CC0 |
 | Utilería: Metal Trash Can (Caneca de basura, 998 triángulos) | `public/models/utileria/caneca.glb` | [https://polyhaven.com/a/metal_trash_can](https://polyhaven.com/a/metal_trash_can) | GurJas Studios | CC0 |
@@ -93,6 +103,21 @@ se pueden redistribuir dentro del juego. Se evaluaron además:
   aporta ya lo resuelven las capas por código del rig).
 - **Mixamo** (Adobe): requiere cuenta y su licencia no permite redistribuir
   los archivos de animación sueltos; descartado.
+
+## Sonidos de motor
+
+Explosiones sueltas ("granos") cortadas de grabaciones reales por
+`scripts/assets/motores.mjs` y empacadas en `public/sounds/motor/motor.ogg`
+(+ `motor.json`). El juego las vuelve a disparar al ritmo de las revoluciones
+(síntesis granular, `src/game/engineWorklet.js`). Todas CC0 (vista previa HQ
+pública de Freesound).
+
+| Recurso | Archivo | Fuente | Autor | Licencia |
+|---|---|---|---|---|
+| Moto en ralentí ("Motorcycle_Yamaha_Tenere_250CC_Enduro_Idle.wav"), banco sin carga de las motos | `public/sounds/motor/motor.ogg` | [Freesound 510231](https://freesound.org/people/Singular_Estudio/sounds/510231/) | Singular_Estudio | CC0 |
+| Moto 125 andando ("Jerry Honda 125 slow follow & ride off.wav"), banco con carga de las motos | `public/sounds/motor/motor.ogg` | [Freesound 574325](https://freesound.org/people/3bagbrew/sounds/574325/) | 3bagbrew | CC0 |
+| Carro ("Sedan engine loop"), banco de los carros | `public/sounds/motor/motor.ogg` | [Freesound 748027](https://freesound.org/people/Dmitry_mansurev64/sounds/748027/) | Dmitry_mansurev64 | CC0 |
+| Diésel ("Diesel engine idling"), banco de la buseta | `public/sounds/motor/motor.ogg` | [Freesound 705386](https://freesound.org/people/chungus43A/sounds/705386/) | chungus43A | CC0 |
 
 ## Sonidos de armas
 

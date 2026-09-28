@@ -8,6 +8,7 @@ import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
 import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
+import { VEHICLE_VARIANTS, defaultVariant } from '../sim/vehicleVariants.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
 import { MissionSystem, createMissionDefs } from '../sim/missions.js';
@@ -631,6 +632,7 @@ export class Game {
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
     this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
+    this.audio.updateTraffic(this.world.vehicles, dt, p.vehicle);
     this._ambientAudio(dt);
     this.pickups.update(dt, p);
     this._updateMissions(dt);
@@ -847,7 +849,7 @@ export class Game {
     if (this._stepBoarding(dt, a)) {
       // (Freno solo si va hacia delante: quieto, el freno es reversa.)
       stepVehicle(s, { throttle: s.forwardSpeed < -0.3 ? 0.6 : 0, brake: s.forwardSpeed > 0.3 ? 1 : 0, steer: 0, handbrake: true }, dt, { groundHeight, collision: this.city.collision });
-      this.audio.setEngine(true, 0.2, s.type);
+      this.audio.drive(s, { throttle: 0, brake: 0 }, dt);
       return;
     }
     const input = { throttle: a.throttle, brake: a.brake, steer: a.steer, handbrake: a.handbrake };
@@ -886,14 +888,8 @@ export class Game {
       if (impact > 16) this.combat.damagePlayer((impact - 16) * 2, null);
     }
     this.stats.distance += Math.abs(s.forwardSpeed) * dt;
-    // Motor con cambios: las revoluciones suben en cada marcha y caen al cambiar.
-    const ratio = Math.min(1, Math.abs(s.forwardSpeed) / s.spec.maxSpeed);
-    const GEARS = s.type === 'buseta' ? [0, 0.22, 0.45, 0.7, 1.01] : [0, 0.17, 0.35, 0.55, 0.77, 1.01];
-    let gi = 0;
-    while (gi < GEARS.length - 2 && ratio > GEARS[gi + 1]) gi++;
-    const inGear = (ratio - GEARS[gi]) / (GEARS[gi + 1] - GEARS[gi]);
-    const rpm = Math.min(1, 0.22 + inGear * 0.72 + a.throttle * 0.08 + (s.slip > 3 ? 0.1 : 0));
-    this.audio.setEngine(true, rpm, s.type);
+    // Motor: caja de cambios simulada y explosiones grabadas (audio.drive).
+    this.audio.drive(s, a, dt);
     this._skid(v, a, dt);
     this.audio.horn(a.horn);
     if (a.horn) this.world.addThreat(s.x, s.z, 12, 0.3);
@@ -955,7 +951,6 @@ export class Game {
     // Cámara detrás del vehículo.
     this.camRig.yaw = v.state.heading;
     this.audio.init();
-    this.audio.setEngine(true, 0, v.type);
   }
 
   exitVehicle(force = false) {
@@ -1087,7 +1082,9 @@ export class Game {
         case 'spawnVehicle': {
           const poi = this.city.pois.find((x) => x.id === e.at) ?? this.city.pois.find((x) => x.id === 'taller');
           const lp = this.world.lanePointNear(poi.x - 8, poi.z);
-          const v = new VehicleEntity(this.world, e.vehicle, lp.x, lp.z, lp.yaw, { kind: 'parked', color: 0xd62828 });
+          // La del pique es la moto de siempre; la de los domicilios lleva caja.
+          const variant = e.vehicle === 'moto' ? (e.at === 'taller' ? 'moto' : 'domicilio') : defaultVariant(e.vehicle);
+          const v = new VehicleEntity(this.world, e.vehicle, lp.x, lp.z, lp.yaw, { kind: 'parked', color: 0xd62828, variant });
           this.world.vehicles.push(v);
           this.player.lastVehicle = v;
           this.hud.help(e.at === 'taller' ? 'Súbete a la moto roja (<kbd>F</kbd>) y pasa por todos los checkpoints antes de que se acabe el tiempo.' : 'Ahí está la moto roja del negocio (<kbd>F</kbd>): haz las entregas antes de que se enfríe el pedido.', 7);
@@ -1446,6 +1443,7 @@ export class Game {
           yaw: p.yaw,
           inVehicle: p.inVehicle,
           vehicleType: p.vehicle?.type ?? null,
+          vehicleVariant: p.vehicle?.state.variant ?? null,
           speed: p.speed,
           speedKmh: p.vehicle ? speedKmh(p.vehicle.state) : p.speed * 3.6,
           onGround: p.state.onGround,
@@ -1512,9 +1510,10 @@ export class Game {
       giveAll() {
         for (const w of WEAPONS) g.player.inventory.give(w.id);
       },
-      spawnVehicle(type = 'taxi') {
+      spawnVehicle(type = 'taxi', variant = undefined) {
         const lp = g.world.lanePointNear(g.player.x, g.player.z);
-        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked' });
+        // Sin variante: la del modelo original del tipo (pruebas reproducibles).
+        const v = new VehicleEntity(g.world, type, lp.x, lp.z, lp.yaw, { kind: 'parked', variant: variant ?? defaultVariant(type) });
         g.world.vehicles.push(v);
         return { x: lp.x, z: lp.z, heading: lp.yaw };
       },
@@ -1587,6 +1586,17 @@ export class Game {
       pause: () => g.pause(),
       resume: () => g.resume(),
       vehicleTypes: () => Object.keys(VEHICLE_TYPES),
+      vehicleVariants: () => Object.keys(VEHICLE_VARIANTS),
+      engineStatus: () => g.audio.engineStatus?.() ?? null,
+      /** Vehículos por clase (traffic/parked/police) y variante. */
+      vehicleCensus() {
+        const out = {};
+        for (const v of g.world.vehicles) {
+          const k = `${v.kind}:${v.state.variant ?? v.type}`;
+          out[k] = (out[k] ?? 0) + 1;
+        }
+        return out;
+      },
       screenshotHudHidden(on) {
         g.hud.show(!on);
       },
