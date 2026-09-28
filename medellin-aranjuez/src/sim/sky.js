@@ -7,7 +7,7 @@ import { clamp, smoothstep } from './math.js';
 import { mulberry32 } from './rng.js';
 
 /** Parámetros de la atmósfera del valle (aire con algo de bruma). */
-export const ATMOSPHERE = { turbidity: 5, rayleigh: 1.6, mieCoefficient: 0.004, mieDirectionalG: 0.76 };
+export const ATMOSPHERE = { turbidity: 3.5, rayleigh: 1.9, mieCoefficient: 0.004, mieDirectionalG: 0.78 };
 
 const norm = (x, y, z) => {
   const l = Math.hypot(x, y, z) || 1;
@@ -43,10 +43,17 @@ const EE = 1000;
 const RAYLEIGH_ZENITH = 8.4e3;
 const MIE_ZENITH = 1.25e3;
 
+/** Tinte del resplandor del sol en la hora dorada (también en render/sky.js). */
+export const GOLD = [1.0, 0.78, 0.5];
+
 /** Coeficientes que solo dependen del sol (se calculan una vez por horneado). */
 export function skyCoefficients(sunDir, atm = ATMOSPHERE) {
-  const zc = clamp(sunDir.y, -1, 1);
-  const sunE = EE * Math.max(0, 1 - Math.exp(-(CUTOFF - Math.acos(zc)) / STEEPNESS));
+  // Crepúsculo: con el sol recién puesto el modelo deja el cielo negro de
+  // golpe; se mantiene la luz del sol "en el horizonte" y se apaga del todo
+  // cuando baja ~11° (fin del crepúsculo náutico, ~40 min después).
+  const zc = clamp(Math.max(sunDir.y, -0.01), -1, 1);
+  const dusk = sunDir.y < -0.01 ? smoothstep(-0.19, -0.01, sunDir.y) : 1;
+  const sunE = EE * Math.max(0, 1 - Math.exp(-(CUTOFF - Math.acos(zc)) / STEEPNESS)) * dusk;
   // En Sky.js sunPosition es unitario: "sunfade" queda ~1 (rayleigh sin cambio).
   const sunfade = 1 - clamp(1 - Math.exp(sunDir.y / 450000), 0, 1);
   const rc = atm.rayleigh - (1 - sunfade);
@@ -80,14 +87,32 @@ export function skyRadiance(dir, sunDir, co) {
   const mPhase = (1 / (4 * Math.PI)) * ((1 - g * g) / Math.pow(1 - 2 * g * cosT + g * g, 1.5));
   const k = clamp(Math.pow(1 - sunDir.y, 5), 0, 1);
   const bias = [0, 0.0003, 0.00075];
+  // Hora dorada: el resplandor alrededor del sol bajo se entibia (el modelo lo deja casi blanco).
+  const warm = (1 - smoothstep(0.03, 0.3, sunDir.y)) * Math.pow(Math.max(cosT, 0), 6);
+  const tint = GOLD;
   const out = [0, 0, 0];
   for (let i = 0; i < 3; i++) {
     const ratio = (co.betaR[i] * rPhase + co.betaM[i] * mPhase) / (co.betaR[i] + co.betaM[i]);
     let lin = Math.pow(co.sunE * ratio * (1 - fex[i]), 1.5);
     lin *= 1 + (Math.pow(co.sunE * ratio * fex[i], 0.5) - 1) * k;
-    out[i] = (lin + 0.1 * fex[i]) * 0.04 + bias[i];
+    out[i] = ((lin + 0.1 * fex[i]) * 0.04 + bias[i]) * (1 + (tint[i] - 1) * warm);
   }
   return out;
+}
+
+const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+
+/**
+ * Exposición propia del cielo: el modelo de Preetham va de ~0,1 al amanecer
+ * a ~5 al mediodía, y con la exposición del juego el mediodía quedaba blanco
+ * y lavado. Se limita el brillo del cenit (el mediodía queda azul profundo);
+ * al amanecer y al atardecer no se toca (factor 1).
+ */
+export function skyExposure(sunDir, co, target = 0.5) {
+  const z = Math.max(lum(skyRadiance({ x: 0, y: 1, z: 0 }, sunDir, co)), 1e-6);
+  // En la hora azul (sol cerca y por debajo del horizonte) se aclara un poco.
+  const boost = 1 + 1.6 * (1 - smoothstep(-0.02, 0.12, sunDir.y));
+  return Math.min(target / z, boost);
 }
 
 /** Color de la luz del sol que llega a las nubes (ya con la exposición del cielo). */

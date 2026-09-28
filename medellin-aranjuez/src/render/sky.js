@@ -12,7 +12,7 @@
 //    bruma de las montañas (render/horizon.js).
 
 import * as THREE from 'three';
-import { skyCoefficients, sunlightColor, skyRadiance, tileableCloudNoise, sunMoved } from '../sim/sky.js';
+import { GOLD, skyCoefficients, skyExposure, sunlightColor, skyRadiance, tileableCloudNoise, sunMoved } from '../sim/sky.js';
 import { clamp, smoothstep } from '../sim/math.js';
 
 const BAKE_FRAG = /* glsl */ `
@@ -21,6 +21,8 @@ const BAKE_FRAG = /* glsl */ `
   uniform vec3 uBetaR;
   uniform vec3 uBetaM;
   uniform float uMieG;
+  uniform float uScale;
+  uniform vec3 uGold;
   varying vec2 vUv;
   const float PI = 3.141592653589793;
   void main() {
@@ -39,6 +41,10 @@ const BAKE_FRAG = /* glsl */ `
     vec3 lin = pow( uSunE * ratio * ( 1.0 - fex ), vec3( 1.5 ) );
     lin *= mix( vec3( 1.0 ), pow( uSunE * ratio * fex, vec3( 0.5 ) ), clamp( pow( 1.0 - uSunDir.y, 5.0 ), 0.0, 1.0 ) );
     vec3 c = ( lin + 0.1 * fex ) * 0.04 + vec3( 0.0, 0.0003, 0.00075 );
+    // Hora dorada: resplandor tibio alrededor del sol bajo (igual que sim/sky.js skyRadiance).
+    float warm = ( 1.0 - smoothstep( 0.03, 0.3, uSunDir.y ) ) * pow( max( cosT, 0.0 ), 6.0 );
+    c *= mix( vec3( 1.0 ), uGold, warm );
+    c *= uScale; // exposición propia del cielo (skyExposure)
     // Debajo del horizonte (solo lo ven los reflejos): un poco más oscuro, como el valle.
     c *= mix( 1.0, 0.55, smoothstep( 0.0, -0.25, dir.y ) );
     gl_FragColor = vec4( c, 1.0 );
@@ -92,7 +98,9 @@ const DOME_FRAG = /* glsl */ `
     float cp8 = cp2 * cp2; cp8 *= cp8;
     float halo = pow( cp8, 40.0 ) * 0.9 + pow( cp8, 6.0 ) * 0.12; // ~cos^320 y ~cos^48
     col += uSunTint * halo * uSunVis;
-    col += uSunTint * 7.0 * smoothstep( 0.99997, 0.999985, cs ) * uSunVis;
+    // El disco va aparte: solo él pasa del umbral del bloom (un destello pequeño, no un cielo blanco).
+    vec3 disk = uSunTint * 7.0 * smoothstep( 0.99997, 0.999985, cs ) * uSunVis;
+    float cloudA = 0.0;
 
     // Noche: estrellas (pocas: la luz de la ciudad las apaga cerca del horizonte) y luna.
     if ( uNight > 0.02 ) {
@@ -152,7 +160,8 @@ const DOME_FRAG = /* glsl */ `
       cc += vec3( 0.075, 0.05, 0.035 ) * uNight + vec3( 0.012, 0.016, 0.024 ) * uMoonVis;
       // Perspectiva aérea: las lejanas se funden con el cielo.
       cc = mix( cc, col, ( 1.0 - smoothstep( 0.03, 0.4, d.y ) ) * 0.65 );
-      col = mix( col, cc, dens * fade * 0.96 );
+      cloudA = dens * fade * 0.96;
+      col = mix( col, cc, cloudA );
       #ifndef SKY_LOW
         // Cirros: vetas altas y delgadas.
         float ci = texture2D( uNoise, cpl * vec2( 0.035, 0.11 ) + uWind.wz ).b;
@@ -163,11 +172,15 @@ const DOME_FRAG = /* glsl */ `
 
     // Cerca del horizonte, el mismo aire de la niebla y de las montañas.
     col = mix( col, uFog, uFogK * ( 1.0 - smoothstep( -0.02, 0.16, d.y ) ) );
-    gl_FragColor = vec4( min( col, vec3( 9.0 ) ), 1.0 );
+    col = min( col, vec3( 4.0 ) ) + disk * ( 1.0 - cloudA );
+    gl_FragColor = vec4( col, 1.0 );
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `;
+
+/** Luminancia del cenit de día (ver sim/sky.js skyExposure): cielo azul, no blanco. */
+const SKY_TARGET = 0.35;
 
 export class SkyDome {
   /**
@@ -191,7 +204,7 @@ export class SkyDome {
     this.lut.texture.mapping = THREE.EquirectangularReflectionMapping;
 
     this.bakeMat = new THREE.ShaderMaterial({
-      uniforms: { uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunE: { value: 0 }, uBetaR: { value: new THREE.Vector3() }, uBetaM: { value: new THREE.Vector3() }, uMieG: { value: 0.76 } },
+      uniforms: { uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunE: { value: 0 }, uBetaR: { value: new THREE.Vector3() }, uBetaM: { value: new THREE.Vector3() }, uMieG: { value: 0.76 }, uScale: { value: 1 }, uGold: { value: new THREE.Vector3().fromArray(GOLD) } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4( position.xy, 0.0, 1.0 ); }',
       fragmentShader: BAKE_FRAG,
       depthTest: false,
@@ -261,6 +274,8 @@ export class SkyDome {
     u.uBetaR.value.fromArray(co.betaR);
     u.uBetaM.value.fromArray(co.betaM);
     u.uMieG.value = co.mieG;
+    const scale = skyExposure(sunDir, co, SKY_TARGET);
+    u.uScale.value = scale;
     const r = this.renderer;
     const prev = r.getRenderTarget();
     const xr = r.xr.enabled;
@@ -273,11 +288,18 @@ export class SkyDome {
 
     // Colores que dependen solo del sol (CPU, una vez por horneado).
     const sl = sunlightColor(sunDir, co);
-    const k = 0.5; // las nubes, a la par del cielo (sin encandilar el bloom)
+    // Nubes: más claras que el cielo pero sin encandilar el bloom (luminancia máx. ~1,6).
+    let k = scale * 1.4;
+    const l = (0.2126 * sl[0] + 0.7152 * sl[1] + 0.0722 * sl[2]) * k;
+    if (l > 1.6) k *= 1.6 / l;
+    // Al atardecer la luz rasante es muy roja y débil: sin esto las nubes quedaban
+    // color vino; se aclaran hacia el naranja mientras el sol siga cerca del horizonte.
+    else if (l > 1e-5 && l < 0.7) k *= Math.min(4, 0.7 / l) * smoothstep(-0.16, -0.02, sunDir.y);
     this.uniforms.uSunLight.value.setRGB(sl[0] * k, sl[1] * k, sl[2] * k);
     const zen = skyRadiance({ x: 0, y: 1, z: 0 }, sunDir, co);
     const side = skyRadiance({ x: -sunDir.x, y: 0.35, z: -sunDir.z }, sunDir, co);
-    this.uniforms.uAmbient.value.setRGB((zen[0] + side[0]) * 0.5, (zen[1] + side[1]) * 0.5, (zen[2] + side[2]) * 0.5);
+    const a = 0.5 * scale;
+    this.uniforms.uAmbient.value.setRGB((zen[0] + side[0]) * a, (zen[1] + side[1]) * a, (zen[2] + side[2]) * a);
     // Tinte del disco: el color del sol atravesando el aire (rojizo al ponerse).
     const t = [0, 1, 2].map((i) => Math.max(sl[i], 1e-6));
     const m = Math.max(...t);

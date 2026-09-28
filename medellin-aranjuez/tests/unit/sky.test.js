@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudCover, moonDirection, skyCoefficients, skyRadiance, sunDirection, sunMoved, sunlightColor, tileableCloudNoise, transmittance } from '../../src/sim/sky.js';
+import { cloudCover, skyExposure, moonDirection, skyCoefficients, skyRadiance, sunDirection, sunMoved, sunlightColor, tileableCloudNoise, transmittance } from '../../src/sim/sky.js';
 
 describe('sol y luna', () => {
   it('el sol sale por el oriente (+X) a las 6, está alto a mediodía y se pone al occidente', () => {
@@ -46,6 +46,26 @@ describe('dispersión atmosférica', () => {
     expect(co.sunE).toBe(0);
     const c = skyRadiance(up, s, co);
     expect(Math.max(...c)).toBeLessThan(0.01);
+  });
+
+  it('exposición propia del cielo: el mediodía queda azul (no blanco) y la hora azul se aclara', () => {
+    const noon = sunDirection(12);
+    const co = skyCoefficients(noon);
+    const k = skyExposure(noon, co, 0.35);
+    expect(k).toBeLessThan(0.2);
+    const z = skyRadiance({ x: 0, y: 1, z: 0 }, noon, co).map((v) => v * k);
+    expect(0.2126 * z[0] + 0.7152 * z[1] + 0.0722 * z[2]).toBeCloseTo(0.35, 2);
+    expect(z[2]).toBeGreaterThan(z[0] * 2);
+    const dusk = sunDirection(18.1);
+    expect(skyExposure(dusk, skyCoefficients(dusk), 0.35)).toBeGreaterThan(1);
+  });
+
+  it('crepúsculo: con el sol recién puesto el cielo todavía tiene luz', () => {
+    const s = sunDirection(18.15);
+    expect(s.y).toBeLessThan(0);
+    const c = skyRadiance({ x: s.x, y: 0.05, z: s.z }, s, skyCoefficients(s));
+    expect(Math.max(...c)).toBeGreaterThan(0.005);
+    expect(c[0]).toBeGreaterThan(c[2]);
   });
 
   it('la transmitancia está entre 0 y 1 y baja hacia el horizonte', () => {
