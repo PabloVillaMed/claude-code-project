@@ -17,6 +17,7 @@ const TYPES = {
   '.webp': 'image/webp',
   '.hdr': 'image/vnd.radiance',
   '.ktx2': 'image/ktx2',
+  '.ogg': 'audio/ogg',
 };
 
 export function serveDist(port = 4180, root = path.resolve('dist')) {
@@ -28,7 +29,23 @@ export function serveDist(port = 4180, root = path.resolve('dist')) {
       res.end();
       return;
     }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] ?? 'application/octet-stream' });
+    const type = TYPES[path.extname(file)] ?? 'application/octet-stream';
+    // Rangos de bytes: la música de la radio va en streaming con <audio>.
+    const size = fs.statSync(file).size;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+    if (m && (m[1] || m[2])) {
+      const a = m[1] ? +m[1] : Math.max(0, size - +m[2]);
+      const b = m[1] && m[2] ? Math.min(+m[2], size - 1) : size - 1;
+      if (a >= size || a > b) {
+        res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+        res.end();
+        return;
+      }
+      res.writeHead(206, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${a}-${b}/${size}`, 'Content-Length': b - a + 1 });
+      fs.createReadStream(file, { start: a, end: b }).pipe(res);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': size });
     fs.createReadStream(file).pipe(res);
   });
   return new Promise((resolve) => server.listen(port, () => resolve(server)));

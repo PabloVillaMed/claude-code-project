@@ -174,6 +174,58 @@ test('moto: aceleración y giro', async () => {
   await G(() => window.__game.exitVehicle());
 });
 
+test('radio: suena al subirse, Q / Z cambian de emisora, se calla en pausa y al bajarse', async () => {
+  await G((S) => {
+    window.__game.teleport(S.x, S.z);
+    const v = window.__game.spawnVehicle('sedan');
+    window.__game.teleport(v.x + Math.cos(v.heading) * 1.9, v.z - Math.sin(v.heading) * 1.9);
+  }, S);
+  await frames(2);
+  let r = await G(() => window.__game.radio());
+  expect(r.encendida).toBe(false); // a pie no suena la radio
+  await page.keyboard.press('KeyF');
+  await frames(3);
+  expect((await st()).inVehicle).toBe(true);
+  await page.waitForFunction(() => window.__game.radio().cargada && window.__game.radio().encendida, null, { timeout: 60000 });
+  r = await G(() => window.__game.radio());
+  expect(r.dial).toBeGreaterThanOrEqual(0);
+  expect(r.emisora).toBe(r.emisoras[r.dial]);
+  expect(r.pista).toBeTruthy();
+  await page.waitForFunction(() => window.__game.radio().reproduciendo, null, { timeout: 60000 });
+  await expect(page.locator('#radio-hud .r-nombre')).not.toBeEmpty();
+  // Q: siguiente emisora (con su letrero); Z: vuelve a la anterior.
+  await page.keyboard.press('KeyQ');
+  await frames(3);
+  const r2 = await G(() => window.__game.radio());
+  expect(r2.dial).toBe(r.dial + 1 < r.emisoras.length ? r.dial + 1 : -1);
+  await expect(page.locator('#radio-hud .r-nombre')).toHaveText(new RegExp(r2.emisoraNombre.split(' ')[0], 'i'));
+  await page.keyboard.press('KeyZ');
+  await frames(3);
+  expect((await G(() => window.__game.radio())).dial).toBe(r.dial);
+  // El dial pasa por "Radio apagada".
+  let off = null;
+  for (let i = 0; i <= r.emisoras.length && off == null; i++) {
+    await page.keyboard.press('KeyQ');
+    await frames(2);
+    const x = await G(() => window.__game.radio());
+    if (x.dial === -1) off = x;
+  }
+  expect(off?.encendida).toBe(false);
+  await page.keyboard.press('KeyQ');
+  await frames(3);
+  expect((await G(() => window.__game.radio())).encendida).toBe(true);
+  // En pausa se detiene.
+  await G(() => window.__game.pause());
+  await frames(3);
+  expect((await G(() => window.__game.radio())).reproduciendo).toBe(false);
+  await G(() => window.__game.resume());
+  await frames(3);
+  // Al bajarse se apaga.
+  await G(() => window.__game.exitVehicle());
+  await page.waitForFunction(() => !window.__game.radio().encendida && window.__game.radio().ganancia < 0.05, null, { timeout: 30000 });
+  expect(errors).toEqual([]);
+});
+
 test('animaciones: subirse y bajarse del carro con animación, gestos con G', async () => {
   await G((S) => {
     window.__game.teleport(S.x, S.z);

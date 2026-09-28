@@ -450,7 +450,8 @@ export class Game {
       if (a.map || a.pause) this.closeMap();
       else this.hud.drawFullMap(this._hudState());
     }
-    this.radio.update(dt);
+    // La música corre en tiempo real (el <audio> no se frena con el juego).
+    this.radio.update(Math.min(Math.max(realDt, 0), 2));
     const focus = (this._focus ??= new THREE.Vector3());
     if (this.state === 'playing' || this.state === 'paused') focus.set(this.player.x, this.player.y, this.player.z);
     else focus.copy(this.camRig.pos).setY(0);

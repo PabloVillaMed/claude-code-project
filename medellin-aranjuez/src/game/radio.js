@@ -121,6 +121,7 @@ class Canal {
   }
 
   detener() {
+    if (!this.key && !this.el.getAttribute('src')) return;
     this.pausar();
     this.key = null;
     this.nivel = 0;
@@ -282,6 +283,8 @@ export class RadioSystem {
     const prog = e ? this._programa(e) : null;
     if (prog) {
       const key = `${e.id}/${prog.pista.id}`;
+      // Si la pista terminó antes que la programación (arrancó tarde), se adelanta el reloj.
+      if (this.carro.key === key && this.carro.el.ended) this.reloj += Math.max(0, (this.duracion[e.id][prog.pista.id] ?? 0) - prog.offset) + PAUSA_ENTRE_PISTAS;
       if (this.carro.key !== key) {
         this.carro.cargar(key, rutaPista(e, prog.pista), prog.offset);
         this.hud.pista(prog.pista, e.color);
