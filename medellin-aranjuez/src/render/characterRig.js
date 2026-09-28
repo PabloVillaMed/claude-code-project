@@ -21,10 +21,16 @@
 //   .root, .setWeapon(id), .muzzleWorld(v), .punch(), .animate(dt, st),
 //   .play(nombre, opciones), .stopGesture(), .gesture, .hasClip(n),
 //   .clipInfo(n), .dispose(), .deadBlend
+//
+// Además, para las actividades del barrio (game/activities.js): `st.lookAt`
+// (la cabeza sigue un punto), `st.idle` (qué reposo usa), `st.seat`
+// ('table': sentado a la mesa), `.post(rig, dt)` (pose por código al final
+// de cada actualización: colgar ropa, patear, barrer...) y `.forceProp`
+// (utilería fija en la mano derecha: cigarrillo).
 
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { damp, lerp, clamp } from '../sim/math.js';
+import { damp, lerp, clamp, angleDiff } from '../sim/math.js';
 import { FIDGETS, pickFidget, fidgetDelay } from '../sim/animSelect.js';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
@@ -32,6 +38,8 @@ import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_
 import { weaponModel } from './weaponModels.js';
 
 export { ProceduralRig, buildWeaponMesh };
+// Utilidades de pose para las actividades (render/activityPoses.js).
+export { ik2, pointBone, setWorldQuat };
 
 // ------------------------------------------------------------------ catálogo
 // Ver scripts/assets/rocketbox.mjs (fuente de cada avatar y conversión).
@@ -280,9 +288,11 @@ const LOCO = [
 const STYLE_WALK = { injured: 'walk_injured', drunk: 'walk_drunk', stroll: 'walk_stroll', cool: 'walk_cool' };
 
 // Utilería que aparece en la mano derecha con ciertos clips.
-const PROP_OF = { phone: 'phone', text: 'phone', drink: 'cup' };
+const PROP_OF = { phone: 'phone', text: 'phone', drink: 'cup', smoke_idle: 'cup' };
+const PROP_KINDS = ['cup', 'phone', 'cig'];
 const propMeshes = {};
 function propMesh(kind) {
+  if (kind === 'cig') return cigaretteMesh();
   const shared = (propMeshes[kind] ??=
     kind === 'cup'
       ? // Vaso desechable de gaseosa / tinto.
@@ -293,6 +303,39 @@ function propMesh(kind) {
   mesh.name = kind === 'cup' ? 'vaso' : 'celular';
   mesh.castShadow = false;
   return mesh;
+}
+
+/**
+ * Cigarrillo entre los dedos: papel blanco, filtro y la brasa (sin luz: un
+ * material básico naranja que de noche se ve encendido). Geometría y
+ * materiales compartidos por todos los fumadores.
+ */
+const cigShared = {};
+function cigaretteMesh() {
+  if (!cigShared.g) {
+    cigShared.g = new THREE.CylinderGeometry(0.0045, 0.0045, 0.07, 6);
+    cigShared.g.rotateZ(Math.PI / 2);
+    cigShared.paper = new THREE.MeshStandardMaterial({ color: 0xf2f0ea, roughness: 0.8 });
+    cigShared.fg = new THREE.CylinderGeometry(0.0047, 0.0047, 0.02, 6);
+    cigShared.fg.rotateZ(Math.PI / 2);
+    cigShared.filter = new THREE.MeshStandardMaterial({ color: 0xc98a45, roughness: 0.8 });
+    cigShared.eg = new THREE.SphereGeometry(0.0052, 6, 4);
+    cigShared.ember = new THREE.MeshBasicMaterial({ color: 0xff5a14 });
+  }
+  const g = new THREE.Group();
+  g.name = 'cigarrillo';
+  const paper = new THREE.Mesh(cigShared.g, cigShared.paper);
+  const filter = new THREE.Mesh(cigShared.fg, cigShared.filter);
+  filter.position.x = -0.045;
+  const ember = new THREE.Mesh(cigShared.eg, cigShared.ember);
+  ember.position.x = 0.036;
+  ember.name = 'brasa';
+  g.add(paper, filter, ember);
+  for (const m of [paper, filter, ember]) m.castShadow = false;
+  // El marco del vaso tiene X hacia afuera de la palma: el cigarrillo sale
+  // entre los dedos índice y medio, un poco hacia la punta.
+  g.userData.ember = ember;
+  return g;
 }
 
 const smoothstep = (x) => x * x * (3 - 2 * x);
@@ -309,7 +352,8 @@ export class SkinnedRig {
     this.model.rotation.y = Math.PI; // el avatar mira a +Z; el juego a -Z
     // Estatura: ~1.76 m hombres y ~1.64 m mujeres, con algo de variación.
     const target = tpl.gender === 'f' ? 1.64 : 1.76;
-    const s = (target / tpl.height) * clamp(look.height ?? 1, 0.96, 1.04);
+    // `look.scale`: muchachos (el picadito) un poco más bajitos.
+    const s = (target / tpl.height) * clamp(look.height ?? 1, 0.96, 1.04) * (look.scale ?? 1);
     this.model.scale.setScalar(s);
     this.scale = s;
     this.body.add(this.model);
@@ -367,6 +411,17 @@ export class SkinnedRig {
     this.hipBone = this.bones.Bip01 ?? null;
     this.animHip = this.hipBone ? this.hipBone.position.clone() : null;
     this.footDown = 0;
+    // Giro: velocidad angular (para dar pasos al girar en el sitio e
+    // inclinarse en las curvas).
+    this.yawPrev = null;
+    this.yawRate = 0;
+    this.bank = 0;
+    // Mirar a un punto (cabeza y cuello).
+    this.lookW = 0;
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+    this.post = null;
+    this.forceProp = null;
   }
 
   setWeapon(id) {
@@ -521,7 +576,7 @@ export class SkinnedRig {
     if (idle) {
       this.still += dt;
       if (this.still >= this.nextFidget) {
-        const name = pickFidget(driving ? FIDGETS.sit : FIDGETS.stand, this.lastFidget, Math.random(), (n) => this.hasClip(n));
+        const name = pickFidget(st.fidgets ?? (driving ? FIDGETS.sit : FIDGETS.stand), this.lastFidget, Math.random(), (n) => this.hasClip(n));
         if (name) this.play(name, { fidget: true, fadeIn: 0.45, fadeOut: 0.55 });
         this.lastFidget = name;
         this.nextFidget = this.still + fidgetDelay(false, Math.random());
@@ -596,13 +651,15 @@ export class SkinnedRig {
         best = L.w;
       }
     }
+    if (this.forceProp && (!want || want === 'cup')) want = this.forceProp;
     if (this.aimBlend > 0.3 || (this.weaponId && this.weaponId !== 'fists')) want = null;
-    for (const kind of ['cup', 'phone']) {
+    for (const kind of PROP_KINDS) {
       let m = this.props[kind];
       if (!m && want === kind) {
         m = this.props[kind] = propMesh(kind);
-        m.quaternion.copy(this.tpl.props[kind].q);
-        m.position.copy(this.tpl.props[kind].p);
+        const fr = this.tpl.props[kind === 'cig' ? 'cup' : kind];
+        m.quaternion.copy(fr.q);
+        m.position.copy(fr.p);
         hand.add(m);
       }
       if (m) m.visible = want === kind;
@@ -630,16 +687,31 @@ export class SkinnedRig {
   // ------------------------------------------------------------ animación
   /**
    * st = {speed, onGround, aiming, crouching, driving ('car'|'moto'|'chair'|null),
-   *       dead, aimPitch, style, upper, fidget, handsFree, mountLift}
+   *       dead, aimPitch, style, upper, fidget, handsFree, mountLift,
+   *       idle, seat, lookAt: {x, y, z} | null}
    */
   animate(dt, st) {
     this.frame++;
-    const speed = st.speed ?? 0;
+    const realSpeed = st.speed ?? 0;
     const driving = st.driving ?? null;
     const dead = !!st.dead;
     const crouch = !!st.crouching && !driving;
     const air = !st.onGround && !driving && !dead;
-    const moving = speed > 0.3;
+    const moving = realSpeed > 0.3;
+
+    // Velocidad de giro (rad/s, + = a la izquierda) medida en la raíz.
+    const yaw = this.root.rotation.y;
+    const turn = this.yawPrev == null || dt <= 0 ? 0 : angleDiff(this.yawPrev, yaw) / dt;
+    this.yawPrev = yaw;
+    this.yawRate = damp(this.yawRate, clamp(turn, -8, 8), 12, dt);
+    // Girar en el sitio: los pies dan pasos cortos en vez de patinar (un poco
+    // del ciclo de caminar, proporcional a lo rápido que gira).
+    const onFoot = !driving && !air && !dead && !crouch && !st.aiming;
+    const turnStep = onFoot && realSpeed < 0.6 ? clamp((Math.abs(this.yawRate) - 0.7) * 0.4, 0, 0.75) : 0;
+    const speed = Math.max(realSpeed, turnStep);
+    // Inclinación hacia adentro de la curva (más al correr).
+    const bankT = onFoot && realSpeed > 1 ? clamp(this.yawRate * realSpeed * 0.018, -0.16, 0.16) : 0;
+    this.bank = damp(this.bank, bankT, 6, dt);
 
     this.aimBlend = damp(this.aimBlend, st.aiming ? 1 : 0, 14, dt);
     this.deadBlend = damp(this.deadBlend, dead ? 1 : 0, 6, dt);
@@ -652,10 +724,10 @@ export class SkinnedRig {
     const style = st.style ?? null;
     const S = this.slots;
     const pick = (name, fallback) => (this.hasClip(name) ? name : fallback);
-    S.idle = style === 'drunk' ? pick('idle_drunk', 'idle') : 'idle';
+    S.idle = style === 'drunk' ? pick('idle_drunk', 'idle') : st.idle ? pick(st.idle, 'idle') : 'idle';
     S.walk = style ? pick(STYLE_WALK[style], 'walk') : 'walk';
     S.jog = style === 'injured' ? pick('run_injured', 'jog') : 'jog';
-    S.sit = driving === 'chair' ? pick('sit_idle', 'sit') : 'sit';
+    S.sit = driving === 'chair' ? pick(st.seat === 'table' ? 'sit_table' : 'sit_idle', 'sit') : 'sit';
 
     // Pesos objetivo de cada ranura.
     const tw = this._tw;
@@ -768,8 +840,11 @@ export class SkinnedRig {
 
     // Inclinación al correr / muerte (cae de espaldas).
     const d = this.deadBlend;
-    this.body.rotation.x = d > 0.001 ? d * (Math.PI / 2) * 0.97 : -this.lean * (1 - this.aimBlend);
+    this.body.rotation.x = d > 0.001 ? d * (Math.PI / 2) * 0.97 : -this.lean * (1 - this.aimBlend) + (st.bodyPitch ?? 0);
+    this.body.rotation.z = d > 0.001 ? 0 : this.bank;
     this.body.position.y = d > 0.001 ? d * 0.13 : 0;
+    if (st.bodyShift) this.body.position.z = st.bodyShift;
+    else if (this.body.position.z) this.body.position.z = 0;
 
     // ---------------------------------------------- capas por código
     const a = this.aimBlend;
@@ -785,6 +860,59 @@ export class SkinnedRig {
       if (a > 0.01 && d < 0.5) this._aimArms(st.aimPitch ?? 0, a);
       if (this.punchTimer > 0) this._punchArm();
       if (d > 0.01) this._limp(d);
+    }
+    // Mirar a alguien (cabeza y cuello), encima de todo lo anterior.
+    this._look(st.lookAt ?? null, step, dead || a > 0.3 || db > 0.5);
+    // Pose por código de la actividad en curso (colgar ropa, patear, barrer...).
+    if (this.post) {
+      this.root.updateMatrixWorld(true);
+      this.post(this, step);
+    }
+  }
+
+  /**
+   * La cabeza (60 %) y el cuello (40 %) giran hacia `target` (mundo), con
+   * límites de un cuello real y suavizado; sin objetivo vuelven al frente.
+   */
+  _look(target, dt, blocked) {
+    const B = this.bones;
+    const head = B.Bip01_Head;
+    const neck = B.Bip01_Neck;
+    if (!head || !neck) return;
+    let wantW = 0;
+    let wy = this.lookYaw;
+    let wp = this.lookPitch;
+    if (target && !blocked) {
+      this.root.updateMatrixWorld(true);
+      head.getWorldPosition(_v);
+      const dx = target.x - _v.x;
+      const dy = target.y - _v.y;
+      const dz = target.z - _v.z;
+      const h = Math.hypot(dx, dz);
+      // Ángulo respecto al frente del cuerpo (la raíz mira a -Z).
+      const face = Math.atan2(-dx, -dz);
+      const rel = angleDiff(this.root.rotation.y, face);
+      if (Math.abs(rel) < 1.9 && h > 0.2) {
+        wantW = 1;
+        wy = clamp(rel, -1.15, 1.15);
+        wp = clamp(Math.atan2(dy, h), -0.45, 0.35);
+      }
+    }
+    this.lookW = damp(this.lookW, wantW, 4, dt);
+    this.lookYaw = damp(this.lookYaw, wy, 5, dt);
+    this.lookPitch = damp(this.lookPitch, wp, 5, dt);
+    if (this.lookW < 0.01) return;
+    const w = smoothstep(Math.min(1, this.lookW));
+    const right = _v2.set(1, 0, 0).applyQuaternion(this.root.getWorldQuaternion(_qt));
+    for (const [bone, k] of [
+      [neck, 0.4],
+      [head, 0.6],
+    ]) {
+      _q.setFromAxisAngle(Y_AXIS, this.lookYaw * k * w);
+      _q2.setFromAxisAngle(right, this.lookPitch * k * w);
+      _q.multiply(_q2);
+      bone.getWorldQuaternion(_q2);
+      setWorldQuat(bone, _q.multiply(_q2), 1);
     }
   }
 

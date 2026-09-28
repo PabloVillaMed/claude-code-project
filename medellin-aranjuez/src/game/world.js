@@ -11,7 +11,8 @@ import { pointInPoly } from '../sim/geom2d.js';
 import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeAI.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
-import { walkStyle, standingActivity, walkingActivity, speechGesture } from '../sim/animSelect.js';
+import { walkStyle, walkSpeedScale, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
+import { Activities } from './activities.js';
 
 let nextId = 1;
 
@@ -96,10 +97,14 @@ export class PedEntity {
     this.speech = 0;
     // Forma de caminar (pandilleros sobrados, rumberos de noche, gente de paseo).
     this.walkStyle = walkStyle({ id: this.id, faction: this.faction, female: !!look.female, hour: world.game?.env?.timeOfDay });
+    if (sim.walkSpeed) sim.walkSpeed *= walkSpeedScale(this.walkStyle);
     this.stops = 0; // paradas / tramos: cada uno elige qué hace con las manos
     this.activity = null;
     this.lastMode = null;
     this.lastSpeech = null;
+    this.idleClip = this.faction === 'civil' ? idleVariant(this.id) : null;
+    this.act = null; // actividad del barrio en la que está (game/activities.js)
+    this.lookT = 0;
   }
 
   get alive() {
@@ -164,6 +169,8 @@ export class World {
     for (const p of this.city.parkedVehicles) {
       this.vehicles.push(new VehicleEntity(this, p.type, p.x, p.z, p.heading, { kind: 'parked', persistent: true }));
     }
+    // Vida cotidiana: ropa en los balcones, fumadores, dominó, picaditos...
+    this.activities = new Activities(this);
   }
 
   _indexBlocks() {
@@ -255,7 +262,7 @@ export class World {
     const sim = createPed(b, this.rng, opts.sim);
     sim.x = x;
     sim.z = z;
-    const ped = new PedEntity(this, sim, randomLook(this.rng, opts.outfit ?? 'civil'), opts);
+    const ped = new PedEntity(this, sim, opts.look ?? randomLook(this.rng, opts.outfit ?? 'civil'), opts);
     this.peds.push(ped);
     return ped;
   }
@@ -349,6 +356,7 @@ export class World {
     }
 
     this._updateFixed(dt, px, pz);
+    this.activities.update(dt, player);
     this._updateVehicles(dt, player);
     this._updatePeds(dt, player);
   }
@@ -482,13 +490,15 @@ export class World {
         if (s.fixed) {
           // Quietos (sentados o atendiendo) hasta que algo los asuste.
           const th = this.threats.find((t) => dist2D(t.x, t.z, s.x, s.z) < t.radius);
-          if (th) {
+          if (th && p.act?.threat(p, th)) {
+            // La actividad se encarga (la del balcón se entra a la casa).
+          } else if (th) {
             s.fixed = false;
             s.sitting = false;
             s.mode = 'flee';
             s.fleeFrom = { x: th.x, z: th.z };
             s.timer = 8 + this.rng.next() * 5;
-          } else s.speed = 0;
+          } else if (!p.act) s.speed = 0;
         }
         if (d < 150 && !s.fixed) stepPed(s, dt, this.pedWorld);
         if (s.mode === 'attack' && !player.dead && this.game.state === 'playing') this.game.combat.npcAttack(p, dt, player, d);
@@ -514,7 +524,7 @@ export class World {
       } else {
         p.deadTimer += dt;
       }
-      p.y = groundHeight(s.x, s.z);
+      p.y = s.elev ?? groundHeight(s.x, s.z);
       p.rig.root.position.set(s.x, p.y, s.z);
       p.rig.root.rotation.y = s.yaw;
       // Solo se dibuja y anima de cerca; la sombra, más cerca todavía.
@@ -524,7 +534,7 @@ export class World {
       if (visible) {
         p.rig.setShadow(dc < this.quality.shadowChars);
         const body = this._body(p, s, dt);
-        p.rig.animate(dt, {
+        const st = {
           speed: s.speed ?? 0,
           onGround: true,
           driving: s.sitting ? 'chair' : null,
@@ -534,9 +544,35 @@ export class World {
           style: body.style,
           upper: body.upper,
           fidget: body.fidget,
-        });
+          idle: p.idleClip,
+          lookAt: this._lookAt(p, s, dt, player),
+        };
+        if (p.act && p.alive) p.act.dress(p, st);
+        p.rig.animate(dt, st);
       }
     }
+  }
+
+  /**
+   * La gente se fija en quien pasa cerca: la cabeza sigue al jugador unos
+   * segundos (a pie, a menos de 7 m y más o menos al frente; el rig limita el
+   * giro del cuello). Después pierde el interés hasta que se aleje.
+   */
+  _lookAt(p, s, dt, player) {
+    if (!p.alive || p.faction !== 'civil' || s.mode === 'flee' || player.inVehicle || player.dead) {
+      p.lookT = 0;
+      return null;
+    }
+    const d = dist2D(s.x, s.z, player.x, player.z);
+    if (d > 9) p.lookT = 0;
+    if (d > 7) return null;
+    p.lookT += dt;
+    if (p.lookT > 5 && d > 2.2) return null;
+    const t = (this._lookPt ??= { x: 0, y: 0, z: 0 });
+    t.x = player.x;
+    t.y = player.y + 1.55;
+    t.z = player.z;
+    return t;
   }
 
   /**

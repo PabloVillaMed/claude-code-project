@@ -21,7 +21,15 @@ export function unit(a, b = 0) {
 export const FIDGETS = {
   stand: ['idle_look', 'idle_scratch', 'idle_yawn', 'idle_stretch', 'idle_cough'],
   sit: ['sit_look', 'sit_scratch', 'sit_yawn', 'sit_shrug', 'sit_think'],
+  // Sentado a la mesa (dominó): los brazos se quedan sobre la mesa.
+  table: ['sit_table_look', 'sit_table_think', 'sit_table_shrug'],
 };
+
+/** Reposo de un peatón (no todos respiran igual): 'idle', 'idle_b' o 'idle_wait', estable por id. */
+export function idleVariant(id) {
+  const r = unit(id, 41);
+  return r < 0.45 ? 'idle' : r < 0.75 ? 'idle_b' : 'idle_wait';
+}
 
 /**
  * Próximo gesto de relleno: uno de la lista que exista (`has`), distinto del
@@ -69,6 +77,16 @@ export function walkStyle({ id, faction, female = false, hour = null }) {
   const r = unit(id, 99);
   if (!female && partyHours(hour) && r < 0.12) return 'drunk';
   return r > 0.62 ? 'stroll' : null;
+}
+
+/**
+ * Cuánto más despacio camina un peatón con ese estilo: los clips de paseo y
+ * de borracho avanzan mucho menos por paso que el caminar normal y, a la
+ * misma velocidad, los pies patinaban (el ciclo no se puede acelerar más de
+ * ~1.6 veces sin que se vea a cámara rápida).
+ */
+export function walkSpeedScale(style) {
+  return style === 'stroll' ? 0.74 : style === 'drunk' ? 0.7 : style === 'cool' ? 0.92 : 1;
 }
 
 /** El jugador con poca salud camina cojeando. */

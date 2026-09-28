@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIDGETS, pickFidget, fidgetDelay, standingActivity, walkingActivity, walkStyle, playerStyle, speechGesture, purchaseGestures, EMOTES, nextEmote, unit } from '../../src/sim/animSelect.js';
+import { FIDGETS, idleVariant, walkSpeedScale, pickFidget, fidgetDelay, standingActivity, walkingActivity, walkStyle, playerStyle, speechGesture, purchaseGestures, EMOTES, nextEmote, unit } from '../../src/sim/animSelect.js';
 import { carEntryPlan, carExitPlan, motoEntryPlan, motoExitPlan, poseAt, fireEvents, rotate, applyEnd, seatRoot, entrySide } from '../../src/sim/boarding.js';
 
 describe('elección de animaciones', () => {
@@ -29,6 +29,17 @@ describe('elección de animaciones', () => {
     expect(walking).toBeGreaterThan(10);
     expect(walking).toBeLessThan(70);
     for (let i = 0; i < 100; i++) expect(unit(i, 3)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('reposo variado por peatón (estable) y gestos de relleno a la mesa', () => {
+    expect(idleVariant(12)).toBe(idleVariant(12));
+    const v = Array.from({ length: 300 }, (_, i) => idleVariant(i));
+    for (const k of ['idle', 'idle_b', 'idle_wait']) expect(v.filter((x) => x === k).length).toBeGreaterThan(40);
+    expect(FIDGETS.table.every((n) => n.startsWith('sit_table_'))).toBe(true);
+    // Paseando o borracho se camina más despacio (que los pies no patinen).
+    expect(walkSpeedScale('stroll')).toBeLessThan(0.8);
+    expect(walkSpeedScale('drunk')).toBeLessThan(0.8);
+    expect(walkSpeedScale(null)).toBe(1);
   });
 
   it('estilos de caminar: pandilla sobrada, rumba solo de noche, policía normal', () => {
