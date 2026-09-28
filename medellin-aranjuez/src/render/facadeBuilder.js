@@ -74,7 +74,7 @@ const lighten = (c, k = 1.1, add = 0.04) => c.map((v) => Math.min(1, v * k + add
 function selfLit(m, key) {
   m.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <color_fragment>', 'vec3 litBase = min( vColor, vec3( 1.0 ) );\n  vec3 litGlow = max( vColor - 1.0, vec3( 0.0 ) );\n  diffuseColor.rgb *= litBase;')
+      .replace('#include <color_fragment>', 'vec3 litBase = min( vColor.rgb, vec3( 1.0 ) );\n  vec3 litGlow = max( vColor.rgb - 1.0, vec3( 0.0 ) );\n  diffuseColor.rgb *= litBase;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance *= litBase + litGlow * 2.0;');
   };
   m.customProgramCacheKey = () => key;
