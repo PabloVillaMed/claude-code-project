@@ -69,6 +69,13 @@ for (let i = 0; i < steps; i++) {
   rows.push(s);
   console.log(JSON.stringify(s));
 }
+// Programas (sombreadores) por tipo de material: si uno crece sin parar, ahí hay una fuga.
+const progs = await G(() => {
+  const by = {};
+  for (const p of window.__gameInstance.renderer.info.programs ?? []) by[p.name] = (by[p.name] ?? 0) + 1;
+  return by;
+});
+console.log('PROGRAMAS', JSON.stringify(progs));
 console.log('ERRORES', errors.length ? [...new Set(errors)].slice(0, 30).join('\n') : 'ninguno');
 await browser.close();
 server.close?.();
