@@ -28,9 +28,55 @@ export function surfaceHeight(x, z) {
 const PAINTS = [0xc0c4c8, 0xf2f2f2, 0x9b1c1c, 0x111316, 0x1e3a6b, 0x4a4f55, 0x6b8f71, 0xb87333];
 
 const cache = new Map();
+const sharedSet = new Set(); // lo compartido entre vehículos: nunca se libera
 function shared(key, make) {
-  if (!cache.has(key)) cache.set(key, make());
+  if (!cache.has(key)) {
+    const v = make();
+    cache.set(key, v);
+    registerShared(v); // también lo que traiga adentro (listas de {geometry, material})
+    sharedSet.add(v);
+  }
   return cache.get(key);
+}
+
+/**
+ * Libera un material propio de un vehículo (pintura con faros, calcomanías,
+ * letreros…). Sin esto cada carro que sale del barrio dejaba sus materiales
+ * vivos en el renderizador: con el tráfico entrando y saliendo se acumulaban
+ * por miles y el juego se ponía a tironear a los pocos minutos.
+ */
+function releaseMaterial(m) {
+  for (const mm of Array.isArray(m) ? m : [m]) {
+    if (!mm || sharedSet.has(mm)) continue;
+    // Texturas propias (letreros pintados para este carro) también.
+    for (const k of ['map', 'emissiveMap']) {
+      const t = mm[k];
+      if (t && !sharedSet.has(t)) t.dispose();
+    }
+    mm.dispose();
+  }
+}
+
+/** Marca como compartido todo lo de una plantilla (geometrías, materiales y texturas del modelo). */
+function registerShared(obj, depth = 0) {
+  if (!obj || depth > 4 || typeof obj !== 'object' || sharedSet.has(obj)) return;
+  if (obj.isBufferGeometry || obj.isTexture) {
+    sharedSet.add(obj);
+    return;
+  }
+  if (obj.isMaterial) {
+    sharedSet.add(obj);
+    for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap']) if (obj[k]) sharedSet.add(obj[k]);
+    return;
+  }
+  if (obj.isObject3D) {
+    obj.traverse((o) => {
+      if (o.geometry) registerShared(o.geometry, depth + 1);
+      if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) registerShared(m, depth + 1);
+    });
+    return;
+  }
+  for (const v of Array.isArray(obj) ? obj : Object.values(obj)) if (v && typeof v === 'object') registerShared(v, depth + 1);
 }
 
 const paint = (color) =>
@@ -351,6 +397,8 @@ function modelTemplate(type, variant = null) {
   else tpl.seat = { ...(cfg.seatAbs ?? { x: 0, y: 0.34, z: 0.12 }) };
   if (type === 'moto') tpl.ride = motoRidePoints(body, tpl.seat, box);
   templates.set(key, tpl);
+  registerShared(root);
+  registerShared(tpl);
   return tpl;
 }
 
@@ -862,12 +910,23 @@ export class VehicleView {
     const burnt = shared('burnt', () => new THREE.MeshStandardMaterial({ color: 0x151210, roughness: 1 }));
     const keep = new Set([tireMat(), MODEL_MATS.caucho()]);
     this.group.traverse((o) => {
-      if (o.isMesh && !keep.has(o.material)) o.material = burnt;
+      if (o.isMesh && !keep.has(o.material)) {
+        releaseMaterial(o.material);
+        o.material = burnt;
+      }
     });
     for (const m of this.lights.bar) m.emissiveIntensity = 0;
   }
 
   dispose() {
     this.group.removeFromParent();
+    const seen = new Set();
+    this.group.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.geometry && !sharedSet.has(o.geometry)) o.geometry.dispose();
+      if (seen.has(o.material)) return;
+      seen.add(o.material);
+      releaseMaterial(o.material);
+    });
   }
 }

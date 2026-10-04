@@ -164,6 +164,23 @@ export class Game {
    * (controlador en lista negra, escritorio remoto…), calidad Baja
    * automáticamente: con render por software nada más es jugable.
    */
+  /**
+   * Si el controlador de video reinicia la GPU (o Windows la suspende), WebGL
+   * pierde el contexto y la pantalla queda negra o congelada. Se guarda la
+   * partida y, cuando el navegador devuelve el contexto, se recarga el juego
+   * (rearmar a mano miles de geometrías y texturas no vale el riesgo).
+   */
+  _watchContext() {
+    const c = this.canvas;
+    c.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      if (this.state === 'playing' && !this.player.dead) this.save();
+      this.contextLost = true;
+      this.hud?.toast?.('La tarjeta de video se reinició: recuperando el juego…', 6);
+    });
+    c.addEventListener('webglcontextrestored', () => window.location.reload());
+  }
+
   _detectGpu(qKey, opts) {
     const gl = this.renderer.getContext();
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
@@ -245,10 +262,25 @@ export class Game {
     this._menuShot = -1;
     this.last = performance.now();
     this.menuT = 0;
+    // El siguiente cuadro se pide antes de dibujar este: si un cuadro falla
+    // (un error raro en un sistema), el juego sigue en vez de congelarse.
+    this.frameErrors = 0;
     this._loop = (t) => {
-      this.frame(t);
       this.raf = requestAnimationFrame(this._loop);
+      try {
+        this.frame(t);
+      } catch (e) {
+        this.frameErrors++;
+        if (this.frameErrors <= 3 || this.frameErrors % 300 === 0) console.error(`Error en el cuadro (${this.frameErrors}):`, e);
+        // Que el error no deje la entrada a medias (teclas "pegadas").
+        try {
+          this.input.endFrame();
+        } catch {
+          /* nada más que hacer */
+        }
+      }
     };
+    this._watchContext();
     this.raf = requestAnimationFrame(this._loop);
     this._exposeApi();
   }
@@ -454,6 +486,7 @@ export class Game {
 
   // ================================================================ bucle
   frame(t) {
+    if (this.contextLost) return; // sin GPU no se dibuja (se recarga al recuperarla)
     this.frameCount = (this.frameCount ?? 0) + 1;
     const tCpu0 = performance.now();
     this.renderer.info.reset();

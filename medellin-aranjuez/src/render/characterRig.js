@@ -1152,6 +1152,11 @@ export class SkinnedRig {
     this.mixer.stopAllAction();
     this.mixer.uncacheRoot(this.model);
     this.root.removeFromParent();
+    // Cada esqueleto clonado tiene su textura de huesos en la GPU: sin esto
+    // cada peatón que entra y sale del barrio dejaba una textura viva.
+    const skeletons = new Set();
+    this.model.traverse((o) => o.isSkinnedMesh && o.skeleton && skeletons.add(o.skeleton));
+    for (const s of skeletons) s.dispose();
   }
 }
 

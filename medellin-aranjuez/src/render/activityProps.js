@@ -9,7 +9,28 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { propTemplate } from './props.js';
 
 const cache = {};
-const once = (k, make) => (cache[k] ??= make());
+const cacheSet = new Set(); // geometrías y materiales compartidos: nunca se liberan
+const once = (k, make) => {
+  if (!(k in cache)) {
+    cache[k] = make();
+    cacheSet.add(cache[k]);
+  }
+  return cache[k];
+};
+
+/**
+ * Saca de la escena un objeto de utilería de las actividades y libera lo que
+ * sea solo suyo (cuerdas de tendedero, mesas armadas para ese lugar…); lo
+ * compartido (prendas, balón, materiales) se queda.
+ */
+export function releaseProp(obj) {
+  obj.removeFromParent();
+  obj.traverse?.((o) => {
+    if (o.isInstancedMesh) o.dispose();
+    if (o.geometry && !cacheSet.has(o.geometry)) o.geometry.dispose();
+    for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) if (!cacheSet.has(m)) m.dispose();
+  });
+}
 
 const mat = (k, opts) => once(`m:${k}`, () => new THREE.MeshStandardMaterial({ roughness: 0.8, ...opts }));
 

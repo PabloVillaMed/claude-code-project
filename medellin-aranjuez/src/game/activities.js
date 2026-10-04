@@ -18,7 +18,7 @@ import { groundHeight, onRoad } from '../sim/terrain.js';
 import { clamp, dampAngle, dist2D, forwardX, forwardZ, rightX, rightZ, yawFromDir } from '../sim/math.js';
 import { makeRng } from '../sim/rng.js';
 import { randomLook } from '../render/characterRig.js';
-import { ballMesh, broomMesh, bucketMesh, buildClothesline, buildDominoTable, ragMesh, smallGoal, stoneGoal } from '../render/activityProps.js';
+import { ballMesh, broomMesh, bucketMesh, buildClothesline, buildDominoTable, ragMesh, releaseProp, smallGoal, stoneGoal } from '../render/activityProps.js';
 import { chestPoint, handsMid, poseHang, poseHoldBall, poseKeeper, poseKick, poseReach, poseRub, poseSweep } from '../render/activityPoses.js';
 
 const _v = new THREE.Vector3();
@@ -260,10 +260,7 @@ class Activity {
       this.onRelease?.(p);
       if (this.world.peds.includes(p)) this.world.removePed(p);
     }
-    for (const o of this.objs) {
-      o.removeFromParent();
-      o.traverse?.((m) => m.isInstancedMesh && m.dispose());
-    }
+    for (const o of this.objs) releaseProp(o);
     this.objs.length = 0;
   }
 }
@@ -539,7 +536,7 @@ class Barrer extends Activity {
   }
 
   onRelease(p) {
-    this.broom?.removeFromParent();
+    if (this.broom) releaseProp(this.broom);
   }
 
   step(dt) {
@@ -711,7 +708,7 @@ class Lavar extends Activity {
   }
 
   onRelease() {
-    this.rag?.removeFromParent();
+    if (this.rag) releaseProp(this.rag);
   }
 
   step(dt) {
