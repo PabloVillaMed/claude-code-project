@@ -121,8 +121,11 @@ function measure(scene) {
     if (!o.isSkinnedMesh) return;
     const pos = o.geometry.attributes.position;
     const list = /head/i.test(o.material?.name ?? o.name) ? pts.head : pts.body;
+    // Con los huesos en reposo: las mallas vienen cuantizadas (posiciones de
+    // -1 a 1) y la escala real está en las matrices de enlace del esqueleto.
+    // Leer la posición cruda daba un cráneo NaN y una gorra con NaN.
     for (let i = 0; i < pos.count; i += 1) {
-      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      o.getVertexPosition(i, v).applyMatrix4(o.matrixWorld);
       list.push(v.x, v.y, v.z);
     }
   });
@@ -139,6 +142,12 @@ function measure(scene) {
       b.minZ = Math.min(b.minZ, z);
       b.maxZ = Math.max(b.maxZ, z);
     }
+  }
+  // Sin puntos de cráneo (malla rara): medidas de una cabeza promedio.
+  if (!Number.isFinite(b.minX) || !Number.isFinite(top)) {
+    const hy = head?.y ?? 1.6;
+    top = Number.isFinite(top) && top > hy ? top : hy + 0.13;
+    Object.assign(b, { minX: -0.075, maxX: 0.075, minZ: (head?.z ?? 0) - 0.09, maxZ: (head?.z ?? 0) + 0.1 });
   }
   // Frente y espalda del tronco a una altura dada (franja central).
   const slab = (y0, y1, xMax = 0.12) => {
