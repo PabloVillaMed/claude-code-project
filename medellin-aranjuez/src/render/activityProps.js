@@ -46,7 +46,12 @@ function paint(g, color) {
 
 /** Fusiona piezas (sin índice para que todas casen) con color por vértice. */
 function merged(parts) {
-  return mergeGeometries(parts.map(([g, color]) => paint(g.index ? g.toNonIndexed() : g, color)));
+  const flat = parts.map(([g, color]) => paint(g.index ? g.toNonIndexed() : g, color));
+  const out = mergeGeometries(flat);
+  // Las piezas sueltas ya no sirven (se copiaron a `out`).
+  for (const [g] of parts) g.dispose();
+  for (const g of flat) g.dispose();
+  return out;
 }
 
 const vcMat = () => mat('vc', { vertexColors: true, roughness: 0.75 });

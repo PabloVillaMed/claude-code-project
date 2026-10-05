@@ -44,17 +44,18 @@ export class StoryDirector {
     for (const p of city.props) {
       if (p.type !== 'chair') continue;
       if (p.owner === 'abuela') {
-        chair = { x: p.x, z: p.z, d: 0 };
+        chair = { x: p.x, z: p.z, d: 0, rot: p.rot };
         break;
       }
       const d = dist2D(p.x, p.z, this.front.x, this.front.z);
-      if (d < 7 && (!chair || d < chair.d)) chair = { x: p.x, z: p.z, d };
+      if (d < 7 && (!chair || d < chair.d)) chair = { x: p.x, z: p.z, d, rot: p.rot };
     }
     const F = this.front;
     this.seat = chair
       ? { x: chair.x, z: chair.z, sit: true }
       : { x: F.x + F.nx * 0.7 + F.ux * 1.4, z: F.z + F.nz * 0.7 + F.uz * 1.4, sit: false };
-    this.seat.yaw = yawTo(F.nx, F.nz); // mirando a la calle
+    // Mirando a la calle; en la silla, alineada con ella (la silla mira a su +Z).
+    this.seat.yaw = chair?.rot != null ? chair.rot + Math.PI : yawTo(F.nx, F.nz);
     // Nadie más se sienta en su silla.
     if (g.world?.fixedSpots) g.world.fixedSpots = g.world.fixedSpots.filter((s) => dist2D(s.x, s.z, this.seat.x, this.seat.z) > 1.2);
     const look = { ...randomLook(makeRng(1947), 'civil'), avatar: 'civil-f2', female: true, height: 0.95 };

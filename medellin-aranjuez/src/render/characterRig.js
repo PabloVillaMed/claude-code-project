@@ -32,6 +32,7 @@ import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { damp, lerp, clamp, angleDiff } from '../sim/math.js';
 import { FIDGETS, pickFidget, fidgetDelay } from '../sim/animSelect.js';
+import { CHAIR, solveSeat } from '../sim/seatFit.js';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_PLAYER, buildWeaponMesh } from './proceduralRig.js';
@@ -270,6 +271,37 @@ function ik2(upper, fore, hand, target, pole, weight) {
   const E2 = fore.getWorldPosition(new THREE.Vector3());
   const T2 = S.clone().addScaledVector(dir, d);
   pointBone(fore, T2.sub(E2).normalize(), weight);
+}
+
+/**
+ * Piel del avatar sentado con el clip ya aplicado, en el marco de la silla
+ * (adelante = +Z) y dividida por la escala: puntos útiles para acomodarlo y
+ * la altura de la rodilla y la cadera. Cuesta unos milisegundos, así que se
+ * mide una vez por avatar y clip (rig.tpl.seatFits).
+ */
+function measureSeat(rig) {
+  const s = rig.scale;
+  rig.model.position.set(0, 0, 0);
+  rig.root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(rig.root.matrixWorld).invert();
+  const v = new THREE.Vector3();
+  const local = (o) => o.getWorldPosition(v).applyMatrix4(inv);
+  const pelvisY = local(rig.bones.Bip01_Pelvis).y / s;
+  const knees = ['L', 'R'].map((k) => rig.bones[`Bip01_${k}_Calf`]).filter(Boolean);
+  const kneeY = knees.length ? Math.min(...knees.map((b) => local(b).y)) / s : pelvisY * 0.8;
+  const pts = [];
+  rig.model.traverse((o) => {
+    if (!o.isSkinnedMesh || !o.visible) return;
+    const n = o.geometry.attributes.position.count;
+    for (let i = 0; i < n; i += 2) {
+      o.getVertexPosition(i, v);
+      v.applyMatrix4(o.matrixWorld).applyMatrix4(inv);
+      const x = -v.x / s;
+      if (Math.abs(x) > 0.26 || v.y / s > pelvisY + 0.6) continue;
+      pts.push(x, v.y / s, -v.z / s);
+    }
+  });
+  return { pts: Float32Array.from(pts), pelvisY, kneeY };
 }
 
 // Huesos de la capa de brazos (celular, hablar, beber...): brazos, cuello y
@@ -835,8 +867,13 @@ export class SkinnedRig {
     // vean hombros y brazos por la ventana.
     const db = this.driveBlend;
     // Sentado: en moto, en carro o en una silla plástica frente a la tienda.
-    const seatHip = driving === 'moto' ? 0.55 : driving === 'chair' ? 0.47 : 0.64;
-    this.model.position.set(0, (seatHip - this.sitHip) * db, 0);
+    // Al pararse se sigue usando el asiento de antes mientras se desvanece.
+    if (driving) this.seatKind = driving;
+    if (this.seatKind === 'chair') {
+      const fit = this._chairFit(driving === 'chair' ? S.sit : (this._seatSol?.name ?? S.sit));
+      this.model.position.set(0, fit.dy * db, -fit.dz * db); // adelante = -Z
+      if (db > 0.01) this._chairLegs(db);
+    } else this.model.position.set(0, ((this.seatKind === 'moto' ? 0.55 : 0.64) - this.sitHip) * db, 0);
 
     // Inclinación al correr / muerte (cae de espaldas).
     const d = this.deadBlend;
@@ -867,6 +904,45 @@ export class SkinnedRig {
     if (this.post) {
       this.root.updateMatrixWorld(true);
       this.post(this, step);
+    }
+  }
+
+  /**
+   * Acomodo en la silla plástica para el clip `name`: se mide la piel una vez
+   * por avatar y clip, cuando la postura ya está completa; mientras tanto, una
+   * estimación con la cadera del clip.
+   */
+  _chairFit(name) {
+    const sol = this._seatSol;
+    if (sol?.name === name && sol.measured) return sol;
+    const fits = (this.tpl.seatFits ??= {});
+    if (!fits[name] && this.driveBlend > 0.98 && (this.w[name] ?? 0) > 0.98 && this.bones.Bip01_Pelvis) fits[name] = measureSeat(this);
+    if (fits[name]) this._seatSol = { name, measured: true, ...solveSeat(fits[name], this.scale) };
+    else if (sol?.name !== name) this._seatSol = { name, measured: false, dy: CHAIR.seat - 0.012 - (this.sitHip - 0.19 * this.scale), dz: 0 };
+    return this._seatSol;
+  }
+
+  /**
+   * Con el cuerpo subido al asiento, los pies vuelven a donde los pone el clip
+   * (en el piso): IK de dos huesos en cada pierna, rodilla hacia delante, y el
+   * pie conserva su orientación.
+   */
+  _chairLegs(w) {
+    const B = this.bones;
+    this.root.updateMatrixWorld(true);
+    // Desplazamiento del modelo en el mundo (lo que hay que deshacer en los pies).
+    const off = this.model.getWorldPosition(new THREE.Vector3()).sub(this.body.getWorldPosition(_v3));
+    const q = this.root.getWorldQuaternion(new THREE.Quaternion());
+    const pole = new THREE.Vector3(0, 0.35, -1).applyQuaternion(q);
+    for (const side of ['L', 'R']) {
+      const thigh = B[`Bip01_${side}_Thigh`];
+      const calf = B[`Bip01_${side}_Calf`];
+      const foot = B[`Bip01_${side}_Foot`];
+      if (!thigh || !calf || !foot) continue;
+      const target = foot.getWorldPosition(new THREE.Vector3()).sub(off);
+      const fq = foot.getWorldQuaternion(new THREE.Quaternion());
+      ik2(thigh, calf, foot, target, pole, w);
+      setWorldQuat(foot, fq, w);
     }
   }
 

@@ -40,6 +40,33 @@ const sample = () =>
       audio: audioNodes,
     };
   });
+// TRACK=1: anota dónde se crea cada geometría que nunca se libera (con un
+// build sin minificar los nombres de las funciones salen en la pila:
+// npx vite build --minify false --outDir dist-debug && DIST_DIR=dist-debug TRACK=1 node scripts/soak.mjs).
+if (process.env.TRACK) {
+  await G(() => {
+    let proto = null;
+    window.__gameInstance.scene.traverse((o) => {
+      if (proto || !o.geometry) return;
+      for (let p = Object.getPrototypeOf(o.geometry); p; p = Object.getPrototypeOf(p)) if (Object.prototype.hasOwnProperty.call(p, 'setAttribute')) proto = p;
+    });
+    const live = (window.__geoTrack = new Map());
+    const set = proto.setAttribute;
+    const dispose = proto.dispose;
+    proto.setAttribute = function (...a) {
+      if (!live.has(this.id) && !this.__seen) {
+        this.__seen = true;
+        const st = new Error().stack.split('\n').slice(2, 7).map((l) => l.trim().replace(/\(?https?:\/\/[^/]+\//, '(').replace(/^at /, '')).join(' < ');
+        live.set(this.id, { st, ref: new WeakRef(this) });
+      }
+      return set.apply(this, a);
+    };
+    proto.dispose = function () {
+      live.delete(this.id);
+      return dispose.call(this);
+    };
+  });
+}
 const pois = await G(() => window.__game.pois().map((p) => ({ x: p.x, z: p.z, id: p.id })));
 const rows = [await sample()];
 console.log(JSON.stringify(rows[0]));
@@ -76,6 +103,22 @@ const progs = await G(() => {
   return by;
 });
 console.log('PROGRAMAS', JSON.stringify(progs));
+if (process.env.TRACK) {
+  const groups = await G(() => {
+    if (window.gc) window.gc();
+    const inScene = new Set();
+    window.__gameInstance.scene.traverse((o) => o.geometry && inScene.add(o.geometry.id));
+    const by = {};
+    for (const [id, e] of window.__geoTrack) {
+      const g = e.ref.deref();
+      const k = (g ? (inScene.has(id) ? 'escena ' : 'FUERA ') : 'recogida ') + e.st;
+      by[k] = (by[k] ?? 0) + 1;
+    }
+    return Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 25);
+  });
+  console.log('GEOMETRIAS VIVAS (creadas durante la prueba, sin liberar):');
+  for (const [k, n] of groups) console.log(String(n).padStart(5), k.slice(0, 600));
+}
 console.log('ERRORES', errors.length ? [...new Set(errors)].slice(0, 30).join('\n') : 'ninguno');
 await browser.close();
 server.close?.();

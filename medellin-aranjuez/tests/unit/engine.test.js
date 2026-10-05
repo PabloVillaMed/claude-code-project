@@ -130,3 +130,57 @@ describe('motor: caja de cambios', () => {
     expect(coupledRpm(p, 2, 10, 40)).toBeCloseTo(coupledRpm(p, 2, 5, 40) * 2);
   });
 });
+
+describe('motor: procesador de audio', () => {
+  // El procesador corre en el hilo de audio; aquí se simula su entorno.
+  let Proc = null;
+  const load = async () => {
+    if (Proc) return Proc;
+    globalThis.sampleRate = 44100;
+    globalThis.AudioWorkletProcessor = class {
+      constructor() {
+        this.port = {};
+      }
+    };
+    globalThis.registerProcessor = (_n, C) => (Proc = C);
+    await import('../../src/game/engineWorklet.js');
+    return Proc;
+  };
+  const grain = () => Float32Array.from({ length: 900 }, (_, i) => Math.sin(i * 0.3) * Math.exp(-i / 300));
+  const banks = Object.fromEntries(['carro', 'moto_ralenti', 'moto_carga', 'diesel'].map((k) => [k, { periodo: 0.02, explosiones: 1, granos: [grain(), grain()] }]));
+  const run = (m, params, blocks) => {
+    const out = [new Float32Array(128)];
+    const P = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, [v]]));
+    let peak = 0;
+    let finite = true;
+    for (let b = 0; b < blocks; b++) {
+      m.process([], [out], P);
+      for (const x of out[0]) {
+        if (!Number.isFinite(x)) finite = false;
+        peak = Math.max(peak, Math.abs(x));
+      }
+    }
+    return { peak, finite };
+  };
+
+  it('una voz reutilizada de un carro de 4 cilindros a una moto sigue sonando sin NaN', async () => {
+    const Motor = await load();
+    const m = new Motor({ processorOptions: { profile: workletProfile('carro'), banks, seed: 7 } });
+    const params = { rpm: 3000, load: 0.6, pitch: 1, cut: 0, crackle: 0 };
+    expect(run(m, params, 200).finite).toBe(true);
+    // Dejar el índice de cilindro en el último del carro y cambiar a moto.
+    m.cylIndex = 3;
+    m.setProfile(workletProfile('moto4t'));
+    const r = run(m, { ...params, rpm: 6000 }, 400);
+    expect(r.finite).toBe(true);
+    expect(r.peak).toBeGreaterThan(0.01);
+  });
+
+  it('el ruido de admisión es estable aun con la frecuencia más alta', async () => {
+    const Motor = await load();
+    const m = new Motor({ processorOptions: { profile: { ...workletProfile('moto2t'), noise: 1, noiseFreq: 9000 }, banks, seed: 3 } });
+    const r = run(m, { rpm: 12000, load: 1, pitch: 4, cut: 0, crackle: 1 }, 2000);
+    expect(r.finite).toBe(true);
+    expect(r.peak).toBeLessThanOrEqual(1);
+  });
+});

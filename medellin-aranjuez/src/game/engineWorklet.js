@@ -94,7 +94,13 @@ class Motor extends AudioWorkletProcessor {
     const n = this.p.cyl;
     this.cylGain = Array.from({ length: n }, (_, i) => 1 + (n > 1 ? ((i * 7919) % 13) / 13 - 0.5 : 0) * 0.16);
     this.cylTime = Array.from({ length: n }, (_, i) => (n > 1 ? (((i * 104729) % 17) / 17 - 0.5) * 0.05 : 0));
+    // Las voces del tráfico se reutilizan entre vehículos: el cilindro actual
+    // puede no existir en el motor nuevo (de un carro de 4 a una moto de 1).
+    // Sin esto el intervalo salía NaN y la voz mandaba NaN para siempre.
+    this.cylIndex = 0;
+    this.until = 0;
     this.voices.length = 0;
+    this.pops.length = 0;
   }
 
   /** Dispara una explosión: uno o dos granos (bancos con y sin carga). */
@@ -120,7 +126,7 @@ class Motor extends AudioWorkletProcessor {
       if (this.count % (b.explosiones ?? 1)) continue;
       const g = b.granos[Math.floor(this.rand() * b.granos.length)];
       // Ritmo natural del grano contra el ritmo actual (en muestras).
-      const T0 = b.periodo * b.explosiones * sampleRate;
+      const T0 = b.periodo * (b.explosiones ?? 1) * sampleRate;
       const I = interval * (b.explosiones ?? 1);
       let rate = p.pitchMul * pitch * Math.pow(T0 / I, p.alpha);
       rate = Math.min(4, Math.max(0.35, rate)) * (1 + (this.rand() - 0.5) * 0.03);
@@ -149,9 +155,16 @@ class Motor extends AudioWorkletProcessor {
     const base = sampleRate / fireHz;
     const jit = p.jitter * (1 - 0.8 * rn);
     // Ruido de admisión: pasa-banda de estado variable que sube con las rpm.
+    // Forma trapezoidal (Simper): estable a cualquier frecuencia. La de
+    // Chamberlin se volvía inestable con frecuencias altas (moto 2T acelerada
+    // y con Doppler), su estado crecía hasta NaN y el motor quedaba mudo y
+    // ensuciaba los filtros que vienen después.
     const fc = Math.min(0.45 * sampleRate, p.noiseFreq * (0.6 + 1.2 * rn) * pitch);
-    const f = 2 * Math.sin((Math.PI * fc) / sampleRate);
-    const q = 0.9;
+    const gF = Math.tan((Math.PI * fc) / sampleRate);
+    const kF = 0.9;
+    const a1 = 1 / (1 + gF * (gF + kF));
+    const a2 = gF * a1;
+    const a3 = gF * a2;
     const decay = Math.exp(-1 / (base * 0.35));
     const n = this.noise;
     for (let i = 0; i < out.length; i++) {
@@ -185,10 +198,12 @@ class Motor extends AudioWorkletProcessor {
       }
       // Ruido blanco -> pasa-banda, con la envolvente de la explosión.
       const w = this.rand() * 2 - 1;
-      const hp = w - n.lp - q * n.bp;
-      n.bp += f * hp;
-      n.lp += f * n.bp;
-      s += n.bp * n.env * 0.5;
+      const v3 = w - n.lp;
+      const bp = a1 * n.bp + a2 * v3;
+      const lp = n.lp + a2 * n.bp + a3 * v3;
+      n.bp = 2 * bp - n.bp;
+      n.lp = 2 * lp - n.lp;
+      s += bp * n.env * 0.5;
       n.env *= decay;
       // Petardeos: ruido grave muy corto.
       for (let k = this.pops.length - 1; k >= 0; k--) {
@@ -204,6 +219,16 @@ class Motor extends AudioWorkletProcessor {
       // Saturación suave (la carga "ensucia" el sonido como un escape real).
       const d = 1 + load * 0.8;
       out[i] = Math.tanh(s * d) / Math.sqrt(d);
+    }
+    // Nunca mandar NaN: un solo valor inválido daña los filtros de la cadena
+    // (y la mezcla entera, porque todo suma en el mismo bus).
+    if (!Number.isFinite(out[0]) || !Number.isFinite(out[out.length - 1]) || !Number.isFinite(this.until)) {
+      out.fill(0);
+      n.lp = n.bp = n.env = 0;
+      this.voices.length = 0;
+      this.pops.length = 0;
+      this.until = 0;
+      this.cylIndex = 0;
     }
     for (let c = 1; c < outputs[0].length; c++) outputs[0][c].set(out);
     return true;

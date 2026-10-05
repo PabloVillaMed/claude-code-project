@@ -197,6 +197,7 @@ class LodChunk {
   }
 
   _write(level, idx, k) {
+    if (!level.meshes.length) return; // nivel vacío (utilería sin versión lejana)
     const m = level.matrix.array;
     for (let j = 0; j < k; j++) m.set(this.srcMatrix.subarray(idx[j] * 16, idx[j] * 16 + 16), j * 16);
     level.matrix.clearUpdateRanges();
@@ -255,11 +256,13 @@ export function blobParts(tpl) {
  * THREE.LOD que desaparece más allá de `far`.
  */
 export class ChunkedInstances {
-  constructor(tpl, { near = 140, far = 1500, mid = Infinity, blob = false, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK } = {}) {
+  constructor(tpl, { near = 140, far = 1500, mid = Infinity, blob = false, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK, perInstance = false } = {}) {
     this.tpl = tpl;
     this.items = [];
     // mid + blob: más allá de `mid` cada instancia pasa a un árbol genérico barato.
-    this.opts = { near, far, mid, blob, castShadow, receiveShadow, tint, name, chunk };
+    // perInstance: aunque no haya versión lejana, la distancia de dibujo se mide
+    // a cada instancia y no al centro del trozo (para utilería que se ve poco lejos).
+    this.opts = { near, far, mid, blob, castShadow, receiveShadow, tint, name, chunk, perInstance };
   }
 
   /** q: cuaternión opcional (ya incluye la rotación en Y). */
@@ -282,19 +285,23 @@ export class ChunkedInstances {
       const c = new THREE.Vector3();
       for (const it of list) c.add(_v.set(it.x, it.y, it.z));
       c.divideScalar(list.length);
-      if (this.tpl.lejos && lodChunks) {
+      if (lodChunks && (this.tpl.lejos || this.opts.perInstance)) {
         let radius = 0;
         for (const it of list) radius = Math.max(radius, Math.hypot(it.x - c.x, it.z - c.z) + reach * Math.max(it.sx, it.sz));
         const g = new THREE.Group();
         g.name = this.opts.name;
         g.position.copy(c);
         const nearLevel = this._level(this.tpl.cerca, list, c, this.opts.castShadow);
-        const farLevel = this._level(this.tpl.lejos, list, c, false);
+        // Sin versión lejana: más allá de `near` la instancia simplemente no se
+        // dibuja. Antes estas iban en un THREE.LOD por trozo de 280 m, que
+        // medía la distancia al centro del trozo: una silla a un paso del
+        // jugador podía no verse (y la gente quedaba sentada en el aire).
+        const farLevel = this.tpl.lejos ? this._level(this.tpl.lejos, list, c, false) : { group: new THREE.Group(), meshes: [], matrix: null, color: null };
         const levels = [nearLevel, farLevel];
         if (this.opts.blob && this.opts.mid < this.opts.far) levels.push(this._level(blobParts(this.tpl), list, c, false));
         for (const lv of levels) g.add(lv.group);
         root.add(g);
-        const lc = new LodChunk(g, c, radius, list, levels, this.opts.near, this.opts.far, this.opts.mid);
+        const lc = new LodChunk(g, c, radius, list, levels, this.tpl.lejos ? this.opts.near : this.opts.far, this.opts.far, this.opts.mid);
         lc._all(0);
         lodChunks.push(lc);
         out.push(g);
@@ -520,7 +527,9 @@ function buildSmallProps(r, byType) {
       castShadow: cfg.shadow !== false,
       tint: cfg.tint ? () => true : null,
       name: `utileria-${type}`,
+      perInstance: true,
     });
+    const lodChunks = r.lodChunks;
     const col = new THREE.Color();
     for (const p of list) {
       const s = p.s ?? 1;
@@ -538,7 +547,7 @@ function buildSmallProps(r, byType) {
       }
       set.add(p.x, y, p.z, (p.rot ?? 0) + cfg.rot, s, s, s, p.color ? col.set(p.color) : null);
     }
-    set.build(r.root);
+    set.build(r.root, lodChunks);
   }
 }
 
