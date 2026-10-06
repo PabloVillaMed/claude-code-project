@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.screens
+package com.pablovillamed.selfcontrol.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
@@ -44,34 +44,34 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.R
-import com.pablovillamed.esmeralda.domain.Habit
-import com.pablovillamed.esmeralda.domain.ResponsibleUse
-import com.pablovillamed.esmeralda.domain.WeekReport
-import com.pablovillamed.esmeralda.domain.meets
-import com.pablovillamed.esmeralda.ui.UiState
-import com.pablovillamed.esmeralda.ui.components.IconBadge
-import com.pablovillamed.esmeralda.ui.components.LeafMark
-import com.pablovillamed.esmeralda.ui.components.MatteCard
-import com.pablovillamed.esmeralda.ui.components.PillProgress
-import com.pablovillamed.esmeralda.ui.components.ProgressRing
-import com.pablovillamed.esmeralda.ui.components.QuickChip
-import com.pablovillamed.esmeralda.ui.components.RoundIconButton
-import com.pablovillamed.esmeralda.ui.components.SectionLabel
-import com.pablovillamed.esmeralda.ui.components.StatChip
-import com.pablovillamed.esmeralda.ui.icon
-import com.pablovillamed.esmeralda.ui.label
-import com.pablovillamed.esmeralda.ui.longLabel
-import com.pablovillamed.esmeralda.ui.missingText
-import com.pablovillamed.esmeralda.ui.plural
-import com.pablovillamed.esmeralda.ui.theme.Emerald
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHigh
-import com.pablovillamed.esmeralda.ui.theme.OnEmerald
-import com.pablovillamed.esmeralda.ui.theme.TextFaint
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
-import com.pablovillamed.esmeralda.ui.theme.TextPrimary
-import com.pablovillamed.esmeralda.ui.weekRange
+import com.pablovillamed.selfcontrol.R
+import com.pablovillamed.selfcontrol.domain.Habit
+import com.pablovillamed.selfcontrol.domain.ResponsibleUse
+import com.pablovillamed.selfcontrol.domain.WeekReport
+import com.pablovillamed.selfcontrol.domain.meets
+import com.pablovillamed.selfcontrol.ui.UiState
+import com.pablovillamed.selfcontrol.ui.components.IconBadge
+import com.pablovillamed.selfcontrol.ui.components.LeafMark
+import com.pablovillamed.selfcontrol.ui.components.MatteCard
+import com.pablovillamed.selfcontrol.ui.components.PillProgress
+import com.pablovillamed.selfcontrol.ui.components.ProgressRing
+import com.pablovillamed.selfcontrol.ui.components.QuickChip
+import com.pablovillamed.selfcontrol.ui.components.RoundIconButton
+import com.pablovillamed.selfcontrol.ui.components.SectionLabel
+import com.pablovillamed.selfcontrol.ui.components.StatChip
+import com.pablovillamed.selfcontrol.ui.icon
+import com.pablovillamed.selfcontrol.ui.label
+import com.pablovillamed.selfcontrol.ui.longLabel
+import com.pablovillamed.selfcontrol.ui.missingText
+import com.pablovillamed.selfcontrol.ui.plural
+import com.pablovillamed.selfcontrol.ui.theme.Emerald
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHigh
+import com.pablovillamed.selfcontrol.ui.theme.OnEmerald
+import com.pablovillamed.selfcontrol.ui.theme.TextFaint
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.ui.theme.TextPrimary
+import com.pablovillamed.selfcontrol.ui.weekRange
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -107,7 +107,7 @@ fun HomeScreen(
 private fun Header(ui: UiState) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            SectionLabel("Esmeralda")
+            SectionLabel("Self Control")
             Text(ui.today.longLabel(), style = MaterialTheme.typography.headlineSmall)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.components
+package com.pablovillamed.selfcontrol.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
@@ -48,16 +48,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.ui.theme.Emerald
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.EmeraldDeep
-import com.pablovillamed.esmeralda.ui.theme.EmeraldInk
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHigh
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHighest
-import com.pablovillamed.esmeralda.ui.theme.Hairline
-import com.pablovillamed.esmeralda.ui.theme.OverlineStyle
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
-import com.pablovillamed.esmeralda.ui.theme.TextPrimary
+import com.pablovillamed.selfcontrol.ui.theme.Emerald
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldDeep
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldInk
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHigh
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHighest
+import com.pablovillamed.selfcontrol.ui.theme.Hairline
+import com.pablovillamed.selfcontrol.ui.theme.OverlineStyle
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.ui.theme.TextPrimary
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin

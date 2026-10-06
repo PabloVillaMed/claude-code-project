@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.components
+package com.pablovillamed.selfcontrol.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
@@ -15,9 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.R
-import com.pablovillamed.esmeralda.data.GoalSettings
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.R
+import com.pablovillamed.selfcontrol.data.GoalSettings
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
 
 val GoalSettingsSaver = listSaver<GoalSettings, Int>(
     save = {

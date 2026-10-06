@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.screens
+package com.pablovillamed.selfcontrol.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -26,21 +26,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.data.GoalSettings
-import com.pablovillamed.esmeralda.domain.ResponsibleUse
-import com.pablovillamed.esmeralda.ui.UiState
-import com.pablovillamed.esmeralda.ui.components.GoalEditor
-import com.pablovillamed.esmeralda.ui.components.GoalSettingsSaver
-import com.pablovillamed.esmeralda.ui.components.MatteCard
-import com.pablovillamed.esmeralda.ui.components.SectionLabel
-import com.pablovillamed.esmeralda.ui.shortLabel
-import com.pablovillamed.esmeralda.ui.theme.Danger
-import com.pablovillamed.esmeralda.ui.theme.Emerald
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHigh
-import com.pablovillamed.esmeralda.ui.theme.OnEmerald
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
-import com.pablovillamed.esmeralda.ui.theme.TextPrimary
+import com.pablovillamed.selfcontrol.data.GoalSettings
+import com.pablovillamed.selfcontrol.domain.ResponsibleUse
+import com.pablovillamed.selfcontrol.ui.UiState
+import com.pablovillamed.selfcontrol.ui.components.GoalEditor
+import com.pablovillamed.selfcontrol.ui.components.GoalSettingsSaver
+import com.pablovillamed.selfcontrol.ui.components.MatteCard
+import com.pablovillamed.selfcontrol.ui.components.SectionLabel
+import com.pablovillamed.selfcontrol.ui.shortLabel
+import com.pablovillamed.selfcontrol.ui.theme.Danger
+import com.pablovillamed.selfcontrol.ui.theme.Emerald
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHigh
+import com.pablovillamed.selfcontrol.ui.theme.OnEmerald
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.ui.theme.TextPrimary
 
 @Composable
 fun SettingsScreen(ui: UiState, onScheduleGoals: (GoalSettings) -> Unit, onReset: () -> Unit) {
@@ -105,10 +105,10 @@ fun SettingsScreen(ui: UiState, onScheduleGoals: (GoalSettings) -> Unit, onReset
         }
 
         MatteCard {
-            SectionLabel("Acerca de Esmeralda")
+            SectionLabel("Acerca de Self Control")
             Spacer(Modifier.height(8.dp))
             Text(
-                "Esmeralda es una herramienta de hábitos para personas adultas que consumen cannabis de forma " +
+                "Self Control es una herramienta de hábitos para personas adultas que consumen cannabis de forma " +
                     "recreativa y legal. No promueve el consumo, no vende ni facilita sustancias y no " +
                     "sustituye el consejo médico. Si el consumo te preocupa, habla con un profesional de la salud.",
                 color = TextMuted,

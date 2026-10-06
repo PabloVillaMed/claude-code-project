@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.domain
+package com.pablovillamed.selfcontrol.domain
 
 import java.time.LocalDate
 

@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.Esmeralda" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.SelfControl" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/matte_black</item>
         <item name="android:colorAccent">@color/emerald</item>
     </style>

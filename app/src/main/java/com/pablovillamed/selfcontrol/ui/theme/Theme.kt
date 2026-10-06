@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.theme
+package com.pablovillamed.selfcontrol.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -28,7 +28,7 @@ val TextMuted = Color(0xFF8E9892)
 val TextFaint = Color(0xFF5A635E)
 val Danger = Color(0xFFE5484D)
 
-private val EsmeraldaColors = darkColorScheme(
+private val SelfControlColors = darkColorScheme(
     primary = Emerald,
     onPrimary = OnEmerald,
     primaryContainer = EmeraldInk,
@@ -57,7 +57,7 @@ private val EsmeraldaColors = darkColorScheme(
 
 private val base = Typography()
 
-private val EsmeraldaType = Typography(
+private val SelfControlType = Typography(
     displayLarge = base.displayLarge.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp),
     displayMedium = base.displayMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp),
     displaySmall = base.displaySmall.copy(fontWeight = FontWeight.Bold),
@@ -74,7 +74,7 @@ private val EsmeraldaType = Typography(
 val OverlineStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
 
 @Composable
-fun EsmeraldaTheme(content: @Composable () -> Unit) {
+fun SelfControlTheme(content: @Composable () -> Unit) {
     // La app es siempre oscura: el negro mate es parte de su identidad.
-    MaterialTheme(colorScheme = EsmeraldaColors, typography = EsmeraldaType, content = content)
+    MaterialTheme(colorScheme = SelfControlColors, typography = SelfControlType, content = content)
 }

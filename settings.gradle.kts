@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Esmeralda"
+rootProject.name = "SelfControl"
 include(":app")

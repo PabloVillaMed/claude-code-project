@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.data
+package com.pablovillamed.selfcontrol.data
 
 import android.content.Context
 import androidx.datastore.core.CorruptionException
@@ -32,7 +32,7 @@ private object AppStateSerializer : Serializer<AppState> {
 }
 
 private val Context.appStateStore: DataStore<AppState> by dataStore(
-    fileName = "esmeralda_state.json",
+    fileName = "selfcontrol_state.json",
     serializer = AppStateSerializer,
     // Un archivo ilegible no debe dejar la app inservible: se empieza de cero.
     corruptionHandler = ReplaceFileCorruptionHandler { AppState() },

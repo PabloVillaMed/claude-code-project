@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.data
+package com.pablovillamed.selfcontrol.data
 
 import kotlinx.serialization.Serializable
 

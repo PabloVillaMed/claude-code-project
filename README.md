@@ -1,4 +1,4 @@
-# Esmeralda
+# Self Control
 
 App Android que convierte en un juego el uso **recreativo y responsable** de cannabis
 para **personas adultas**: el consumo de la semana se desbloquea solo cuando cumples
@@ -67,12 +67,16 @@ Requisitos: JDK 17 o superior y el Android SDK con `platforms;android-36`.
 
 ```bash
 echo "sdk.dir=/ruta/a/android-sdk" > local.properties   # o define ANDROID_HOME
+./gradlew assembleRelease        # APK instalable en app/build/outputs/apk/release/
 ./gradlew assembleDebug          # APK en app/build/outputs/apk/debug/
 ./gradlew testDebugUnitTest      # tests de las reglas del juego
 ./gradlew installDebug           # instala en un dispositivo o emulador conectado
 ```
 
 También se puede abrir la carpeta en Android Studio.
+
+> El APK release del MVP se firma con la clave de debug para poder instalarlo
+> directamente. Antes de publicarlo en una tienda hay que configurar una clave propia.
 
 | | |
 |---|---|
@@ -87,7 +91,7 @@ API 36: core 1.19, lifecycle 2.11 y Compose 1.12 ya exigen `compileSdk` 37.
 ## Estructura
 
 ```
-app/src/main/java/com/pablovillamed/esmeralda/
+app/src/main/java/com/pablovillamed/selfcontrol/
 ├── MainActivity.kt          navegación inferior y celebraciones
 ├── data/                    modelos serializables y persistencia (DataStore + JSON)
 ├── domain/                  reglas del juego, sin dependencias de Android

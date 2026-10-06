@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.screens
+package com.pablovillamed.selfcontrol.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -47,23 +47,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.data.GoalSettings
-import com.pablovillamed.esmeralda.ui.components.GoalEditor
-import com.pablovillamed.esmeralda.ui.components.GoalSettingsSaver
-import com.pablovillamed.esmeralda.ui.components.LeafMark
-import com.pablovillamed.esmeralda.ui.components.MatteCard
-import com.pablovillamed.esmeralda.ui.components.ScreenBackground
-import com.pablovillamed.esmeralda.ui.components.SectionLabel
-import com.pablovillamed.esmeralda.ui.theme.Danger
-import com.pablovillamed.esmeralda.ui.theme.Emerald
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHigh
-import com.pablovillamed.esmeralda.ui.theme.Hairline
-import com.pablovillamed.esmeralda.ui.theme.OnEmerald
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
-import com.pablovillamed.esmeralda.ui.theme.TextPrimary
+import com.pablovillamed.selfcontrol.data.GoalSettings
+import com.pablovillamed.selfcontrol.ui.components.GoalEditor
+import com.pablovillamed.selfcontrol.ui.components.GoalSettingsSaver
+import com.pablovillamed.selfcontrol.ui.components.LeafMark
+import com.pablovillamed.selfcontrol.ui.components.MatteCard
+import com.pablovillamed.selfcontrol.ui.components.ScreenBackground
+import com.pablovillamed.selfcontrol.ui.components.SectionLabel
+import com.pablovillamed.selfcontrol.ui.theme.Danger
+import com.pablovillamed.selfcontrol.ui.theme.Emerald
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHigh
+import com.pablovillamed.selfcontrol.ui.theme.Hairline
+import com.pablovillamed.selfcontrol.ui.theme.OnEmerald
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.ui.theme.TextPrimary
 import java.time.Instant
 import java.time.LocalDate
 import java.time.Period
@@ -132,14 +133,14 @@ private fun AgeStep(today: LocalDate, consent: Consent, onChange: (Consent) -> U
 
     Spacer(Modifier.height(12.dp))
     LeafMark(Modifier.size(150.dp), glow = true)
-    Text("Esmeralda", style = MaterialTheme.typography.displayMedium)
+    Text("Self Control", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
     Text("Gánate tu momento.", style = MaterialTheme.typography.titleMedium, color = Emerald)
 
     MatteCard {
         SectionLabel("Solo para mayores de edad")
         Spacer(Modifier.height(8.dp))
         Text(
-            "Esmeralda convierte tus hábitos en un juego: cumple tus metas semanales de lectura, " +
+            "Self Control convierte tus hábitos en un juego: cumple tus metas semanales de lectura, " +
                 "fuerza e hidratación para habilitar tu consumo recreativo de cannabis, " +
                 "siempre de forma consciente y responsable.",
             color = TextMuted,
@@ -161,7 +162,7 @@ private fun AgeStep(today: LocalDate, consent: Consent, onChange: (Consent) -> U
     }
     if (age != null && !oldEnough) {
         Text(
-            "Debes tener al menos $MINIMUM_AGE años para usar Esmeralda.",
+            "Debes tener al menos $MINIMUM_AGE años para usar Self Control.",
             color = Danger,
             textAlign = TextAlign.Center,
         )

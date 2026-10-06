@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda
+package com.pablovillamed.selfcontrol
 
 import android.graphics.Color
 import android.os.Bundle
@@ -45,25 +45,25 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.pablovillamed.esmeralda.domain.Badge
-import com.pablovillamed.esmeralda.ui.AppActions
-import com.pablovillamed.esmeralda.ui.MainViewModel
-import com.pablovillamed.esmeralda.ui.UiState
-import com.pablovillamed.esmeralda.ui.components.Celebration
-import com.pablovillamed.esmeralda.ui.components.LeafMark
-import com.pablovillamed.esmeralda.ui.components.ScreenBackground
-import com.pablovillamed.esmeralda.ui.screens.AchievementsScreen
-import com.pablovillamed.esmeralda.ui.screens.HomeScreen
-import com.pablovillamed.esmeralda.ui.screens.OnboardingScreen
-import com.pablovillamed.esmeralda.ui.screens.SettingsScreen
-import com.pablovillamed.esmeralda.ui.screens.WeekScreen
-import com.pablovillamed.esmeralda.ui.theme.Emerald
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.EmeraldInk
-import com.pablovillamed.esmeralda.ui.theme.EsmeraldaTheme
-import com.pablovillamed.esmeralda.ui.theme.Graphite
-import com.pablovillamed.esmeralda.ui.theme.MatteBlack
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.domain.Badge
+import com.pablovillamed.selfcontrol.ui.AppActions
+import com.pablovillamed.selfcontrol.ui.MainViewModel
+import com.pablovillamed.selfcontrol.ui.UiState
+import com.pablovillamed.selfcontrol.ui.components.Celebration
+import com.pablovillamed.selfcontrol.ui.components.LeafMark
+import com.pablovillamed.selfcontrol.ui.components.ScreenBackground
+import com.pablovillamed.selfcontrol.ui.screens.AchievementsScreen
+import com.pablovillamed.selfcontrol.ui.screens.HomeScreen
+import com.pablovillamed.selfcontrol.ui.screens.OnboardingScreen
+import com.pablovillamed.selfcontrol.ui.screens.SettingsScreen
+import com.pablovillamed.selfcontrol.ui.screens.WeekScreen
+import com.pablovillamed.selfcontrol.ui.theme.Emerald
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldInk
+import com.pablovillamed.selfcontrol.ui.theme.SelfControlTheme
+import com.pablovillamed.selfcontrol.ui.theme.Graphite
+import com.pablovillamed.selfcontrol.ui.theme.MatteBlack
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -76,8 +76,8 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         setContent {
-            EsmeraldaTheme {
-                EsmeraldaApp()
+            SelfControlTheme {
+                SelfControlApp()
             }
         }
     }
@@ -91,7 +91,7 @@ private enum class Tab(val label: String, @param:DrawableRes val icon: Int) {
 }
 
 @Composable
-private fun EsmeraldaApp(viewModel: MainViewModel = viewModel()) {
+private fun SelfControlApp(viewModel: MainViewModel = viewModel()) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     Surface(Modifier.fillMaxSize(), color = MatteBlack) {
         val state = ui

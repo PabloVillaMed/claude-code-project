@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.domain
+package com.pablovillamed.selfcontrol.domain
 
 enum class Badge(val title: String, val description: String, val target: Int) {
     FIRST_STEP("Primer paso", "Registra tu primera actividad", 1),

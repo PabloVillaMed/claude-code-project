@@ -7,12 +7,12 @@ plugins {
 }
 
 android {
-    namespace = "com.pablovillamed.esmeralda"
+    namespace = "com.pablovillamed.selfcontrol"
     // Android 16 (API 36)
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.pablovillamed.esmeralda"
+        applicationId = "com.pablovillamed.selfcontrol"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -21,6 +21,9 @@ android {
 
     buildTypes {
         release {
+            // MVP: se firma con la clave de debug para poder instalar el APK directamente.
+            // Antes de publicar en una tienda, sustituir por una clave de firma propia.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

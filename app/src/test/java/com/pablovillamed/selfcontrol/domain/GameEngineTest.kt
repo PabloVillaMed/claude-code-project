@@ -1,8 +1,8 @@
-package com.pablovillamed.esmeralda.domain
+package com.pablovillamed.selfcontrol.domain
 
-import com.pablovillamed.esmeralda.data.AppState
-import com.pablovillamed.esmeralda.data.DayLog
-import com.pablovillamed.esmeralda.data.GoalSettings
+import com.pablovillamed.selfcontrol.data.AppState
+import com.pablovillamed.selfcontrol.data.DayLog
+import com.pablovillamed.selfcontrol.data.GoalSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

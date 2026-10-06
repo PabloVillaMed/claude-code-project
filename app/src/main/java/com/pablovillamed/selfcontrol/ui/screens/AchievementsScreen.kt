@@ -1,4 +1,4 @@
-package com.pablovillamed.esmeralda.ui.screens
+package com.pablovillamed.selfcontrol.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,21 +26,21 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.pablovillamed.esmeralda.R
-import com.pablovillamed.esmeralda.domain.Badge
-import com.pablovillamed.esmeralda.domain.BadgeProgress
-import com.pablovillamed.esmeralda.domain.GameEngine
-import com.pablovillamed.esmeralda.ui.UiState
-import com.pablovillamed.esmeralda.ui.components.GlowBar
-import com.pablovillamed.esmeralda.ui.components.MatteCard
-import com.pablovillamed.esmeralda.ui.components.ProgressRing
-import com.pablovillamed.esmeralda.ui.components.SectionLabel
-import com.pablovillamed.esmeralda.ui.theme.EmeraldBright
-import com.pablovillamed.esmeralda.ui.theme.EmeraldDeep
-import com.pablovillamed.esmeralda.ui.theme.GraphiteHighest
-import com.pablovillamed.esmeralda.ui.theme.OnEmerald
-import com.pablovillamed.esmeralda.ui.theme.TextFaint
-import com.pablovillamed.esmeralda.ui.theme.TextMuted
+import com.pablovillamed.selfcontrol.R
+import com.pablovillamed.selfcontrol.domain.Badge
+import com.pablovillamed.selfcontrol.domain.BadgeProgress
+import com.pablovillamed.selfcontrol.domain.GameEngine
+import com.pablovillamed.selfcontrol.ui.UiState
+import com.pablovillamed.selfcontrol.ui.components.GlowBar
+import com.pablovillamed.selfcontrol.ui.components.MatteCard
+import com.pablovillamed.selfcontrol.ui.components.ProgressRing
+import com.pablovillamed.selfcontrol.ui.components.SectionLabel
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldBright
+import com.pablovillamed.selfcontrol.ui.theme.EmeraldDeep
+import com.pablovillamed.selfcontrol.ui.theme.GraphiteHighest
+import com.pablovillamed.selfcontrol.ui.theme.OnEmerald
+import com.pablovillamed.selfcontrol.ui.theme.TextFaint
+import com.pablovillamed.selfcontrol.ui.theme.TextMuted
 import java.text.NumberFormat
 import java.util.Locale
 

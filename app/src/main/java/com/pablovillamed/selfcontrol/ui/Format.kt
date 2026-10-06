@@ -1,8 +1,8 @@
-package com.pablovillamed.esmeralda.ui
+package com.pablovillamed.selfcontrol.ui
 
-import com.pablovillamed.esmeralda.R
-import com.pablovillamed.esmeralda.domain.Habit
-import com.pablovillamed.esmeralda.domain.WeekReport
+import com.pablovillamed.selfcontrol.R
+import com.pablovillamed.selfcontrol.domain.Habit
+import com.pablovillamed.selfcontrol.domain.WeekReport
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
