@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Esmeralda" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/matte_black</item>
+        <item name="android:colorAccent">@color/emerald</item>
+        <item name="android:windowSplashScreenBackground">@color/matte_black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>
