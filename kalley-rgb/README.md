@@ -18,11 +18,9 @@ con el mismo tipo de chip) sin el software del fabricante, que Kalley no publica
 
 ### Windows (sin instalar Python)
 
-1. En GitHub, abre la pestaña **Actions** del repositorio y entra en la última
-   ejecución correcta de **Kalley RGB**.
-2. Descarga el artefacto **KalleyRGB-windows**, descomprímelo y abre
-   `KalleyRGB.exe`. El artefacto se borra a los 7 días; para generarlo de nuevo,
-   usa **Run workflow** en esa misma pestaña.
+1. En GitHub, abre **Releases** en la página del repositorio y entra en
+   **Kalley RGB (prueba)**.
+2. Descarga `KalleyRGB.exe` y ábrelo. Se regenera en cada cambio de la app.
 
 Windows puede avisar de que el programa no está firmado: *Más información →
 Ejecutar de todas formas*. No necesita drivers: el ratón ya usa el driver HID
@@ -117,7 +115,7 @@ python -m unittest discover -s tests -t .
 Las pruebas no necesitan el ratón: comprueban los bytes de cada protocolo contra
 las referencias publicadas y usan los descriptores HID reales de un ratón con chip
 Instant. El workflow `.github/workflows/kalley-rgb.yml` ejecuta las pruebas y
-genera `KalleyRGB.exe` en cada cambio.
+publica `KalleyRGB.exe` en la release **Kalley RGB (prueba)** en cada cambio.
 
 | Módulo | Qué hace |
 |---|---|

@@ -25,6 +25,8 @@ jobs:
   windows:
     runs-on: windows-latest
     needs: pruebas
+    permissions:
+      contents: write  # publicar el .exe en la release de prueba
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -36,9 +38,21 @@ jobs:
       - run: python -c "import hid; print(hid.version_str())"
       - run: python -m kalley_rgb diagnostico --todos
       - run: pyinstaller --onefile --windowed --name KalleyRGB --hidden-import hid KalleyRGB.pyw
-      - uses: actions/upload-artifact@v6
-        with:
-          name: KalleyRGB-windows
-          path: kalley-rgb/dist/KalleyRGB.exe
-          # La cuota de almacenamiento de artefactos de la cuenta es limitada.
-          retention-days: 7
+      # Se publica como release y no como artefacto: las releases no consumen
+      # la cuota de almacenamiento de Actions de la cuenta.
+      - name: Publicar KalleyRGB.exe en la release de prueba
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: kalley-rgb-prueba
+        run: |
+          notes="Ejecutable de Windows generado desde la rama $GITHUB_REF_NAME, commit $GITHUB_SHA."
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --notes "$notes"
+          else
+            gh release create "$TAG" --prerelease --target "$GITHUB_SHA" \
+              --title "Kalley RGB (prueba)" --notes "$notes"
+          fi
+          gh release upload "$TAG" dist/KalleyRGB.exe --clobber
