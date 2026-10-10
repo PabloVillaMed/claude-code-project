@@ -106,16 +106,16 @@ class KalleyGuiTest(unittest.TestCase):
         fakehid.install(fakehid.FakeHid(fakehid.kalley_entries(), dict(fakehid.KALLEY_DESCRIPTORS),
                                         chips={b"col04": self.chip}))
         self.tmp = tempfile.TemporaryDirectory()
-        self.old = (config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY)
+        self.old = (config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY, sunplus.SETTLE)
         config.PATH = Path(self.tmp.name) / "cfg.json"
         sunplus.BACKUP_PATH = Path(self.tmp.name) / "respaldo.bin"
-        sunplus.DELAY = 0
+        sunplus.DELAY = sunplus.SETTLE = 0
         self.app = gui.App(self.root)
         self.app.refresh()
 
     def tearDown(self):
         self.root.destroy()
-        config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY = self.old
+        config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY, sunplus.SETTLE = self.old
         self.tmp.cleanup()
         fakehid.uninstall()
 
@@ -125,8 +125,8 @@ class KalleyGuiTest(unittest.TestCase):
         self.assertIn("Sunplus", app.proto_box.get())
         self.assertEqual(app.mode_list.get(0, "end"), (
             "Arcoíris", "Multicolor", "Flujo", "Vals", "Cuatro estaciones",
-            "Color según DPI", "Apagado"))
-        self.assertEqual(app.brightness.cget("state"), "disabled")
+            "Color fijo", "Color según DPI", "Apagado"))
+        self.assertEqual((app.brightness.cget("from"), app.brightness.cget("to")), (1, 2))
         app.mode_list.selection_clear(0, "end")
         app.mode_list.selection_set(2)  # Flujo
         app._mode_changed()
@@ -134,13 +134,28 @@ class KalleyGuiTest(unittest.TestCase):
         app.apply()
         app._worker.join(timeout=10)
         app._poll()
-        self.assertEqual(sunplus.led_state(bytes(self.chip.memory)), (4, 7))
+        self.assertEqual(self.chip.memory[0x32], 0x04 | sunplus.speed_bits(7))
         self.assertTrue(app.status.cget("text").startswith("Aplicado: Flujo"))
         app.turn_off()
         app._worker.join(timeout=10)
         app._poll()
-        self.assertEqual(sunplus.led_state(bytes(self.chip.memory))[0], 7)
+        self.assertEqual(self.chip.memory[0x32] & 0x07, 7)
         self.assertEqual(app.status.cget("text"), "Luces apagadas.")
+        self.assertEqual(self.chip.partial_commits, 0)
+
+    def test_static_color_uses_picker_color(self):
+        app = self.app
+        app.mode_list.selection_clear(0, "end")
+        app.mode_list.selection_set(5)  # Color fijo
+        app._mode_changed()
+        self.assertEqual(app.color_btn.state(), ())
+        app._pick_preset("#a000ff")
+        app.apply()
+        app._worker.join(timeout=10)
+        app._poll()
+        self.assertEqual(self.chip.memory[0x32] & 0x07, 1)
+        self.assertEqual(self.chip.memory[0x1A:0x1D], bytes([0xA0, 0x00, 0xFF]))
+        sunplus.validate(bytes(self.chip.memory), sunplus.VARIANTS[0])
 
 
 if __name__ == "__main__":

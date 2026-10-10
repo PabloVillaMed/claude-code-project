@@ -200,25 +200,29 @@ class HoltekA070Protocol(Protocol):
 
 
 class SunplusProtocol(Protocol):
-    """Chip Sunplus SPCP19X: 7 efectos con 8 velocidades guardados en la memoria del raton."""
+    """Chip Sunplus SPCP19X: efectos, velocidad, brillo y color guardados en la memoria del raton."""
 
     id = "sunplus"
     name = "Sunplus SPCP19X"
-    description = ("Chip del Kalley K-GMOUSE6 (VID 1bcf). 7 efectos con 8 velocidades. "
-                   "Lee la memoria del ratón, cambia solo las luces y la vuelve a escribir "
-                   "(tarda unos segundos).")
+    description = ("Chip del Kalley K-GMOUSE6 (VID 1bcf). 6 efectos y color fijo, 8 velocidades "
+                   "y brillo 50/100 %. Lee la memoria del ratón, cambia solo las luces y la "
+                   "vuelve a escribir (tarda unos segundos).")
     report_id = sunplus.REPORT_ID
     interface = 0
     usage_page = 0xFF00
     speed_range = (1, 8)
+    brightness_range = (1, 2)  # 1 = 50 %, 2 = 100 %
     reads_memory = True
     modes = (
-        Mode("arcoiris", "Arcoíris", 3, speed=True),
-        Mode("multicolor", "Multicolor", 2, speed=True),
-        Mode("flujo", "Flujo", 4, speed=True),
-        Mode("vals", "Vals", 5, speed=True),
-        Mode("estaciones", "Cuatro estaciones", 6, speed=True),
-        Mode("dpi", "Color según DPI", 1, speed=True),
+        Mode("arcoiris", "Arcoíris", 3, speed=True, brightness=True),
+        Mode("multicolor", "Multicolor", 2, speed=True, brightness=True),
+        Mode("flujo", "Flujo", 4, speed=True, brightness=True),
+        Mode("vals", "Vals", 5, speed=True, brightness=True),
+        Mode("estaciones", "Cuatro estaciones", 6, speed=True, brightness=True),
+        # El chip no tiene color fijo propio: es el efecto 1 (color del nivel DPI)
+        # con el mismo color en todos los niveles.
+        Mode("estatico", "Color fijo", 1, color=True, speed=True, brightness=True),
+        Mode("dpi", "Color según DPI", 1, speed=True, brightness=True),
         Mode("apagado", "Apagado", 7),
     )
     off_mode = "apagado"
@@ -227,18 +231,24 @@ class SunplusProtocol(Protocol):
         raise NotImplementedError("Este chip se configura a partir de su memoria; "
                                   "usa preview() con el ratón conectado.")
 
+    def _edit_args(self, settings):
+        mode = self.mode(settings.mode)
+        return (mode.code, settings.speed,
+                settings.brightness if mode.brightness else None,
+                tuple(settings.color) if mode.color else None)
+
     def apply(self, device, settings, delay=None):
         link = sunplus.SunplusLink(device)
-        sunplus.apply_led(device, self.mode(settings.mode).code, settings.speed, link)
+        sunplus.apply_settings(device, *self._edit_args(settings), link=link)
         return link.sent
 
     def preview(self, device, settings):
         """Bytes que cambiaria apply(), sin escribir nada: [(direccion, antes, despues)]."""
-        code = self.mode(settings.mode).code
-        memory = sunplus.SunplusLink(device).read_memory()
-        sunplus.validate(memory)
-        updated = sunplus.with_led(memory, code, settings.speed)
-        return [(i, a, b) for i, (a, b) in enumerate(zip(memory, updated)) if a != b]
+        variant, memory = sunplus.SunplusLink(device).read()
+        sunplus.validate(memory, variant)
+        updated = sunplus.edit(memory, *self._edit_args(settings))
+        return [(i, a, b) for i, (a, b) in enumerate(zip(memory[:variant.size],
+                                                         updated[:variant.size])) if a != b]
 
 
 PROTOCOLS = {p.id: p for p in (SunplusProtocol(), InstantProtocol(), InstantA704Protocol(),

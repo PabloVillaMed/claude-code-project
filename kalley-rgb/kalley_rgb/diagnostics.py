@@ -71,18 +71,31 @@ def build_report(include_all=False):
 
 def _memory_dump(match):
     out = ["  -- memoria de configuración (solo lectura)"]
+    link = None
     try:
         with match.open() as handle:
-            memory = sunplus.SunplusLink(handle).read_memory()
+            link = sunplus.SunplusLink(handle)
+            variant, memory = link.read()
     except Exception as exc:
+        if link and link.handshake:
+            out.append(f"     saludo: {link.handshake[0].hex(' ')} / {link.handshake[1].hex(' ')}")
         return out + [f"     no se pudo leer: {exc}"]
-    for i in range(0, len(memory), 16):
-        out.append(f"     {i:02x}: {memory[i:i + 16].hex(' ')}")
+    hello, ident = link.handshake
+    out.append(f"     saludo: {hello.hex(' ')} / {ident.hex(' ')} (variante {variant.name})")
+    shown = memory[:0x100]
+    for i in range(0, len(shown), 16):
+        out.append(f"     {i:03x}: {shown[i:i + 16].hex(' ')}")
+    if len(memory) > len(shown):
+        out.append(f"     ... ({len(memory)} bytes en total; se muestran los primeros 256)")
     try:
-        mode, speed = sunplus.led_state(memory)
-        out.append(f"     luces: efecto {mode}, velocidad {speed} ({len(memory)} bytes, formato conocido)")
+        sunplus.validate(memory, variant)
+        out.append("     formato conocido (checksums y complementos correctos)")
     except sunplus.SunplusError as exc:
         out.append(f"     {exc}")
+    out.append(f"     luces: {sunplus.describe(memory)}")
+    digest = sunplus.backup_digest()
+    out.append(f"     copia de seguridad: {sunplus.BACKUP_PATH} ({digest})" if digest
+               else "     copia de seguridad: todavía no hay")
     return out
 
 

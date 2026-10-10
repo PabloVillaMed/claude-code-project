@@ -165,15 +165,11 @@ def _restore(args):
 
 
 def _restore_memory(args):
-    memory = sunplus.load_backup()
     match = next((m for m in detect.scan() if m.protocol and m.protocol.id == "sunplus"), None)
     if match is None:
         raise RuntimeError("No se encontró conectado un ratón con chip Sunplus (Kalley).")
     with match.open() as handle:
-        link = sunplus.SunplusLink(handle)
-        link.write_memory(memory)
-        if link.read_memory() != memory:
-            raise sunplus.SunplusError("El ratón no guardó la memoria restaurada como se esperaba.")
+        sunplus.restore_backup(handle)
     print(f"Memoria original restaurada desde {sunplus.BACKUP_PATH}")
     return 0
 

@@ -72,71 +72,114 @@ def elan_entries():
     return [dict(base, path=p, usage_page=up, usage=u) for p, up, u in cols]
 
 
-def sunplus_memory():
-    """Memoria de 258 bytes con el formato que documenta spmctrl."""
-    memory = bytearray((i * 7 + 3) & 0xFF for i in range(258))
-    memory[0x06:0x0C] = bytes([0x03, 0x05, 0x08, 0x0B, 0x0B, 0x0B])  # 1000/1600/3200/6400
-    memory[0x30], memory[0x31] = 0x01, 0xFE  # nivel DPI 2
-    memory[0x32], memory[0x33] = 0x83, 0x7C  # arcoiris, velocidad 4
-    return memory
+# Imagen real de 258 bytes de un Redgear A-15 (1bcf:08a0, variante de 256 B), reconstruida de
+# la captura USB del issue 4078 de OpenRGB. Checksums 0x2F/0x76/0xFA validos; los 3 ultimos
+# bytes son relleno fuera de la longitud pedida (0xFF).
+REDGEAR_MEMORY = bytes.fromhex(
+    "45 f8 06 30 ff 00 00 04 05 09 07 06 07 01 04 03 00 02 05 06 ff 00 7f ff ff ff ff ff ff ff 00 ff"
+    "00 00 ff ff 00 00 e1 e1 1a 09 fa 05 ff ff ff 58 01 fe 02 fd 00 ff ff ff ff ff ff ff fe ff ff ff"
+    "01 01 00 01 04 00 01 02 00 02 08 07 03 00 cd 05 00 00 03 00 b5 03 00 b6 06 00 f0 01 01 00 01 04"
+    "00 01 02 00 02 00 0b 02 00 14 05 00 00 05 00 00 0f 00 00 06 00 f0 c9 ff fe ff ff ff ff ff fe 99"
+    "0e 05 01 0e 05 19 0e 05 31 0e 05 49 0e 05 61 0e 05 79 0e 05 91 0e 05 a9 0e 05 c1 0e 05 d9 ff ff"
+    "ff ff ff ff ff ff ff ff fe ff ff ff ff ff fd ff 00 ff 00 ff 00 ff 00 ff 00 ff 00 ff 00 ff 00 ff"
+    "00 ff 00 ff ff ff fe ff ff ff ff ff fd ff ff ff ff 00 00 00 ff 00 00 00 ff ff ff 00 ff 00 ff 00"
+    "ff ff ff 80 00 ff 00 80 00 ff 80 ff ff ff ff ff 0a fd ff a1 fe 03 21 fe 06 fc 93 ff fd ff ff fc"
+    "93 ff")
+
+
+def memory_2k():
+    """Variante de 2 KB (342 bloques): misma cabecera y el resto (macros) a cero."""
+    return REDGEAR_MEMORY[:0xFF] + bytes(342 * 6 - 0xFF)
 
 
 class FakeSunplusChip:
-    """Imita el chip Sunplus segun el protocolo de spmctrl: cada SET prepara la respuesta del GET."""
+    """Imita el chip Sunplus como en las capturas: cada SET prepara la respuesta del GET.
 
-    def __init__(self, memory=None, echo_error_at=None, ignore_writes=False):
-        self.memory = bytearray(sunplus_memory() if memory is None else memory)
-        self.reply = bytes.fromhex("0400000037000100")  # lo que devolvio el raton en reposo
+    pending: cuantos GET devuelven "aun no lista" (ultimo byte 0x00) tras cada SET.
+    echo_errors: cuantas escrituras de bloque fallan (eco alterado), contando desde echo_error_at.
+    ignore_writes: el chip contesta bien pero no guarda nada.
+    partial_commits: escrituras incompletas que un cierre (08) habria guardado; nunca debe pasar.
+    """
+
+    def __init__(self, variant="256", memory=None, pending=0, echo_error_at=None,
+                 echo_errors=1, ignore_writes=False, change_after_reads=None, hello=None):
+        self.size, self.hello, ident = (0xFF, 0xA6, 0x0E) if variant == "256" else (0x800, 0xA4, 0x1E)
+        self.hello = hello if hello is not None else self.hello
+        self.ident = ident
+        if memory is None:
+            memory = REDGEAR_MEMORY if variant == "256" else memory_2k()
+        self.memory = bytearray(memory)
+        self.pending = pending
         self.echo_error_at = echo_error_at
+        self.echo_errors = echo_errors
         self.ignore_writes = ignore_writes
-        self.reading = False
-        self.read_pos = 0
+        self.change_after_reads = change_after_reads
+        self.reads_done = 0
+        self.reply = bytes.fromhex("04 00 00 00 37 00 01 00")  # lo que devolvio el Kalley en reposo
+        self.pending_left = 0
+        self.read_pos = None
+        self.write_len = None
         self.staged = None
         self.commits = 0
+        self.partial_commits = 0
         self.log = []
 
-    def _set_reply(self, *data):
+    def get(self):
+        if self.pending_left:
+            self.pending_left -= 1
+            return self.reply[:7] + b"\x00"
+        return self.reply
+
+    def _reply(self, *data):
         self.reply = bytes([0x04, *data]).ljust(7, b"\0") + b"\xcc"
 
     def send(self, data):
         cmd = data[1]
         self.log.append(cmd)
+        self.pending_left = self.pending
         if cmd == 0x01:
-            self._set_reply(0xA6)
+            self.staged = self.write_len = None  # una sesion nueva descarta una escritura a medias
+            self._reply(self.hello, 0, 0, 0, 0x93, 0)
         elif cmd == 0x03:
-            self._set_reply(0xAA, 0x0E, 0xFD)
-        elif cmd == 0x04 and data[2] == 0x36:
-            self.reading = False
-            self._set_reply(0xAA, 0x0E, 0xFD)
+            self._reply(0xAA, self.ident, 0xFD, 0, 0x93, 0)
         elif cmd == 0x04:
-            self.reading, self.read_pos = True, 0
-            self._set_reply(0xFF, 0xFF)
-        elif cmd == 0x05 and self.reading:
+            self.read_pos = data[2] | data[3] << 8
+            self._reply()
+        elif cmd == 0x05 and self.read_pos is not None:
+            chunk = bytes(self.memory[self.read_pos:self.read_pos + 6])
+            chunk += bytes.fromhex("fc 93 ff fc 93 ff")[:6 - len(chunk)]
+            self.read_pos += 6
             if self.read_pos >= len(self.memory):
-                self.reply = bytes([0x04, 0, 0, 0, 0, 0, 0, 0xEE])
-            else:
-                self.reply = bytes([0x04]) + bytes(self.memory[self.read_pos:self.read_pos + 6]) + b"\xcc"
-                self.read_pos += 6
-        elif cmd == 0x05:
-            self._set_reply(0xFF, 0xFF)
+                self.reads_done += 1
+                if self.change_after_reads == self.reads_done:
+                    self.memory[0x30], self.memory[0x31] = 0x02, 0xFD  # alguien pulso el boton DPI
+            self.reply = b"\x04" + chunk + b"\xcc"
         elif cmd == 0x06:
+            self.write_len = data[4] | data[5] << 8
             self.staged = bytearray()
-            self._set_reply(0xAA, 0x0E, 0xFD)
-        elif cmd == 0x07:
+            self._reply(0xAA, self.ident, 0xFD, 0, 0x93, 0)
+        elif cmd == 0x07 and self.staged is not None:
             chunk = bytearray(data[2:8])
+            block = len(self.staged) // 6
             self.staged += chunk
-            if self.echo_error_at is not None and len(self.staged) // 6 - 1 == self.echo_error_at:
+            if (self.echo_error_at is not None and self.echo_errors > 0
+                    and block == self.echo_error_at):
+                self.echo_errors -= 1
                 chunk[0] ^= 0xFF
-            self.reply = bytes([0x04]) + bytes(chunk) + b"\xcc"
+            self.reply = b"\x04" + bytes(chunk) + b"\xcc"
         elif cmd == 0x08:
-            if self.staged is not None and len(self.staged) == len(self.memory) and not self.ignore_writes:
-                self.memory[:] = self.staged
-                self.commits += 1
-            self.staged = None
-            self.reading = False
-            self.reply = bytes.fromhex("04 fd ff ff 00 00 00 cc")
+            if self.staged is not None:
+                if len(self.staged) < self.write_len:
+                    self.partial_commits += 1
+                if not self.ignore_writes:
+                    self.memory[:self.write_len] = self.staged[:self.write_len]
+                    self.commits += 1
+            self.staged = self.write_len = None
+            self.read_pos = None
+            self.reply = bytes.fromhex("04 fd 00 00 fc 93 ff cc")
+            self.pending_left = max(self.pending_left, 1)  # como el Redgear: primero sin terminar
         elif cmd == 0x02:
-            self.reply = bytes.fromhex("04 fc 00 00 01 00 00 cc")
+            self.reply = bytes.fromhex("04 fb 00 00 fc 93 39 cc")
 
 
 class FakeHid(types.ModuleType):
@@ -167,7 +210,7 @@ class FakeHid(types.ModuleType):
 
             def get_feature_report(self, report_id, length):
                 if self.path in fake.chips:
-                    return list(fake.chips[self.path].reply[:length])
+                    return list(fake.chips[self.path].get()[:length])
                 return list(fake.feature_replies.get((self.path, report_id), bytes([report_id])))
 
             def close(self):
