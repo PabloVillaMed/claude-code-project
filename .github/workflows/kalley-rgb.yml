@@ -40,3 +40,5 @@ jobs:
         with:
           name: KalleyRGB-windows
           path: kalley-rgb/dist/KalleyRGB.exe
+          # La cuota de almacenamiento de artefactos de la cuenta es limitada.
+          retention-days: 7

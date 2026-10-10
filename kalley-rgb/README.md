@@ -21,7 +21,8 @@ con el mismo tipo de chip) sin el software del fabricante, que Kalley no publica
 1. En GitHub, abre la pestaña **Actions** del repositorio y entra en la última
    ejecución correcta de **Kalley RGB**.
 2. Descarga el artefacto **KalleyRGB-windows**, descomprímelo y abre
-   `KalleyRGB.exe`.
+   `KalleyRGB.exe`. El artefacto se borra a los 7 días; para generarlo de nuevo,
+   usa **Run workflow** en esa misma pestaña.
 
 Windows puede avisar de que el programa no está firmado: *Más información →
 Ejecutar de todas formas*. No necesita drivers: el ratón ya usa el driver HID
