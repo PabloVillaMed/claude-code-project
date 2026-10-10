@@ -1,0 +1,42 @@
+name: Kalley RGB
+
+on:
+  push:
+    paths: ["kalley-rgb/**", ".github/workflows/kalley-rgb.yml"]
+  pull_request:
+    paths: ["kalley-rgb/**", ".github/workflows/kalley-rgb.yml"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: kalley-rgb
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # xvfb da una pantalla virtual para que tambien corran las pruebas de la ventana.
+      - run: xvfb-run -a python -m unittest discover -s tests -t . -v
+
+  windows:
+    runs-on: windows-latest
+    needs: pruebas
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: python -m unittest discover -s tests -t .
+      # Comprueba que hidapi carga, enumera y lee descriptores en Windows real.
+      - run: python -c "import hid; print(hid.version_str())"
+      - run: python -m kalley_rgb diagnostico --todos
+      - run: pyinstaller --onefile --windowed --name KalleyRGB --hidden-import hid KalleyRGB.pyw
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KalleyRGB-windows
+          path: kalley-rgb/dist/KalleyRGB.exe

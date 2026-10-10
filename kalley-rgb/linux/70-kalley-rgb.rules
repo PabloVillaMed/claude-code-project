@@ -1,0 +1,8 @@
+# Permite a la sesion del usuario configurar las luces sin sudo.
+# El numero debe ser menor que 73: TAG+="uaccess" se aplica en 73-seat-late.rules.
+# Instalar:  sudo cp 70-kalley-rgb.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+# Chips Instant Microelectronics (solo hacen ratones gaming)
+KERNEL=="hidraw*", ATTRS{idVendor}=="30fa", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="18f8", TAG+="uaccess"
+# Holtek A070 (Holtek tambien fabrica teclados: solo este modelo)
+KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a070", TAG+="uaccess"
