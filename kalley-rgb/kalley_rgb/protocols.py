@@ -10,12 +10,15 @@ Fuentes del protocolo (ingenieria inversa publicada):
 - Instant A704/A704F (30fa:1701, 18f8:1286):
   https://github.com/AmberIsFrozen/Instant-A704F-Mouse-Utilities (SPECS.md)
 - Holtek A070 (04d9:a070): OpenRGB, Controllers/HoltekController
+- Sunplus SPCP19X (1bcf:08a0, Kalley K-GMOUSE6): https://github.com/jdev082/spmctrl
 """
 
 import time
 from dataclasses import dataclass
 
-REPORT_ID = 0x07  # los tres protocolos usan el reporte 7 de 8 bytes
+from . import sunplus
+
+REPORT_ID = 0x07  # Instant y Holtek usan el reporte 7 de 8 bytes
 
 
 @dataclass(frozen=True)
@@ -44,10 +47,14 @@ class Protocol:
     off_mode = ""
     speed_range = (1, 1)
     brightness_range = (0, 0)
+    report_id = REPORT_ID
     # Coleccion HID preferida: (interfaz, usage page). La deteccion por
     # descriptor tiene prioridad; esto es el respaldo.
     interface = 1
     usage_page = 0xFF00
+    # True si el chip se configura leyendo y reescribiendo su memoria: no hay
+    # una lista fija de paquetes y simular requiere el raton conectado.
+    reads_memory = False
 
     def mode(self, key):
         for m in self.modes:
@@ -192,7 +199,50 @@ class HoltekA070Protocol(Protocol):
         ]
 
 
-PROTOCOLS = {p.id: p for p in (InstantProtocol(), InstantA704Protocol(), HoltekA070Protocol())}
+class SunplusProtocol(Protocol):
+    """Chip Sunplus SPCP19X: 7 efectos con 8 velocidades guardados en la memoria del raton."""
+
+    id = "sunplus"
+    name = "Sunplus SPCP19X"
+    description = ("Chip del Kalley K-GMOUSE6 (VID 1bcf). 7 efectos con 8 velocidades. "
+                   "Lee la memoria del ratón, cambia solo las luces y la vuelve a escribir "
+                   "(tarda unos segundos).")
+    report_id = sunplus.REPORT_ID
+    interface = 0
+    usage_page = 0xFF00
+    speed_range = (1, 8)
+    reads_memory = True
+    modes = (
+        Mode("arcoiris", "Arcoíris", 3, speed=True),
+        Mode("multicolor", "Multicolor", 2, speed=True),
+        Mode("flujo", "Flujo", 4, speed=True),
+        Mode("vals", "Vals", 5, speed=True),
+        Mode("estaciones", "Cuatro estaciones", 6, speed=True),
+        Mode("dpi", "Color según DPI", 1, speed=True),
+        Mode("apagado", "Apagado", 7),
+    )
+    off_mode = "apagado"
+
+    def packets(self, settings):
+        raise NotImplementedError("Este chip se configura a partir de su memoria; "
+                                  "usa preview() con el ratón conectado.")
+
+    def apply(self, device, settings, delay=None):
+        link = sunplus.SunplusLink(device)
+        sunplus.apply_led(device, self.mode(settings.mode).code, settings.speed, link)
+        return link.sent
+
+    def preview(self, device, settings):
+        """Bytes que cambiaria apply(), sin escribir nada: [(direccion, antes, despues)]."""
+        code = self.mode(settings.mode).code
+        memory = sunplus.SunplusLink(device).read_memory()
+        sunplus.validate(memory)
+        updated = sunplus.with_led(memory, code, settings.speed)
+        return [(i, a, b) for i, (a, b) in enumerate(zip(memory, updated)) if a != b]
+
+
+PROTOCOLS = {p.id: p for p in (SunplusProtocol(), InstantProtocol(), InstantA704Protocol(),
+                               HoltekA070Protocol())}
 
 
 def get(protocol_id):

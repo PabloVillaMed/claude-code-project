@@ -1,5 +1,6 @@
 """Ventana de control (tkinter, incluido con Python)."""
 
+import threading
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
@@ -17,6 +18,8 @@ class App:
         self.matches = []
         self.color = (255, 0, 0)
         self.saved = config.load()
+        self._pending = None
+        self._worker = None
         root.title(f"Kalley RGB {__version__}")
         root.resizable(False, False)
         self._build()
@@ -195,18 +198,46 @@ class App:
             self._set_color(tuple(int(c) for c in rgb))
 
     # ---- acciones -------------------------------------------------------
-    def _send(self, settings, save=True):
+    def _send(self, settings, done_text, save=True):
+        """Aplica en segundo plano: algunos chips tardan segundos (leen y reescriben memoria)."""
         match, proto = self.match, self.protocol
-        try:
-            match.apply(settings, proto)
-        except Exception as exc:
-            self.status.config(text=f"Error: {exc}")
-            messagebox.showerror("Kalley RGB", str(exc))
-            return False
+        outcome = {}
+
+        def work():
+            try:
+                match.apply(settings, proto)
+            except Exception as exc:
+                outcome["error"] = exc
+
+        self._pending = (outcome, match, proto, settings, done_text, save)
+        self._busy(True)
+        self.status.config(text="Aplicando… puede tardar unos segundos.")
+        self._worker = threading.Thread(target=work, daemon=True)
+        self._worker.start()
+        self.root.after(100, self._poll)
+
+    def _poll(self):
+        if self._pending is None:
+            return
+        if self._worker.is_alive():
+            self.root.after(100, self._poll)
+            return
+        outcome, match, proto, settings, done_text, save = self._pending
+        self._pending = None
+        self._busy(False)
+        if "error" in outcome:
+            self.status.config(text=f"Error: {outcome['error']}")
+            messagebox.showerror("Kalley RGB", str(outcome["error"]))
+            return
         if save:
             config.save(match.device.ids, proto.id, settings)
             self.saved = (match.device.ids, proto.id, settings)
-        return True
+        self.status.config(text=done_text)
+
+    def _busy(self, busy):
+        for w in (self.apply_btn, self.off_btn):
+            w.state(["disabled"] if busy else ["!disabled"])
+        self.root.config(cursor="watch" if busy else "")
 
     def apply(self):
         mode = self._selected_mode()
@@ -215,16 +246,14 @@ class App:
         settings = protocols.Settings(mode=mode.key, color=self.color,
                                       speed=int(self.speed.get()),
                                       brightness=int(self.brightness.get()))
-        if self._send(settings):
-            self.status.config(text=f"Aplicado: {mode.name}. Si las luces no cambian, "
-                                    "prueba otro chip en la lista o usa Diagnóstico.")
+        self._send(settings, f"Aplicado: {mode.name}. Si las luces no cambian, "
+                             "prueba otro chip en la lista o usa Diagnóstico.")
 
     def turn_off(self):
         proto = self.protocol
         settings = proto.default_settings()
         settings.mode = proto.off_mode
-        if self._send(settings, save=False):
-            self.status.config(text="Luces apagadas.")
+        self._send(settings, "Luces apagadas.", save=False)
 
     def show_diagnostics(self):
         self.status.config(text="Generando diagnóstico…")

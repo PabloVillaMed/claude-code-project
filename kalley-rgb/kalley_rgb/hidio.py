@@ -99,7 +99,8 @@ class HidHandle:
     def send_feature_report(self, data):
         written = self._dev.send_feature_report(bytes(data))
         if written < 0:
-            raise OSError(f"El ratón rechazó el reporte {bytes(data).hex(' ')}")
+            raise OSError(f"El ratón rechazó el reporte {bytes(data).hex(' ')}: este chip "
+                          "probablemente no es el de tu ratón.")
         return written
 
     def get_feature_report(self, report_id, length):

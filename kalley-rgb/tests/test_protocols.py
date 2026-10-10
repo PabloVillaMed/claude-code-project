@@ -81,12 +81,14 @@ class HoltekA070Test(unittest.TestCase):
 
 
 class CommonTest(unittest.TestCase):
-    def test_every_protocol_produces_8_byte_report_7(self):
+    def test_every_packet_protocol_produces_8_byte_reports(self):
         for proto in protocols.PROTOCOLS.values():
+            if proto.reads_memory:
+                continue  # Sunplus: se prueba en test_sunplus con un chip simulado
             for mode in proto.modes:
                 for packet in proto.packets(Settings(mode.key)):
                     self.assertEqual(len(packet), 8, (proto.id, mode.key))
-                    self.assertEqual(packet[0], protocols.REPORT_ID)
+                    self.assertEqual(packet[0], proto.report_id)
 
     def test_defaults_are_valid(self):
         for proto in protocols.PROTOCOLS.values():

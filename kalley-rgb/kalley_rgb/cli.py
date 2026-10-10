@@ -3,7 +3,7 @@
 import argparse
 import sys
 
-from . import __version__, config, detect, diagnostics, protocols
+from . import __version__, config, detect, diagnostics, protocols, sunplus
 from .hidio import HidUnavailable
 
 
@@ -37,6 +37,8 @@ def _parser():
 
     target(sub.add_parser("apagar", help="apaga las luces"))
     sub.add_parser("restaurar", help="vuelve a aplicar los últimos ajustes guardados")
+    sub.add_parser("restaurar-memoria",
+                   help="ratón Kalley (Sunplus): reescribe la memoria original guardada antes del primer cambio")
 
     s = sub.add_parser("diagnostico", help="genera un informe para dar soporte a tu ratón")
     s.add_argument("-o", "--salida", help="guardar el informe en un archivo")
@@ -75,8 +77,10 @@ def _effects(args):
     chosen = [protocols.get(args.protocolo)] if args.protocolo else protocols.PROTOCOLS.values()
     for proto in chosen:
         print(f"{proto.name} ({proto.id}): {proto.description}")
-        print(f"  velocidad {proto.speed_range[0]}-{proto.speed_range[1]}, "
-              f"brillo {proto.brightness_range[0]}-{proto.brightness_range[1]}")
+        ranges = [f"velocidad {proto.speed_range[0]}-{proto.speed_range[1]}"]
+        if proto.brightness_range[1]:
+            ranges.append(f"brillo {proto.brightness_range[0]}-{proto.brightness_range[1]}")
+        print("  " + ", ".join(ranges))
         for m in proto.modes:
             extras = [n for n, ok in (("color", m.color), ("velocidad", m.speed),
                                       ("brillo", m.brightness)) if ok]
@@ -86,7 +90,7 @@ def _effects(args):
 
 def _pick(args):
     """Elige raton y protocolo segun los argumentos."""
-    if args.simular and args.protocolo:
+    if args.simular and args.protocolo and not protocols.get(args.protocolo).reads_memory:
         return None, protocols.get(args.protocolo)
     matches = detect.scan()
     if args.dispositivo:
@@ -105,6 +109,16 @@ def _pick(args):
 
 
 def _send(args, match, proto, settings, save=True):
+    if args.simular and proto.reads_memory:
+        # Estos chips se configuran reescribiendo su memoria: se lee (sin escribir)
+        # y se muestran los bytes que cambiarian.
+        with match.open(proto) as handle:
+            changes = proto.preview(handle, settings)
+        for addr, old, new in changes:
+            print(f"0x{addr:02x}: {old:02x} -> {new:02x}")
+        if not changes:
+            print("Sin cambios: el ratón ya tiene esa configuración.")
+        return 0
     if args.simular:
         for packet in proto.packets(settings):
             print(packet.hex(" "))
@@ -150,6 +164,20 @@ def _restore(args):
     return 0
 
 
+def _restore_memory(args):
+    memory = sunplus.load_backup()
+    match = next((m for m in detect.scan() if m.protocol and m.protocol.id == "sunplus"), None)
+    if match is None:
+        raise RuntimeError("No se encontró conectado un ratón con chip Sunplus (Kalley).")
+    with match.open() as handle:
+        link = sunplus.SunplusLink(handle)
+        link.write_memory(memory)
+        if link.read_memory() != memory:
+            raise sunplus.SunplusError("El ratón no guardó la memoria restaurada como se esperaba.")
+    print(f"Memoria original restaurada desde {sunplus.BACKUP_PATH}")
+    return 0
+
+
 def _diagnose(args):
     text = diagnostics.build_report(include_all=args.todos)
     if args.salida:
@@ -162,4 +190,5 @@ def _diagnose(args):
 
 
 COMMANDS = {"listar": _list, "efectos": _effects, "aplicar": _apply, "apagar": _off,
-            "restaurar": _restore, "diagnostico": _diagnose}
+            "restaurar": _restore, "restaurar-memoria": _restore_memory,
+            "diagnostico": _diagnose}

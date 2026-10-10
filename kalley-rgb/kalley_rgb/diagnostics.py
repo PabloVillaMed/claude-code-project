@@ -1,14 +1,16 @@
 """Informe de diagnostico: todo lo necesario para dar soporte a un raton nuevo.
 
 Solo lee: enumera, pide descriptores y hace GET_FEATURE de los reportes
-que el propio raton declara. Nunca envia comandos de configuracion.
+que el propio raton declara. En los chips Sunplus ademas descarga la memoria
+de configuracion con el mismo procedimiento de lectura que usa al aplicar.
+Nunca escribe.
 """
 
 import platform
 import sys
 from datetime import datetime
 
-from . import __version__, detect, hidio
+from . import __version__, detect, hidio, sunplus
 
 
 def _hex(data):
@@ -58,11 +60,30 @@ def build_report(include_all=False):
         lines.append(f"  => protocolo: {proto} [{match.confidence}] {match.reason}")
         if match.protocol:
             lines.append(f"  => se enviaría a: {match.target_path()!r}")
+        if match.protocol and match.protocol.reads_memory:
+            lines += _memory_dump(match)
 
     if not shown:
         lines += ["", "No se encontró ningún ratón. ¿Está conectado?"]
     lines += ["", "Comparte este texto completo para añadir soporte a tu ratón."]
     return "\n".join(lines)
+
+
+def _memory_dump(match):
+    out = ["  -- memoria de configuración (solo lectura)"]
+    try:
+        with match.open() as handle:
+            memory = sunplus.SunplusLink(handle).read_memory()
+    except Exception as exc:
+        return out + [f"     no se pudo leer: {exc}"]
+    for i in range(0, len(memory), 16):
+        out.append(f"     {i:02x}: {memory[i:i + 16].hex(' ')}")
+    try:
+        mode, speed = sunplus.led_state(memory)
+        out.append(f"     luces: efecto {mode}, velocidad {speed} ({len(memory)} bytes, formato conocido)")
+    except sunplus.SunplusError as exc:
+        out.append(f"     {exc}")
+    return out
 
 
 def _read_features(path, desc):

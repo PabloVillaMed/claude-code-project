@@ -10,9 +10,11 @@ KNOWN_MODELS = {
     (0x30FA, 0x1701): "instant-a704",
     (0x18F8, 0x1286): "instant-a704",
     (0x04D9, 0xA070): "holtek-a070",
+    (0x1BCF, 0x08A0): "sunplus",  # Kalley K-GMOUSE6
 }
 # Fabricantes de chips cuyos ratones suelen hablar el protocolo Instant.
 INSTANT_VIDS = {0x30FA, 0x18F8}
+SUNPLUS_VID = 0x1BCF
 # 30fa:1030 guarda la configuracion en la flash con otra familia de comandos.
 NOTES = {
     (0x30FA, 0x1030): ("Este modelo usa una variante que reescribe la configuración "
@@ -41,24 +43,29 @@ class Match:
         if protocol is None:
             return None
         with_report = [path for path, (_, desc) in self.descriptors.items()
-                       if desc and _has_lighting_report(desc)]
+                       if desc and _has_config_report(desc, protocol.report_id)]
         for path in with_report:
             desc = self.descriptors[path][1]
-            if desc.feature(protocols.REPORT_ID).usage_page == protocol.usage_page:
+            if desc.feature(protocol.report_id).usage_page == protocol.usage_page:
                 return path
         if with_report:
             return with_report[0]
         return _fallback_path(self.device.collections, protocol)
 
-    def apply(self, settings, protocol=None):
-        """Envia los ajustes al raton y devuelve los paquetes enviados."""
+    def open(self, protocol=None):
+        """Abre la coleccion de configuracion del raton para `protocol`."""
         protocol = protocol or self.protocol
         if protocol is None:
             raise RuntimeError("No hay protocolo para este ratón; elige uno manualmente.")
         path = self.target_path(protocol)
         if path is None:
             raise RuntimeError("El ratón no expone ninguna interfaz de configuración.")
-        with hidio.HidHandle(path) as handle:
+        return hidio.HidHandle(path)
+
+    def apply(self, settings, protocol=None):
+        """Envia los ajustes al raton y devuelve los paquetes enviados."""
+        protocol = protocol or self.protocol
+        with self.open(protocol) as handle:
             return protocol.apply(handle, settings)
 
 
@@ -76,8 +83,8 @@ def _fallback_path(cols, protocol):
     return None
 
 
-def _has_lighting_report(desc):
-    report = desc.feature(protocols.REPORT_ID)
+def _has_config_report(desc, report_id=protocols.REPORT_ID):
+    report = desc.feature(report_id)
     return report is not None and report.size == 8
 
 
@@ -92,9 +99,15 @@ def identify(device, descriptors=None):
     if device.vid in INSTANT_VIDS:
         return Match(device, protocols.get("instant"), "probable",
                      "Chip Instant Microelectronics; se usa su protocolo más común.", descriptors)
+    sunplus = protocols.get("sunplus")
+    if device.vid == SUNPLUS_VID and any(
+            desc and _has_config_report(desc, sunplus.report_id) for _, desc in descriptors.values()):
+        return Match(device, sunplus, "probable",
+                     "Chip Sunplus con el reporte de configuración 4; antes de escribir se "
+                     "comprueba que su memoria tenga el formato conocido.", descriptors)
 
     for _, desc in descriptors.values():
-        if desc and _has_lighting_report(desc):
+        if desc and _has_config_report(desc):
             page = desc.feature(protocols.REPORT_ID).usage_page
             proto = "holtek-a070" if page == 0xFF00 else "instant"
             return Match(device, protocols.get(proto), "posible",
