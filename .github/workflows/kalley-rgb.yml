@@ -15,8 +15,8 @@ jobs:
   pruebas:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       # xvfb da una pantalla virtual para que tambien corran las pruebas de la ventana.
@@ -26,8 +26,8 @@ jobs:
     runs-on: windows-latest
     needs: pruebas
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller
@@ -36,7 +36,7 @@ jobs:
       - run: python -c "import hid; print(hid.version_str())"
       - run: python -m kalley_rgb diagnostico --todos
       - run: pyinstaller --onefile --windowed --name KalleyRGB --hidden-import hid KalleyRGB.pyw
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: KalleyRGB-windows
           path: kalley-rgb/dist/KalleyRGB.exe
