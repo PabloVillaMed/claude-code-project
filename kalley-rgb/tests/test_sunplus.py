@@ -163,6 +163,43 @@ class LinkTest(unittest.TestCase):
             sunplus.SunplusLink(Broken(fakehid.FakeSunplusChip()), sleep=lambda s: None).read()
 
 
+class CaptureReplayTest(unittest.TestCase):
+    """Responde con los GET de una captura real y compara nuestros SET con los de la app oficial."""
+
+    def test_write_matches_official_app_capture(self):
+        steps = []
+        for line in (Path(__file__).parent / "data" / "redgear_a15_led_off.txt").read_text().splitlines():
+            if line and not line.startswith("#"):
+                kind, data = line.split(" ", 1)
+                steps.append((kind, bytes.fromhex(data)))
+        captured_sets = [d for k, d in steps if k == "SET"]
+        replies = []
+        for kind, data in steps:
+            if kind == "SET":
+                replies.append([])
+            else:
+                replies[-1].append(data)
+
+        class Replay:
+            def __init__(self):
+                self.sent = []
+
+            def send_feature_report(self, data):
+                self.sent.append(bytes(data))
+                self.pending = list(replies[len(self.sent) - 1])
+                return len(data)
+
+            def get_feature_report(self, report_id, length):
+                return list(self.pending.pop(0) if len(self.pending) > 1 else self.pending[0])
+
+        image = b"".join(d[2:8] for d in captured_sets if d[1] == 0x07)
+        sunplus.validate(image, V256)
+        self.assertIn("apagado", sunplus.describe(image))  # bit 3 de 0x32: LED apagado
+        device = Replay()
+        sunplus.SunplusLink(device, sleep=lambda s: None).write(V256, image)
+        self.assertEqual(device.sent, captured_sets)
+
+
 class ApplyTest(unittest.TestCase):
     def setUp(self):
         self._home = temp_home()
