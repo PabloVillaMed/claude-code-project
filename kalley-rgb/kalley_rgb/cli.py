@@ -26,19 +26,23 @@ def _parser():
         sp.add_argument("-d", "--dispositivo", type=int, default=0,
                         help="número del ratón según 'listar' (por defecto el primero compatible)")
         sp.add_argument("--simular", action="store_true",
-                        help="muestra los bytes que se enviarían sin tocar el ratón")
+                        help="no escribe nada: muestra los bytes que se enviarían (en el Kalley "
+                             "lee su memoria y muestra qué bytes cambiarían)")
 
     s = sub.add_parser("aplicar", help="aplica un efecto")
     s.add_argument("efecto", help="nombre del efecto (ver 'efectos')")
     s.add_argument("-c", "--color", default="rojo", help="RRGGBB o nombre (rojo, azul...)")
-    s.add_argument("-v", "--velocidad", type=int, help="velocidad (ver rango en 'efectos')")
-    s.add_argument("-b", "--brillo", type=int, help="brillo (ver rango en 'efectos')")
+    s.add_argument("-v", "--velocidad", type=int,
+                   help="velocidad (ver rango en 'efectos'); en el Kalley, sin -v se conserva la actual")
+    s.add_argument("-b", "--brillo", type=int,
+                   help="brillo (ver rango en 'efectos'); en el Kalley 1 = 50 %%, 2 = 100 %%, "
+                        "sin -b se conserva el actual")
     target(s)
 
     target(sub.add_parser("apagar", help="apaga las luces"))
     sub.add_parser("restaurar", help="vuelve a aplicar los últimos ajustes guardados")
     sub.add_parser("restaurar-memoria",
-                   help="ratón Kalley (Sunplus): reescribe la memoria original guardada antes del primer cambio")
+                   help="ratón Kalley (Sunplus): reescribe la memoria guardada antes del primer cambio")
 
     s = sub.add_parser("diagnostico", help="genera un informe para dar soporte a tu ratón")
     s.add_argument("-o", "--salida", help="guardar el informe en un archivo")
@@ -61,6 +65,10 @@ def main(argv=None):
     except (HidUnavailable, ValueError, RuntimeError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print("Interrumpido. Si se estaba escribiendo en el ratón, no lo desconectes y ejecuta "
+              "'restaurar-memoria'.", file=sys.stderr)
+        return 130
 
 
 def _list(args):
@@ -135,10 +143,14 @@ def _apply(args):
     settings = proto.default_settings()
     settings.mode = proto.mode(args.efecto).key
     settings.color = config.parse_color(args.color)
+    if proto.reads_memory:  # sin -v/-b se conserva lo que tiene el raton
+        settings.speed = settings.brightness = None
     if args.velocidad is not None:
         settings.speed = args.velocidad
     if args.brillo is not None:
         settings.brightness = args.brillo
+    if proto.reads_memory and not args.simular:
+        print("Leyendo y reescribiendo la memoria del ratón; no lo toques ni lo desconectes…")
     return _send(args, match, proto, settings)
 
 
@@ -168,9 +180,10 @@ def _restore_memory(args):
     match = next((m for m in detect.scan() if m.protocol and m.protocol.id == "sunplus"), None)
     if match is None:
         raise RuntimeError("No se encontró conectado un ratón con chip Sunplus (Kalley).")
+    print("Escribiendo la memoria original; no toques ni desconectes el ratón…")
     with match.open() as handle:
         sunplus.restore_backup(handle)
-    print(f"Memoria original restaurada desde {sunplus.BACKUP_PATH}")
+    print("Memoria original restaurada y comprobada.")
     return 0
 
 

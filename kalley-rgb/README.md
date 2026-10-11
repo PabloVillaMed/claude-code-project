@@ -66,6 +66,7 @@ python -m kalley_rgb aplicar estatico -c 00ffff  # color fijo cian
 python -m kalley_rgb aplicar estatico -c morado
 python -m kalley_rgb apagar
 python -m kalley_rgb restaurar                   # reaplica lo último guardado
+python -m kalley_rgb restaurar-memoria           # Kalley: vuelve a la memoria original
 python -m kalley_rgb diagnostico -o informe.txt
 ```
 
@@ -81,7 +82,7 @@ Para aplicar tu configuración al encender el PC, crea un acceso directo a
 
 | Chip | Detección | Efectos |
 |---|---|---|
-| Sunplus SPCP19X (`1bcf:08a0`, **Kalley K-GMOUSE6**) | confirmado; otros `1bcf` con el reporte 4, probable | Arcoíris, multicolor, flujo, vals, cuatro estaciones, color según DPI, apagado. Velocidad 1–8 |
+| Sunplus SPCP19X (`1bcf:08a0`, **Kalley K-GMOUSE6**) | confirmado; otros `1bcf` con el reporte 4, probable | Arcoíris, multicolor, flujo, vals, cuatro estaciones, color fijo, color según DPI, apagado. Velocidad 1–8, brillo 50/100 % |
 | Instant Microelectronics (VID `30fa`, `18f8`) | `30fa:1440` confirmado; resto del fabricante, probable | Neón, color fijo, flujo de un color, respiración, flujo, cometa, ambiente, destellos, estrellas, ondas, vaivén, reactivo al clic, según DPI, apagado. Color de 4 bits por canal en 8 zonas, velocidad 1–7, brillo 0–4 |
 | Instant A704 / A704F (`30fa:1701`, `18f8:1286`) | confirmado | Respiración multicolor (6 velocidades), estático, apagado |
 | Holtek A070 (`04d9:a070`) | confirmado | Color fijo y respiración con color RGB completo |
@@ -94,21 +95,26 @@ puntero. La app encuentra esa interfaz leyendo el descriptor HID de cada una.
 ### Cómo se escribe en el chip Sunplus
 
 Este chip no tiene comandos de luces sueltos: guarda la configuración (luces,
-DPI, botones) en una memoria de 258 bytes. Al pulsar **Aplicar**, la app:
+DPI, botones) en una memoria de 256 B o 2 KB, según la versión de firmware, que se
+lee y se reescribe entera, igual que hacen sus programas oficiales. Al pulsar
+**Aplicar**, que tarda unos segundos, la app:
 
-1. Lee la memoria completa.
-2. Comprueba que tiene el formato conocido: tamaño de 258 bytes y bytes de
-   comprobación válidos en `0x30/0x31` (DPI) y `0x32/0x33` (luces). Si no, no
-   escribe nada.
-3. Guarda la primera memoria leída en `~/.kalley_rgb_memoria_original.bin`. Esa
-   copia nunca se sobrescribe.
-4. Cambia solo el byte de luces y su complemento, y escribe. El ratón confirma
-   cada bloque.
-5. Vuelve a leer para verificar. Si algo no coincide, reescribe la configuración
-   anterior.
+1. Lee la memoria dos veces y comprueba que ambas lecturas coinciden.
+2. Comprueba que tiene el formato conocido: checksums en `0x2F` y `0x76`,
+   complementos de DPI y luces, y rangos válidos. Si algo no cuadra, no escribe nada.
+3. La primera vez guarda una copia en `~/.kalley_rgb/` (en Windows,
+   `C:\Users\<usuario>\.kalley_rgb\`).
+4. Cambia solo el efecto, la velocidad, el brillo (`1` = 50 %, `2` = 100 %), el color
+   de los niveles DPI (para **Color fijo**) y el checksum `0x2F`.
+5. Escribe la memoria (el ratón confirma cada bloque) y la vuelve a leer para
+   comprobarla. Si una escritura se corta, la reintenta y, si no lo consigue,
+   vuelve a escribir la configuración anterior. Nunca cierra una escritura a medias.
 
-Para volver a la configuración original de fábrica:
-`python -m kalley_rgb restaurar-memoria`.
+Mientras escribe, no muevas el ratón, no pulses sus botones, no lo desconectes y
+no cierres la ventana (la app no deja cerrarla hasta que termina).
+
+**Restaurar original** (botón de la ventana, o `KalleyRGB.exe restaurar-memoria`)
+vuelve a escribir la copia guardada antes del primer cambio.
 
 ## Si no funciona
 
@@ -149,7 +155,7 @@ publica `KalleyRGB.exe` en la release **Kalley RGB (prueba)** en cada cambio.
 
 ## Fuentes del protocolo
 
-- Sunplus SPCP19X (`1bcf:08a0`): [jdev082/spmctrl](https://github.com/jdev082/spmctrl), que replica la app "M8 Mouse"
+- Sunplus SPCP19X (`1bcf:08a0`): [jdev082/spmctrl](https://github.com/jdev082/spmctrl), que replica la app "M8 Mouse"; mapa de memoria del SDK oficial de [Havit](https://havitsmart.com/pages/driver-download) y capturas USB de los issues [3513](https://gitlab.com/CalcProgrammer1/OpenRGB/-/issues/3513) y [4078](https://gitlab.com/CalcProgrammer1/OpenRGB/-/issues/4078) de OpenRGB
 - Instant (modos, colores por zona, fijado): [NitronStudios/detox-open-mouse-drivers](https://github.com/NitronStudios/detox-open-mouse-drivers)
 - Instant A704/A704F: [AmberIsFrozen/Instant-A704F-Mouse-Utilities](https://github.com/AmberIsFrozen/Instant-A704F-Mouse-Utilities) y [su artículo](https://blog.lx862.com/blog/2024-05-13-reverse-engineering-a-mouse/)
 - Holtek A070: [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB), `Controllers/HoltekController`

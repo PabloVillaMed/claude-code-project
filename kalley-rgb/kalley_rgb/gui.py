@@ -4,10 +4,12 @@ import threading
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
-from . import __version__, config, detect, diagnostics, protocols
+from . import __version__, config, detect, diagnostics, protocols, sunplus
 from .hidio import HidUnavailable
 
 AUTO = "Automático"
+MEMORY_WARNING = ("Leyendo y reescribiendo la memoria del ratón (unos segundos). No lo muevas, "
+                  "no pulses sus botones, no lo desconectes ni cierres esta ventana.")
 PRESETS = ("#ff0000", "#ff6400", "#ffff00", "#00ff00", "#00ffff",
            "#0000ff", "#a000ff", "#ff00a0", "#ffffff")
 
@@ -22,6 +24,7 @@ class App:
         self._worker = None
         root.title(f"Kalley RGB {__version__}")
         root.resizable(False, False)
+        root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._build()
         root.after(50, self.refresh)
 
@@ -35,7 +38,8 @@ class App:
         self.device_box = ttk.Combobox(top, state="readonly", width=48)
         self.device_box.grid(row=0, column=1, sticky="ew", **pad)
         self.device_box.bind("<<ComboboxSelected>>", lambda e: self._device_changed())
-        ttk.Button(top, text="Buscar", command=self.refresh).grid(row=0, column=2)
+        self.search_btn = ttk.Button(top, text="Buscar", command=self.refresh)
+        self.search_btn.grid(row=0, column=2)
 
         ttk.Label(top, text="Chip:").grid(row=1, column=0, sticky="w")
         self.proto_box = ttk.Combobox(top, state="readonly", width=48)
@@ -77,6 +81,8 @@ class App:
         ttk.Label(opts, text="Brillo:").grid(row=2, column=0, sticky="w")
         self.brightness = tk.Scale(opts, orient="horizontal", length=260, showvalue=True)
         self.brightness.grid(row=2, column=1, columnspan=3, sticky="w")
+        self.brightness_hint = ttk.Label(opts, text="", foreground="#555")
+        self.brightness_hint.grid(row=2, column=4, sticky="w")
 
         buttons = ttk.Frame(top)
         buttons.grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
@@ -84,7 +90,10 @@ class App:
         self.apply_btn.pack(side="left")
         self.off_btn = ttk.Button(buttons, text="Apagar luces", command=self.turn_off)
         self.off_btn.pack(side="left", padx=6)
-        ttk.Button(buttons, text="Diagnóstico…", command=self.show_diagnostics).pack(side="right")
+        self.restore_btn = ttk.Button(buttons, text="Restaurar original", command=self.restore)
+        self.restore_btn.pack(side="left")
+        self.diag_btn = ttk.Button(buttons, text="Diagnóstico…", command=self.show_diagnostics)
+        self.diag_btn.pack(side="right")
 
         self.status = ttk.Label(top, text="Buscando ratones…", wraplength=440)
         self.status.grid(row=6, column=0, columnspan=3, sticky="w", **pad)
@@ -102,7 +111,13 @@ class App:
             return self.match.protocol if self.match else None
         return next((p for p in protocols.PROTOCOLS.values() if p.name == choice), None)
 
+    @property
+    def busy(self):
+        return self._pending is not None
+
     def refresh(self):
+        if self.busy:
+            return
         self.status.config(text="Buscando ratones…")
         self.root.update_idletasks()
         try:
@@ -123,7 +138,10 @@ class App:
                           if m.device.ids == self.saved[0]), 0)
         self.device_box.current(index)
         self._device_changed()
-        self.status.config(text=f"{len(self.matches)} ratón(es) encontrado(s).")
+        if self.protocol and self.protocol.reads_memory and sunplus.write_left_pending():
+            self.status.config(text=sunplus.PENDING_HINT)
+        else:
+            self.status.config(text=f"{len(self.matches)} ratón(es) encontrado(s).")
 
     def _device_changed(self):
         match = self.match
@@ -144,9 +162,9 @@ class App:
     def _protocol_changed(self):
         proto = self.protocol
         self.mode_list.delete(0, "end")
-        enabled = proto is not None and self.match is not None
-        for w in (self.apply_btn, self.off_btn):
-            w.state(["!disabled"] if enabled else ["disabled"])
+        self._update_actions()
+        self.brightness_hint.config(
+            text="1 = 50 %, 2 = 100 %" if proto and proto.reads_memory else "")
         if proto is None:
             self._mode_changed()
             return
@@ -173,6 +191,19 @@ class App:
             return None
         return proto.modes[sel[0]]
 
+    def _update_actions(self):
+        """Activa cada control segun el raton, el chip y si hay una operacion en curso."""
+        proto = self.protocol
+        ready = proto is not None and self.match is not None and not self.busy
+        for w in (self.apply_btn, self.off_btn):
+            w.state(["!disabled"] if ready else ["disabled"])
+        self.restore_btn.state(["!disabled"] if ready and proto.reads_memory else ["disabled"])
+        for w in (self.search_btn, self.diag_btn):
+            w.state(["disabled"] if self.busy else ["!disabled"])
+        for box in (self.device_box, self.proto_box):
+            box.state(["disabled"] if self.busy else ["!disabled", "readonly"])
+        self.mode_list.config(state="disabled" if self.busy else "normal")
+
     def _mode_changed(self):
         mode = self._selected_mode()
         has = {"color": bool(mode and mode.color), "speed": bool(mode and mode.speed),
@@ -198,21 +229,23 @@ class App:
             self._set_color(tuple(int(c) for c in rgb))
 
     # ---- acciones -------------------------------------------------------
-    def _send(self, settings, done_text, save=True):
-        """Aplica en segundo plano: algunos chips tardan segundos (leen y reescriben memoria)."""
-        match, proto = self.match, self.protocol
+    def _run(self, work, busy_text, done_text, on_success=None):
+        """Ejecuta `work` en segundo plano: algunos chips tardan segundos (leen y reescriben memoria)."""
+        if self.busy:
+            return
         outcome = {}
 
-        def work():
+        def target():
             try:
-                match.apply(settings, proto)
+                work()
             except Exception as exc:
                 outcome["error"] = exc
 
-        self._pending = (outcome, match, proto, settings, done_text, save)
+        self._pending = (outcome, done_text, on_success)
         self._busy(True)
-        self.status.config(text="Aplicando… puede tardar unos segundos.")
-        self._worker = threading.Thread(target=work, daemon=True)
+        self.status.config(text=busy_text)
+        # No es daemon: si algo cerrara la app, la escritura termina igualmente.
+        self._worker = threading.Thread(target=target)
         self._worker.start()
         self.root.after(100, self._poll)
 
@@ -222,40 +255,82 @@ class App:
         if self._worker.is_alive():
             self.root.after(100, self._poll)
             return
-        outcome, match, proto, settings, done_text, save = self._pending
+        outcome, done_text, on_success = self._pending
         self._pending = None
         self._busy(False)
         if "error" in outcome:
             self.status.config(text=f"Error: {outcome['error']}")
             messagebox.showerror("Kalley RGB", str(outcome["error"]))
             return
-        if save:
-            config.save(match.device.ids, proto.id, settings)
-            self.saved = (match.device.ids, proto.id, settings)
+        if on_success:
+            on_success()
         self.status.config(text=done_text)
 
     def _busy(self, busy):
-        for w in (self.apply_btn, self.off_btn):
-            w.state(["disabled"] if busy else ["!disabled"])
+        self._update_actions()
+        if not busy:
+            self._mode_changed()
+        else:
+            for scale in (self.speed, self.brightness):
+                scale.config(state="disabled")
+            self.color_btn.state(["disabled"])
         self.root.config(cursor="watch" if busy else "")
+
+    def _on_close(self):
+        if self.busy:
+            messagebox.showwarning("Kalley RGB", "Espera a que termine: se está escribiendo en "
+                                                 "el ratón. No lo desconectes.")
+            return
+        self.root.destroy()
+
+    def _busy_text(self, proto):
+        return MEMORY_WARNING if proto.reads_memory else "Aplicando…"
 
     def apply(self):
         mode = self._selected_mode()
-        if mode is None:
+        if mode is None or self.busy:
             return
+        match, proto = self.match, self.protocol
         settings = protocols.Settings(mode=mode.key, color=self.color,
                                       speed=int(self.speed.get()),
                                       brightness=int(self.brightness.get()))
-        self._send(settings, f"Aplicado: {mode.name}. Si las luces no cambian, "
-                             "prueba otro chip en la lista o usa Diagnóstico.")
+
+        def remember():
+            config.save(match.device.ids, proto.id, settings)
+            self.saved = (match.device.ids, proto.id, settings)
+
+        done = (f"Aplicado y comprobado: {mode.name}." if proto.reads_memory else
+                f"Aplicado: {mode.name}. Si las luces no cambian, prueba otro chip en la lista "
+                "o usa Diagnóstico.")
+        self._run(lambda: match.apply(settings, proto), self._busy_text(proto), done, remember)
 
     def turn_off(self):
-        proto = self.protocol
+        if self.busy:
+            return
+        match, proto = self.match, self.protocol
         settings = proto.default_settings()
         settings.mode = proto.off_mode
-        self._send(settings, "Luces apagadas.", save=False)
+        self._run(lambda: match.apply(settings, proto), self._busy_text(proto), "Luces apagadas.")
+
+    def restore(self):
+        match, proto = self.match, self.protocol
+        if self.busy or not (match and proto and proto.reads_memory):
+            return
+        if not messagebox.askyesno(
+                "Restaurar original",
+                "Se volverá a escribir en el ratón la memoria que tenía antes del primer cambio "
+                "hecho con esta app (luces, DPI y botones). ¿Continuar?"):
+            return
+
+        def work():
+            with match.open(proto) as handle:
+                sunplus.restore_backup(handle)
+
+        self._run(work, MEMORY_WARNING, "Memoria original restaurada y comprobada.")
 
     def show_diagnostics(self):
+        if self.busy:
+            return
         self.status.config(text="Generando diagnóstico…")
         self.root.update_idletasks()
         text = diagnostics.build_report()

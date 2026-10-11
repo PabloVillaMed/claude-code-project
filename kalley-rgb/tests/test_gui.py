@@ -1,3 +1,4 @@
+import gc
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,6 +31,10 @@ class GuiTest(unittest.TestCase):
 
     def tearDown(self):
         self.root.destroy()
+        # Liberar el interprete Tk aqui: si el recolector lo hiciera en el hilo de trabajo
+        # de la prueba siguiente, Tcl aborta ("async handler deleted by the wrong thread").
+        self.app = None
+        gc.collect()
         config.PATH = self.old_path
         self.tmp.cleanup()
         fakehid.uninstall()
@@ -106,16 +111,20 @@ class KalleyGuiTest(unittest.TestCase):
         fakehid.install(fakehid.FakeHid(fakehid.kalley_entries(), dict(fakehid.KALLEY_DESCRIPTORS),
                                         chips={b"col04": self.chip}))
         self.tmp = tempfile.TemporaryDirectory()
-        self.old = (config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY, sunplus.SETTLE)
+        self.old = (config.PATH, sunplus.BACKUP_DIR, sunplus.DELAY, sunplus.SETTLE)
         config.PATH = Path(self.tmp.name) / "cfg.json"
-        sunplus.BACKUP_PATH = Path(self.tmp.name) / "respaldo.bin"
+        sunplus.BACKUP_DIR = Path(self.tmp.name) / "kalley"
         sunplus.DELAY = sunplus.SETTLE = 0
         self.app = gui.App(self.root)
         self.app.refresh()
 
     def tearDown(self):
         self.root.destroy()
-        config.PATH, sunplus.BACKUP_PATH, sunplus.DELAY, sunplus.SETTLE = self.old
+        # Liberar el interprete Tk aqui: si el recolector lo hiciera en el hilo de trabajo
+        # de la prueba siguiente, Tcl aborta ("async handler deleted by the wrong thread").
+        self.app = None
+        gc.collect()
+        config.PATH, sunplus.BACKUP_DIR, sunplus.DELAY, sunplus.SETTLE = self.old
         self.tmp.cleanup()
         fakehid.uninstall()
 
@@ -135,13 +144,55 @@ class KalleyGuiTest(unittest.TestCase):
         app._worker.join(timeout=10)
         app._poll()
         self.assertEqual(self.chip.memory[0x32], 0x04 | sunplus.speed_bits(7))
-        self.assertTrue(app.status.cget("text").startswith("Aplicado: Flujo"))
+        self.assertEqual(app.status.cget("text"), "Aplicado y comprobado: Flujo.")
         app.turn_off()
         app._worker.join(timeout=10)
         app._poll()
         self.assertEqual(self.chip.memory[0x32] & 0x07, 7)
         self.assertEqual(app.status.cget("text"), "Luces apagadas.")
         self.assertEqual(self.chip.partial_commits, 0)
+
+    def test_everything_is_locked_while_writing(self):
+        app = self.app
+        self.assertEqual(app.restore_btn.state(), ())  # disponible para el chip Sunplus
+        self.assertEqual(app.brightness_hint.cget("text"), "1 = 50 %, 2 = 100 %")
+        release = __import__("threading").Event()
+        original_apply = app.match.apply
+        app.match.apply = lambda *a, **k: (release.wait(5), original_apply(*a, **k))
+        app.apply()
+        for widget in (app.apply_btn, app.off_btn, app.restore_btn, app.search_btn,
+                       app.diag_btn, app.device_box, app.proto_box):
+            self.assertIn("disabled", widget.state())
+        self.assertEqual(app.mode_list.cget("state"), "disabled")
+        app.refresh()  # Buscar durante la escritura no debe reactivar nada
+        self.assertIn("disabled", app.apply_btn.state())
+        app._on_close = app._on_close  # cerrar esta bloqueado mientras escribe
+        self.assertTrue(app.busy)
+        release.set()
+        app._worker.join(timeout=10)
+        app._poll()
+        self.assertFalse(app.busy)
+        self.assertNotIn("disabled", app.search_btn.state())
+        self.assertEqual(app.mode_list.cget("state"), "normal")
+
+    def test_restore_button_writes_backup(self):
+        app = self.app
+        app.mode_list.selection_clear(0, "end")
+        app.mode_list.selection_set(7)  # Apagado
+        app._mode_changed()
+        app.apply()
+        app._worker.join(timeout=10)
+        app._poll()
+        self.assertEqual(self.chip.memory[0x32] & 0x07, 7)
+        gui.messagebox.askyesno, old = (lambda *a, **k: True), gui.messagebox.askyesno
+        try:
+            app.restore()
+        finally:
+            gui.messagebox.askyesno = old
+        app._worker.join(timeout=10)
+        app._poll()
+        self.assertEqual(bytes(self.chip.memory), fakehid.REDGEAR_MEMORY)
+        self.assertEqual(app.status.cget("text"), "Memoria original restaurada y comprobada.")
 
     def test_static_color_uses_picker_color(self):
         app = self.app

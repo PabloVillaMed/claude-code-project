@@ -91,6 +91,11 @@ def _has_config_report(desc, report_id=protocols.REPORT_ID):
 def identify(device, descriptors=None):
     descriptors = descriptors or {}
     key = (device.vid, device.pid)
+    if key == (SUNPLUS_VID, 0x08A0):
+        return Match(device, protocols.get("sunplus"), "confirmado",
+                     "Chip Sunplus 1bcf:08a0, el mismo protocolo que usan Havit, Redgear y Zi You "
+                     "Lang. Antes de escribir se comprueba el formato de su memoria y se guarda "
+                     "una copia.", descriptors)
     if key in KNOWN_MODELS:
         return Match(device, protocols.get(KNOWN_MODELS[key]), "confirmado",
                      "Modelo con protocolo documentado.", descriptors)

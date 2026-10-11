@@ -232,8 +232,10 @@ class SunplusProtocol(Protocol):
                                   "usa preview() con el ratón conectado.")
 
     def _edit_args(self, settings):
+        # None (o un ajuste que el efecto no usa) = conservar lo que tiene el raton
         mode = self.mode(settings.mode)
-        return (mode.code, settings.speed,
+        return (mode.code,
+                settings.speed if mode.speed else None,
                 settings.brightness if mode.brightness else None,
                 tuple(settings.color) if mode.color else None)
 

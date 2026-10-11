@@ -32,16 +32,27 @@ def link(chip):
 
 @contextlib.contextmanager
 def temp_home():
-    old = sunplus.BACKUP_PATH, config.PATH, sunplus.DELAY, sunplus.SETTLE, sunplus.RETRY_PAUSE
+    old = sunplus.BACKUP_DIR, config.PATH, sunplus.DELAY, sunplus.SETTLE, sunplus.RETRY_PAUSE
     with tempfile.TemporaryDirectory() as tmp:
-        sunplus.BACKUP_PATH = Path(tmp) / "respaldo.bin"
+        sunplus.BACKUP_DIR = Path(tmp) / "kalley"
         config.PATH = Path(tmp) / "cfg.json"
         sunplus.DELAY = sunplus.SETTLE = sunplus.RETRY_PAUSE = 0
         try:
             yield Path(tmp)
         finally:
-            (sunplus.BACKUP_PATH, config.PATH, sunplus.DELAY, sunplus.SETTLE,
+            (sunplus.BACKUP_DIR, config.PATH, sunplus.DELAY, sunplus.SETTLE,
              sunplus.RETRY_PAUSE) = old
+
+
+class IsolatedTest(unittest.TestCase):
+    """Copias, diario y ajustes en una carpeta temporal, nunca en la del usuario."""
+
+    def setUp(self):
+        self._home = temp_home()
+        self._home.__enter__()
+
+    def tearDown(self):
+        self._home.__exit__(None, None, None)
 
 
 def diff(a, b, size=0xFF):
@@ -114,7 +125,7 @@ class MemoryFormatTest(unittest.TestCase):
                          "colores DPI ffffff ff00ff 0000ff ff0000 e1e11a 09fa05")
 
 
-class LinkTest(unittest.TestCase):
+class LinkTest(IsolatedTest):
     def test_read_256_follows_captured_sequence(self):
         chip = fakehid.FakeSunplusChip()
         variant, memory = link(chip).read()
@@ -163,7 +174,7 @@ class LinkTest(unittest.TestCase):
             sunplus.SunplusLink(Broken(fakehid.FakeSunplusChip()), sleep=lambda s: None).read()
 
 
-class CaptureReplayTest(unittest.TestCase):
+class CaptureReplayTest(IsolatedTest):
     """Responde con los GET de una captura real y compara nuestros SET con los de la app oficial."""
 
     def test_write_matches_official_app_capture(self):
@@ -200,14 +211,7 @@ class CaptureReplayTest(unittest.TestCase):
         self.assertEqual(device.sent, captured_sets)
 
 
-class ApplyTest(unittest.TestCase):
-    def setUp(self):
-        self._home = temp_home()
-        self._home.__enter__()
-
-    def tearDown(self):
-        self._home.__exit__(None, None, None)
-
+class ApplyTest(IsolatedTest):
     def test_apply_reads_twice_writes_once_and_verifies(self):
         chip = fakehid.FakeSunplusChip()
         sunplus.apply_settings(None, 4, 8, link=link(chip))
@@ -221,8 +225,28 @@ class ApplyTest(unittest.TestCase):
         chip = fakehid.FakeSunplusChip()
         sunplus.apply_settings(None, 4, 8, link=link(chip))
         sunplus.apply_settings(None, 7, 1, link=link(chip))
-        self.assertEqual(sunplus.BACKUP_PATH.read_bytes(), fakehid.REDGEAR_MEMORY)
+        self.assertEqual(sunplus.backup_path(V256).read_bytes(), fakehid.REDGEAR_MEMORY)
         self.assertEqual(sunplus.load_backup(V256), fakehid.REDGEAR_MEMORY)
+
+    def test_damaged_backup_is_replaced_by_a_valid_one(self):
+        sunplus.BACKUP_DIR.mkdir(parents=True)
+        sunplus.backup_path(V256).write_bytes(b"")  # copia vacia de una ejecucion cortada
+        chip = fakehid.FakeSunplusChip()
+        sunplus.apply_settings(None, 4, 8, link=link(chip))
+        self.assertEqual(sunplus.load_backup(V256), fakehid.REDGEAR_MEMORY)
+
+    def test_missing_speed_and_brightness_keep_current_values(self):
+        memory = bytearray(fakehid.REDGEAR_MEMORY)
+        chip = fakehid.FakeSunplusChip()
+        sunplus.apply_settings(None, 3, link=link(chip))
+        self.assertEqual(chip.memory[0x32] & 0xE0, memory[0x32] & 0xE0)
+        self.assertEqual(chip.memory[0x03], memory[0x03])
+
+    def test_invalid_effect_is_rejected_before_touching_the_mouse(self):
+        chip = fakehid.FakeSunplusChip()
+        with self.assertRaises(sunplus.SunplusError):
+            sunplus.apply_settings(None, 9, link=link(chip))
+        self.assertNotIn(0x06, chip.log)
 
     def test_same_settings_do_not_write(self):
         chip = fakehid.FakeSunplusChip()
@@ -236,7 +260,7 @@ class ApplyTest(unittest.TestCase):
         with self.assertRaises(sunplus.SunplusError):
             sunplus.apply_settings(None, 4, 8, link=link(chip))
         self.assertNotIn(0x06, chip.log)
-        self.assertFalse(sunplus.BACKUP_PATH.exists())
+        self.assertFalse(sunplus.backup_info())
 
     def test_reads_that_differ_are_never_written(self):
         chip = fakehid.FakeSunplusChip(change_after_reads=1)
@@ -253,10 +277,49 @@ class ApplyTest(unittest.TestCase):
 
     def test_persistent_echo_errors_never_commit_a_partial_write(self):
         chip = fakehid.FakeSunplusChip(echo_error_at=5, echo_errors=99)
-        with self.assertRaisesRegex(sunplus.SunplusError, "restaurar-memoria"):
+        with self.assertRaisesRegex(sunplus.SunplusError, "Restaurar original"):
             sunplus.apply_settings(None, 6, 5, link=link(chip))
         self.assertEqual(chip.partial_commits, 0)
         self.assertEqual(bytes(chip.memory), fakehid.REDGEAR_MEMORY)
+        self.assertTrue(sunplus.write_left_pending())
+
+    def test_bad_handshake_on_retry_never_sends_close(self):
+        # Tras el eco fallido, el saludo del reintento sale mal: antes se enviaba 08 aqui.
+        # Los dos intentos fallan (eco y saludo) y se vuelve a escribir la configuracion anterior.
+        chip = fakehid.FakeSunplusChip(echo_error_at=10, echo_errors=1, bad_open_after_echo_error=1)
+        with self.assertRaisesRegex(sunplus.SunplusError, "configuración anterior"):
+            sunplus.apply_settings(None, 6, 5, link=link(chip))
+        self.assertEqual(chip.partial_commits, 0)
+        self.assertEqual(bytes(chip.memory), fakehid.REDGEAR_MEMORY)
+        self.assertFalse(sunplus.write_left_pending())
+
+    def test_pending_write_blocks_reads_until_restore(self):
+        chip = fakehid.FakeSunplusChip(echo_error_at=5, echo_errors=99)
+        with self.assertRaises(sunplus.SunplusError):
+            sunplus.apply_settings(None, 6, 5, link=link(chip))
+        # Otra ejecucion de la app no debe leer (su cierre 08 guardaria la escritura a medias).
+        chip.log.clear()
+        with self.assertRaisesRegex(sunplus.SunplusError, "a medias"):
+            sunplus.apply_settings(None, 4, 8, link=link(chip))
+        self.assertEqual(chip.log, [])
+        # Restaurar: saludo y escritura completa de la copia, sin cerrar antes.
+        chip.echo_errors = 0
+        sunplus.restore_backup(None, link=link(chip))
+        self.assertEqual(chip.log[:3], [0x01, 0x03, 0x01])
+        self.assertNotIn(0x08, chip.log[:chip.log.index(0x06)])
+        self.assertEqual(bytes(chip.memory), fakehid.REDGEAR_MEMORY)
+        self.assertEqual(chip.partial_commits, 0)
+        self.assertFalse(sunplus.write_left_pending())
+
+    def test_close_failure_after_all_blocks_is_resolved_by_verification(self):
+        chip = fakehid.FakeSunplusChip(fail_close=1)
+        sunplus.apply_settings(None, 5, 2, link=link(chip))
+        self.assertEqual(chip.memory[0x32] & 0x07, 5)
+
+    def test_dpi_button_between_write_and_verify_is_accepted(self):
+        chip = fakehid.FakeSunplusChip(change_after_reads=3)  # tras la 3.a lectura: verificacion
+        sunplus.apply_settings(None, 5, 2, link=link(chip))
+        self.assertEqual(chip.memory[0x32] & 0x07, 5)
 
     def test_failed_verification_rewrites_previous_config(self):
         chip = fakehid.FakeSunplusChip(ignore_writes=True)
@@ -273,6 +336,8 @@ class ApplyTest(unittest.TestCase):
 
     def test_restore_backup(self):
         chip = fakehid.FakeSunplusChip()
+        with self.assertRaisesRegex(sunplus.SunplusError, "no ha modificado"):
+            sunplus.restore_backup(None, link=link(chip))
         sunplus.apply_settings(None, 1, 2, brightness=2, color=(9, 8, 7), link=link(chip))
         sunplus.restore_backup(None, link=link(chip))
         self.assertEqual(bytes(chip.memory), fakehid.REDGEAR_MEMORY)

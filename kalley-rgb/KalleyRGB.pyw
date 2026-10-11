@@ -1,5 +1,11 @@
-"""Doble clic para abrir la ventana (en Windows no muestra consola)."""
+"""Doble clic para abrir la ventana (en Windows no muestra consola).
 
-from kalley_rgb.gui import run
+Con argumentos funciona como la linea de comandos, por ejemplo:
+    KalleyRGB.exe restaurar-memoria
+"""
 
-run()
+import sys
+
+from kalley_rgb.cli import main
+
+sys.exit(main(sys.argv[1:]))

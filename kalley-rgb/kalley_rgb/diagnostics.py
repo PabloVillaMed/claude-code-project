@@ -71,6 +71,8 @@ def build_report(include_all=False):
 
 def _memory_dump(match):
     out = ["  -- memoria de configuración (solo lectura)"]
+    if sunplus.write_left_pending():
+        return out + [f"     {sunplus.PENDING_HINT}"]
     link = None
     try:
         with match.open() as handle:
@@ -93,9 +95,11 @@ def _memory_dump(match):
     except sunplus.SunplusError as exc:
         out.append(f"     {exc}")
     out.append(f"     luces: {sunplus.describe(memory)}")
-    digest = sunplus.backup_digest()
-    out.append(f"     copia de seguridad: {sunplus.BACKUP_PATH} ({digest})" if digest
-               else "     copia de seguridad: todavía no hay")
+    copies = sunplus.backup_info()
+    for name, path, digest in copies:
+        out.append(f"     copia de seguridad ({name}): {path} ({digest})")
+    if not copies:
+        out.append("     copia de seguridad: todavía no hay")
     return out
 
 

@@ -95,31 +95,45 @@ def memory_2k():
 class FakeSunplusChip:
     """Imita el chip Sunplus como en las capturas: cada SET prepara la respuesta del GET.
 
-    pending: cuantos GET devuelven "aun no lista" (ultimo byte 0x00) tras cada SET.
+    Modelo pesimista: los 07 escriben al momento en la RAM (una lectura en la misma sesion
+    ve lo escrito, como en la captura del Rampage), el 01 NO descarta una escritura a medias
+    y el 08 guarda en la flash lo que haya en la RAM. Asi cualquier 08 enviado con una
+    escritura incompleta queda registrado en partial_commits.
+
+    pending: cuantos GET devuelven "aun no lista" (byte 7 = 0x00, datos viejos) tras cada SET.
     echo_errors: cuantas escrituras de bloque fallan (eco alterado), contando desde echo_error_at.
-    ignore_writes: el chip contesta bien pero no guarda nada.
-    partial_commits: escrituras incompletas que un cierre (08) habria guardado; nunca debe pasar.
+    bad_open_after_echo_error: tras un eco fallido, cuantos saludos 01 contestan mal.
+    ignore_writes: el chip contesta bien pero el 08 no guarda nada.
     """
 
+    IDLE = bytes.fromhex("04 00 00 00 37 00 01 00")  # lo que devolvio el Kalley en reposo
+
     def __init__(self, variant="256", memory=None, pending=0, echo_error_at=None,
-                 echo_errors=1, ignore_writes=False, change_after_reads=None, hello=None):
-        self.size, self.hello, ident = (0xFF, 0xA6, 0x0E) if variant == "256" else (0x800, 0xA4, 0x1E)
-        self.hello = hello if hello is not None else self.hello
-        self.ident = ident
+                 echo_errors=1, ignore_writes=False, change_after_reads=None, hello=None,
+                 bad_open_after_echo_error=0, fail_close=0):
+        self.size, default_hello, self.ident = ((0xFF, 0xA6, 0x0E) if variant == "256"
+                                                else (0x800, 0xA4, 0x1E))
+        self.hello = default_hello if hello is None else hello
         if memory is None:
             memory = REDGEAR_MEMORY if variant == "256" else memory_2k()
-        self.memory = bytearray(memory)
+        self.memory = bytearray(memory)  # flash: lo que sobrevive a desconectar
+        self.ram = bytearray(memory)
         self.pending = pending
         self.echo_error_at = echo_error_at
         self.echo_errors = echo_errors
         self.ignore_writes = ignore_writes
         self.change_after_reads = change_after_reads
+        self.bad_opens = 0
+        self.bad_open_after_echo_error = bad_open_after_echo_error
+        self.fail_close = fail_close  # cierres de escritura (08) cuya respuesta falla
+        self.fail_next_get = False
         self.reads_done = 0
-        self.reply = bytes.fromhex("04 00 00 00 37 00 01 00")  # lo que devolvio el Kalley en reposo
+        self.reply = self.IDLE
         self.pending_left = 0
         self.read_pos = None
+        self.write_pos = None
         self.write_len = None
-        self.staged = None
+        self.written = 0
         self.commits = 0
         self.partial_commits = 0
         self.log = []
@@ -127,55 +141,76 @@ class FakeSunplusChip:
     def get(self):
         if self.pending_left:
             self.pending_left -= 1
-            return self.reply[:7] + b"\x00"
+            return self.IDLE
+        if self.fail_next_get:
+            self.fail_next_get = False
+            raise OSError("read error")
         return self.reply
 
     def _reply(self, *data):
         self.reply = bytes([0x04, *data]).ljust(7, b"\0") + b"\xcc"
+
+    def replug(self):
+        """Desconectar y conectar: se pierde la RAM y lo que estuviera a medias."""
+        self.ram[:] = self.memory
+        self.write_len = self.read_pos = None
 
     def send(self, data):
         cmd = data[1]
         self.log.append(cmd)
         self.pending_left = self.pending
         if cmd == 0x01:
-            self.staged = self.write_len = None  # una sesion nueva descarta una escritura a medias
-            self._reply(self.hello, 0, 0, 0, 0x93, 0)
+            if self.bad_opens:
+                self.bad_opens -= 1
+                self.reply = bytes([0x04, 0x07, 0, 0, 0, 0, 0, 0xCC])  # eco viejo, no el saludo
+            else:
+                self._reply(self.hello, 0, 0, 0, 0x93, 0)
         elif cmd == 0x03:
             self._reply(0xAA, self.ident, 0xFD, 0, 0x93, 0)
         elif cmd == 0x04:
             self.read_pos = data[2] | data[3] << 8
             self._reply()
         elif cmd == 0x05 and self.read_pos is not None:
-            chunk = bytes(self.memory[self.read_pos:self.read_pos + 6])
+            chunk = bytes(self.ram[self.read_pos:self.read_pos + 6])
             chunk += bytes.fromhex("fc 93 ff fc 93 ff")[:6 - len(chunk)]
             self.read_pos += 6
-            if self.read_pos >= len(self.memory):
+            if self.read_pos >= len(self.ram):
                 self.reads_done += 1
                 if self.change_after_reads == self.reads_done:
-                    self.memory[0x30], self.memory[0x31] = 0x02, 0xFD  # alguien pulso el boton DPI
+                    for mem in (self.memory, self.ram):  # alguien pulso el boton DPI
+                        mem[0x30], mem[0x31] = 0x02, 0xFD
             self.reply = b"\x04" + chunk + b"\xcc"
         elif cmd == 0x06:
+            self.write_pos = data[2] | data[3] << 8
             self.write_len = data[4] | data[5] << 8
-            self.staged = bytearray()
+            self.written = 0
             self._reply(0xAA, self.ident, 0xFD, 0, 0x93, 0)
-        elif cmd == 0x07 and self.staged is not None:
+        elif cmd == 0x07 and self.write_len is not None:
             chunk = bytearray(data[2:8])
-            block = len(self.staged) // 6
-            self.staged += chunk
+            block = self.written // 6
+            pos = self.write_pos + self.written
+            self.ram[pos:pos + 6] = chunk[:max(0, min(6, len(self.ram) - pos))]
+            self.written += 6
             if (self.echo_error_at is not None and self.echo_errors > 0
                     and block == self.echo_error_at):
                 self.echo_errors -= 1
+                self.bad_opens = self.bad_open_after_echo_error
                 chunk[0] ^= 0xFF
             self.reply = b"\x04" + bytes(chunk) + b"\xcc"
         elif cmd == 0x08:
-            if self.staged is not None:
-                if len(self.staged) < self.write_len:
+            if self.write_len is not None and self.fail_close:
+                self.fail_close -= 1
+                self.fail_next_get = True
+            if self.write_len is not None:
+                if self.written < self.write_len:
                     self.partial_commits += 1
-                if not self.ignore_writes:
-                    self.memory[:self.write_len] = self.staged[:self.write_len]
+                if self.ignore_writes:
+                    self.ram[:] = self.memory
+                else:
                     self.commits += 1
-            self.staged = self.write_len = None
-            self.read_pos = None
+            if not self.ignore_writes:
+                self.memory[:] = self.ram
+            self.write_len = self.read_pos = None
             self.reply = bytes.fromhex("04 fd 00 00 fc 93 ff cc")
             self.pending_left = max(self.pending_left, 1)  # como el Redgear: primero sin terminar
         elif cmd == 0x02:
