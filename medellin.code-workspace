@@ -1,0 +1,69 @@
+{
+  "folders": [
+    { "name": "Juego web (three.js)", "path": "medellin-aranjuez" },
+    { "name": "Unreal (MedellinAranjuez)", "path": "medellin-unreal" },
+    { "name": "Raíz del repositorio", "path": "." }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/Intermediate": true,
+      "**/Saved": true,
+      "**/DerivedDataCache": true,
+      "**/Binaries": true
+    },
+    "search.exclude": {
+      "**/dist": true,
+      "**/release": true,
+      "**/Importar": true,
+      "**/public/sounds": true
+    },
+    "python.analysis.extraPaths": ["medellin-unreal/Content/Python"],
+    "editor.formatOnSave": false,
+    "files.eol": "\n"
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "vitest.explorer",
+      "ms-playwright.playwright",
+      "ms-python.python",
+      "ms-vscode.cpptools",
+      "ms-dotnettools.csharp"
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Juego: modo desarrollo (navegador)",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "Juego: pruebas unitarias",
+        "type": "shell",
+        "command": "npx vitest run",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "problemMatcher": []
+      },
+      {
+        "label": "Juego: escritorio (Electron)",
+        "type": "shell",
+        "command": "npm run build && npx electron .",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "problemMatcher": []
+      },
+      {
+        "label": "Unreal: exportar el mundo (medellin-unreal/Importar)",
+        "type": "shell",
+        "command": "npm run exportar:unreal",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "problemMatcher": []
+      }
+    ]
+  }
+}

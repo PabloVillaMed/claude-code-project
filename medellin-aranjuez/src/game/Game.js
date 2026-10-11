@@ -1646,6 +1646,26 @@ export class Game {
         const p = g.world.lanePointNear((e.pts[0][0] + e.pts[1][0]) / 2, (e.pts[0][1] + e.pts[1][1]) / 2);
         return { x: p.x, z: p.z, yaw: p.yaw };
       },
+      /**
+       * Exporta el mundo para Unreal (src/tools/exportUnreal.js, se carga solo
+       * aquí). Devuelve [{nombre, bytes}]; los archivos se leen por trozos con
+       * leerExportado (scripts/exportar-unreal.mjs).
+       */
+      async exportarUnreal() {
+        const { exportarUnreal } = await import('../tools/exportUnreal.js');
+        const log = [];
+        g._exportado = await exportarUnreal(g, { log: (m) => log.push(m) });
+        return { log, archivos: [...g._exportado].map(([nombre, b]) => ({ nombre, bytes: b.length })) };
+      },
+      /** Trozo de un archivo exportado en base64. */
+      leerExportado(nombre, desde, cuanto) {
+        const b = g._exportado?.get(nombre);
+        if (!b) return null;
+        const sub = b.subarray(desde, Math.min(b.length, desde + cuanto));
+        let s = '';
+        for (let i = 0; i < sub.length; i += 0x8000) s += String.fromCharCode.apply(null, sub.subarray(i, i + 0x8000));
+        return btoa(s);
+      },
       /** Cámara fija de depuración: aerial(x, y, z, tx, ty, tz); sin argumentos la suelta. */
       aerial(...q) {
         g._aerial = q.length === 6 ? q : null;

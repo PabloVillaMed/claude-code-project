@@ -18,7 +18,8 @@
     "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never",
     "icon": "node scripts/make-icon.mjs",
     "shots": "npm run build && node scripts/shots.mjs shots",
-    "dist:win:zip": "npm run build && electron-builder --win zip --x64 --publish never"
+    "dist:win:zip": "npm run build && electron-builder --win zip --x64 --publish never",
+    "exportar:unreal": "npm run build && node scripts/exportar-unreal.mjs"
   },
   "devDependencies": {
     "@fontsource/barlow": "^5.3.0",
