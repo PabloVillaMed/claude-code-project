@@ -1,0 +1,10 @@
+node_modules
+dist/
+release/
+test-results/
+playwright-report/
+*.log
+scripts/assets/.cache/
+release-ci/
+.cache/
+dist-*/

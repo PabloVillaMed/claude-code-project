@@ -1,0 +1,237 @@
+{
+  "red_brick": {
+    "name": "Red Brick",
+    "use": "Fachada de ladrillo farol (variante A)",
+    "authors": [
+      "Rob Tuytel"
+    ],
+    "metersX": 1.399999976158142,
+    "metersY": 1.399999976158142,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/red_brick"
+  },
+  "large_red_bricks": {
+    "name": "Large Red Bricks",
+    "use": "Fachada de ladrillo farol (variante B)",
+    "authors": [
+      "Rob Tuytel"
+    ],
+    "metersX": 2,
+    "metersY": 2,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/large_red_bricks"
+  },
+  "brick_wall_07": {
+    "name": "Brick Wall 07",
+    "use": "Fachada de ladrillo farol (variante C, más anaranjado)",
+    "authors": [
+      "Dimitrios Savva"
+    ],
+    "metersX": 1.7000000476837158,
+    "metersY": 1.7000000476837158,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/brick_wall_07"
+  },
+  "painted_brick": {
+    "name": "Painted Brick",
+    "use": "Ladrillo pintado (se tiñe del color de cada casa)",
+    "authors": [
+      "Amal Kumar"
+    ],
+    "metersX": 1.8000000715255737,
+    "metersY": 1.8000000715255737,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/painted_brick"
+  },
+  "peeling_painted_wall": {
+    "name": "Peeling Painted Wall",
+    "use": "Repello viejo descascarado (se tiñe)",
+    "authors": [
+      "Dimitrios Savva"
+    ],
+    "metersX": 1.8000000715255737,
+    "metersY": 1.8000000715255737,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/peeling_painted_wall"
+  },
+  "painted_plaster_wall": {
+    "name": "Painted Plaster Wall",
+    "use": "Repello pintado (casas de colores)",
+    "authors": [
+      "Amal Kumar"
+    ],
+    "metersX": 2,
+    "metersY": 2,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/painted_plaster_wall"
+  },
+  "beige_wall_001": {
+    "name": "Beige Wall 001",
+    "use": "Repello pintado (variante)",
+    "authors": [
+      "Dimitrios Savva",
+      "Rico Cilliers"
+    ],
+    "metersX": 3,
+    "metersY": 3.000000238418579,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/beige_wall_001"
+  },
+  "asphalt_02": {
+    "name": "Asphalt 02",
+    "use": "Asfalto de las calles",
+    "authors": [
+      "Rob Tuytel"
+    ],
+    "metersX": 3.000000238418579,
+    "metersY": 3,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/asphalt_02"
+  },
+  "grey_tiles": {
+    "name": "Grey Tiles",
+    "use": "Baldosas de los andenes",
+    "authors": [
+      "Amal Kumar"
+    ],
+    "metersX": 2.200000047683716,
+    "metersY": 2.200000047683716,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/grey_tiles"
+  },
+  "herringbone_brick": {
+    "name": "Herringbone Brick",
+    "use": "Ladrillo en espiga de plazas y parques",
+    "authors": [
+      "Rob Tuytel"
+    ],
+    "metersX": 1.8000000715255737,
+    "metersY": 1.8000000715255737,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/herringbone_brick"
+  },
+  "leafy_grass": {
+    "name": "Leafy Grass",
+    "use": "Pasto de parques y terreno",
+    "authors": [
+      "Charlotte Baglioni"
+    ],
+    "metersX": 2,
+    "metersY": 2,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/leafy_grass"
+  },
+  "clay_roof_tiles_02": {
+    "name": "Clay Roof Tiles 02",
+    "use": "Teja de barro",
+    "authors": [
+      "Amal Kumar"
+    ],
+    "metersX": 2.5,
+    "metersY": 2.5,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/clay_roof_tiles_02"
+  },
+  "concrete_floor_02": {
+    "name": "Concrete Floor 02",
+    "use": "Planchas de concreto en terrazas",
+    "authors": [
+      "Rob Tuytel"
+    ],
+    "metersX": 2,
+    "metersY": 2,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/concrete_floor_02"
+  },
+  "concrete_wall_008": {
+    "name": "Concrete Wall 008",
+    "use": "Vigas, columnas, muros y sardineles",
+    "authors": [
+      "Dario Barresi",
+      "Charlotte Baglioni"
+    ],
+    "metersX": 2.7100000381469727,
+    "metersY": 2.7100000381469727,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/concrete_wall_008"
+  },
+  "corrugated_iron_02": {
+    "name": "Corrugated Iron 02",
+    "use": "Zinc / lámina de talleres",
+    "authors": [
+      "Jenelle van Heerden",
+      "Sergej Majboroda"
+    ],
+    "metersX": 2.700000047683716,
+    "metersY": 2.700000047683716,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/corrugated_iron_02"
+  },
+  "painted_metal_shutter": {
+    "name": "Painted Metal Shutter",
+    "use": "Cortina metálica enrollable de los locales",
+    "authors": [
+      "Dario Barresi",
+      "Rico Cilliers",
+      "Charlotte Baglioni"
+    ],
+    "metersX": 2,
+    "metersY": 2,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/painted_metal_shutter"
+  },
+  "dirty_tiles": {
+    "name": "Dirty Tiles",
+    "use": "Zócalo enchapado en tableta de gres",
+    "authors": [
+      "Matterfield",
+      "Jenelle van Heerden"
+    ],
+    "metersX": 2.259999990463257,
+    "metersY": 2.259999990463257,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/dirty_tiles"
+  },
+  "granite_tile": {
+    "name": "Granite Tile",
+    "use": "Zócalo enchapado en granito",
+    "authors": [
+      "Charlotte Baglioni"
+    ],
+    "metersX": 2.299999952316284,
+    "metersY": 2.299999952316284,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/granite_tile"
+  },
+  "rusty_painted_metal": {
+    "name": "Rusty Painted Metal",
+    "use": "Tejas de zinc pintadas (Moravia)",
+    "authors": [
+      "Amal Kumar"
+    ],
+    "metersX": 2.200000047683716,
+    "metersY": 2.200000047683716,
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/rusty_painted_metal"
+  },
+  "hdri:kloofendal_48d_partly_cloudy_puresky": {
+    "name": "Kloofendal 48d Partly Cloudy (Pure Sky)",
+    "use": "Iluminación ambiental de día (IBL)",
+    "authors": [
+      "Greg Zaal",
+      "Jarod Guest"
+    ],
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky"
+  },
+  "hdri:kloofendal_48d_partly_cloudy_puresky_2k": {
+    "name": "Kloofendal 48d Partly Cloudy (Pure Sky)",
+    "use": "Iluminación ambiental de día en Alta/Ultra (reflejos más nítidos)",
+    "authors": [
+      "Greg Zaal",
+      "Jarod Guest"
+    ],
+    "license": "CC0",
+    "source": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky"
+  }
+}

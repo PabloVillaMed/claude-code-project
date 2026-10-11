@@ -1,0 +1,20 @@
+Vegetación 3D de Medellín Aranjuez: fuentes y licencias
+
+palma_coco.glb: "Coconut Palm" por evolveduk — https://sketchfab.com/3d-models/coconut-palm-26e787f2ff2e4c0fb004c3b0210805a3 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+palma_real.glb: "Date Palm" por evolveduk — https://sketchfab.com/3d-models/date-palm-11acf710e6c149daa8d6fb8cdc5d087f — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+palma_areca.glb: "Curly Palm" por evolveduk — https://sketchfab.com/3d-models/curly-palm-00f2b57dd0e844edbeb116034fa471ec — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+guadua.glb: "bamboo" por evolveduk — https://sketchfab.com/3d-models/bamboo-a02bf0e3ffe44617ad49daf3cd94fe59 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+arbol_saman.glb: "Acacia tree" por evolveduk — https://sketchfab.com/3d-models/acacia-tree-bb14c2bb679b4d0bb1c578a27e2ddabf — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+arbol_mango.glb: "Oak tree" por evolveduk — https://sketchfab.com/3d-models/oak-tree-6468dd4d3eb240ef902b9057d9913606 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+arbol_aguacate.glb: "Maple Tree" por evolveduk — https://sketchfab.com/3d-models/maple-tree-b5e945e7abcc471da6547c04e314774c — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+platano.glb: "Banana Tree" por DJMiddi — https://sketchfab.com/3d-models/banana-tree-7186ebfc24fc42c599f81713cd28d55e — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+croton.glb: "Croton Leaf Plants" por The_Structure_World — https://sketchfab.com/3d-models/croton-leaf-plants-0cecbc0a6ef34ea68b28c45c08b2528b — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+heliconia.glb: "Tropical plant" por adam127 — https://sketchfab.com/3d-models/tropical-plant-7365d3fc0eb148028c751364dd172952 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+helecho.glb: "Fern" por evolveduk — https://sketchfab.com/3d-models/fern-38531afd86434987b1a0bf5968fe001f — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+monstera.glb: "Tropical Plant monstera deliciosa" por evolveduk — https://sketchfab.com/3d-models/tropical-plant-monstera-deliciosa-2fa12ba0af5442c9af8f9bead1a7d020 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado
+arbol_guayabo.glb: "Island Tree 02" por Rob Tuytel, Rico Cilliers — https://polyhaven.com/a/island_tree_02 — CC0
+seto.glb: "Island Tree 02 (textura de hojas)" por Rob Tuytel, Rico Cilliers — https://polyhaven.com/a/island_tree_02 — CC0
+buganvilia.glb: "Island Tree 02 (textura de hojas)" por Rob Tuytel, Rico Cilliers — https://polyhaven.com/a/island_tree_02 — CC0
+pasto.glb: "Grass Bermuda 01 (textura)" por Rico Cilliers — https://polyhaven.com/a/grass_bermuda_01 — CC0
+maleza.glb: "Grass Bermuda 01 (textura)" por Rico Cilliers — https://polyhaven.com/a/grass_bermuda_01 — CC0
+enredadera.glb: "Ivy" por Daniel Gryningstjerna (dangry) — https://sketchfab.com/3d-models/ivy-d8991bd2a8c84e96b15a721a833bd4c3 — CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), modificado: reducido, reescalado y reempaquetado

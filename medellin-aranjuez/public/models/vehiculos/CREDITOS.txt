@@ -1,0 +1,66 @@
+Modelos 3D de vehículos (public/models/vehiculos/*.glb)
+Licencia de todos: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Modificados para el juego: reorientados, escalados, materiales reagrupados,
+ruedas separadas, texturas reducidas y comprimidas, logos y placas quitados,
+mallas simplificadas y colores pasados a color de vértice (scripts/assets/vehiculos.mjs).
+
+hatchback.glb (taxi): "Ace '11 - Low Poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd
+  This work is based on "Ace '11 - Low Poly model" (https://sketchfab.com/3d-models/ace-11-low-poly-model-055ff8a21b8d4d279debca089e2fafcd) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+sedan.glb (sedán): "Kiri '10 - Low poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6
+  This work is based on "Kiri '10 - Low poly model" (https://sketchfab.com/3d-models/kiri-10-low-poly-model-7fd6e15785fa4aa9bfd6e31eb7c97ba6) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+suv.glb (camioneta y patrulla): "Urban '10 - Low poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d
+  This work is based on "Urban '10 - Low poly model" (https://sketchfab.com/3d-models/urban-10-low-poly-model-2866efdfa943484391ef8313768e074d) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+buseta.glb (buseta): "Busscar Micruss" por Red Fox (nokillnando)
+  https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0
+  This work is based on "Busscar Micruss" (https://sketchfab.com/3d-models/busscar-micruss-60c006be9a834849895438f15d4927c0) by Red Fox (nokillnando) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+moto.glb (moto): "pulsar 135 ls" por Emanuel Restrepo Vélez (e-restrepo1114)
+  https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5
+  This work is based on "pulsar 135 ls" (https://sketchfab.com/3d-models/pulsar-135-ls-36d04d99171e4d59b540c25d8650dbd5) by Emanuel Restrepo Vélez (e-restrepo1114) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+suv_compacta.glb (camioneta compacta): "2011 Dacia (Renault) Duster" por razor24
+  https://sketchfab.com/3d-models/2011-dacia-renault-duster-30bc2e09de66426bb67be72c95fa2476
+  This work is based on "2011 Dacia (Renault) Duster" (https://sketchfab.com/3d-models/2011-dacia-renault-duster-30bc2e09de66426bb67be72c95fa2476) by razor24 licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+suv_mediana.glb (camioneta mediana): "2015 Hyundai Tucson" por razor24
+  https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589
+  This work is based on "2015 Hyundai Tucson" (https://sketchfab.com/3d-models/2015-hyundai-tucson-7674a3bd168a451daf73fc0a33d39589) by razor24 licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+clasico.glb (carro clásico, furgoneta): "renault 4L" por Mohamed Fsili (medraphc)
+  https://sketchfab.com/3d-models/renault-4l-cfb86acde13541a7a6e45b46183580c3
+  This work is based on "renault 4L" (https://sketchfab.com/3d-models/renault-4l-cfb86acde13541a7a6e45b46183580c3) by Mohamed Fsili (medraphc) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+hatch_pequeno.glb (hatchback pequeño, particular y taxi): "Low Poly Nissan Micra K11" por tatsuteb
+  https://sketchfab.com/3d-models/low-poly-nissan-micra-k11-b174848b63704c9990c164c03eaac9f6
+  This work is based on "Low Poly Nissan Micra K11" (https://sketchfab.com/3d-models/low-poly-nissan-micra-k11-b174848b63704c9990c164c03eaac9f6) by tatsuteb licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+sedan_compacto.glb (sedán compacto, particular y taxi): "Renault Logan 2004" por Denis Petrushin (goooddenis)
+  https://sketchfab.com/3d-models/renault-logan-2004-e4f9463f6e004b90bb977d12f6375b9c
+  This work is based on "Renault Logan 2004" (https://sketchfab.com/3d-models/renault-logan-2004-e4f9463f6e004b90bb977d12f6375b9c) by Denis Petrushin (goooddenis) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+hatch_compacto.glb (hatchback compacto): "Milano '95 - Low poly model" por Daniel Zhabotinsky
+  https://sketchfab.com/3d-models/milano-95-low-poly-model-122a22d210234596ad23623588d0d166
+  This work is based on "Milano '95 - Low poly model" (https://sketchfab.com/3d-models/milano-95-low-poly-model-122a22d210234596ad23623588d0d166) by Daniel Zhabotinsky licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+moto_2t.glb (moto clásica de dos tiempos): "RX115" por Emanuel Restrepo Vélez (e-restrepo1114)
+  https://sketchfab.com/3d-models/rx115-c05d91c775e947c5afa27197db08687a
+  This work is based on "RX115" (https://sketchfab.com/3d-models/rx115-c05d91c775e947c5afa27197db08687a) by Emanuel Restrepo Vélez (e-restrepo1114) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+moto_enduro.glb (moto enduro): "Dt125" por Emanuel Restrepo Vélez (e-restrepo1114)
+  https://sketchfab.com/3d-models/dt125-c541e042f7804c3e814db6104a95b28d
+  This work is based on "Dt125" (https://sketchfab.com/3d-models/dt125-c541e042f7804c3e814db6104a95b28d) by Emanuel Restrepo Vélez (e-restrepo1114) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+moto_tt.glb (moto doble propósito): "Akt Tt Ds 200" por Emanuel Restrepo Vélez (e-restrepo1114)
+  https://sketchfab.com/3d-models/akt-tt-ds-200-e9c1ff9a40494ea59c2263fd3d6ea477
+  This work is based on "Akt Tt Ds 200" (https://sketchfab.com/3d-models/akt-tt-ds-200-e9c1ff9a40494ea59c2263fd3d6ea477) by Emanuel Restrepo Vélez (e-restrepo1114) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+scooter.glb (scooter): "honda-smart-dio-z4-2006-1" por PhotoCanon (AlexanderChen394)
+  https://sketchfab.com/3d-models/honda-smart-dio-z4-2006-1-ef6060608fe04cacbf6d4c817f494d6c
+  This work is based on "honda-smart-dio-z4-2006-1" (https://sketchfab.com/3d-models/honda-smart-dio-z4-2006-1-ef6060608fe04cacbf6d4c817f494d6c) by PhotoCanon (AlexanderChen394) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

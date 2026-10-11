@@ -1,0 +1,397 @@
+{
+  "silla_plastica": {
+    "file": "models/utileria/silla_plastica.glb",
+    "use": "Silla plástica de tienda de barrio",
+    "name": "Plastic Monobloc Chair 01",
+    "sources": [
+      "https://polyhaven.com/a/plastic_monobloc_chair_01"
+    ],
+    "authors": [
+      "Kuutti Siitonen"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "silla_plastica": 900
+    },
+    "bytes": 111980,
+    "extras": {
+      "size": [
+        0.642,
+        0.88,
+        0.628
+      ]
+    }
+  },
+  "canasta": {
+    "file": "models/utileria/canasta.glb",
+    "use": "Canasta de cerveza (tiendas)",
+    "name": "Plastic Crate 02",
+    "sources": [
+      "https://polyhaven.com/a/plastic_crate_02"
+    ],
+    "authors": [
+      "Fabi_G"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "canasta": 716
+    },
+    "bytes": 86012,
+    "extras": {
+      "size": [
+        0.5,
+        0.25,
+        0.4
+      ]
+    }
+  },
+  "caneca": {
+    "file": "models/utileria/caneca.glb",
+    "use": "Caneca de basura",
+    "name": "Metal Trash Can",
+    "sources": [
+      "https://polyhaven.com/a/metal_trash_can"
+    ],
+    "authors": [
+      "GurJas Studios"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "caneca": 998
+    },
+    "bytes": 117708,
+    "extras": {
+      "size": [
+        0.649,
+        0.906,
+        0.551
+      ]
+    }
+  },
+  "barrera": {
+    "file": "models/utileria/barrera.glb",
+    "use": "Barrera de concreto (obras)",
+    "name": "Concrete Road Barrier",
+    "sources": [
+      "https://polyhaven.com/a/concrete_road_barrier"
+    ],
+    "authors": [
+      "Amal Kumar"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "barrera": 900
+    },
+    "bytes": 131188,
+    "extras": {
+      "size": [
+        1.544,
+        0.827,
+        0.637
+      ]
+    }
+  },
+  "alcantarilla": {
+    "file": "models/utileria/alcantarilla.glb",
+    "use": "Tapa de alcantarilla",
+    "name": "Water Manhole Cover",
+    "sources": [
+      "https://polyhaven.com/a/water_manhole_cover"
+    ],
+    "authors": [
+      "Raunox"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "alcantarilla": 272
+    },
+    "bytes": 111076,
+    "extras": {
+      "size": [
+        0.689,
+        0.068,
+        0.69
+      ]
+    }
+  },
+  "bolsa_basura": {
+    "file": "models/utileria/bolsa_basura.glb",
+    "use": "Bolsa de basura",
+    "name": "Trashbag",
+    "sources": [
+      "https://polyhaven.com/a/trashbag"
+    ],
+    "authors": [
+      "Benny Weimer"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "bolsa_basura": 456
+    },
+    "bytes": 93316,
+    "extras": {
+      "size": [
+        0.515,
+        0.573,
+        0.459
+      ]
+    }
+  },
+  "matera": {
+    "file": "models/utileria/matera.glb",
+    "use": "Matera con planta (andenes y balcones)",
+    "name": "Potted Plant 02",
+    "sources": [
+      "https://polyhaven.com/a/potted_plant_02"
+    ],
+    "authors": [
+      "Rico Cilliers"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "matera": 1368
+    },
+    "bytes": 162572,
+    "extras": {
+      "size": [
+        0.679,
+        0.827,
+        0.63
+      ]
+    }
+  },
+  "hidrante": {
+    "file": "models/utileria/hidrante.glb",
+    "use": "Hidrante",
+    "name": "Fire Hydrant",
+    "sources": [
+      "https://polyhaven.com/a/fire_hydrant"
+    ],
+    "authors": [
+      "Gonçalo Felício"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "hidrante": 712
+    },
+    "bytes": 90060,
+    "extras": {
+      "size": [
+        0.273,
+        0.799,
+        0.316
+      ]
+    }
+  },
+  "banca": {
+    "file": "models/utileria/banca.glb",
+    "use": "Banca del parque",
+    "name": "Painted Wooden Bench",
+    "sources": [
+      "https://polyhaven.com/a/painted_wooden_bench"
+    ],
+    "authors": [
+      "Kirill Sannikov"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "banca": 630
+    },
+    "bytes": 78968,
+    "extras": {
+      "size": [
+        1.165,
+        0.889,
+        0.497
+      ]
+    }
+  },
+  "farol_parque": {
+    "file": "models/utileria/farol_parque.glb",
+    "use": "Farol de parque",
+    "name": "Street Lamp 01",
+    "sources": [
+      "https://polyhaven.com/a/street_lamp_01"
+    ],
+    "authors": [
+      "Josh Dean"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "farol_parque": 2597
+    },
+    "bytes": 74004,
+    "extras": {
+      "size": [
+        0.689,
+        3.869,
+        0.386
+      ]
+    }
+  },
+  "poste_a": {
+    "file": "models/utileria/poste_a.glb",
+    "use": "Poste de energía con crucetas",
+    "name": "Modular Electricity Poles",
+    "sources": [
+      "https://polyhaven.com/a/modular_electricity_poles"
+    ],
+    "authors": [
+      "James Ray Cock"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "cerca": 3401,
+      "lejos": 210
+    },
+    "bytes": 285260,
+    "extras": {
+      "cables": [
+        [
+          -0.6,
+          5.73
+        ],
+        [
+          0,
+          6.08
+        ],
+        [
+          0.6,
+          5.73
+        ]
+      ],
+      "size": [
+        1.2,
+        6.13,
+        0.852
+      ]
+    }
+  },
+  "poste_b": {
+    "file": "models/utileria/poste_b.glb",
+    "use": "Poste de energía con transformador",
+    "name": "Modular Electricity Poles",
+    "sources": [
+      "https://polyhaven.com/a/modular_electricity_poles"
+    ],
+    "authors": [
+      "James Ray Cock"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "cerca": 2825,
+      "lejos": 243
+    },
+    "bytes": 281684,
+    "extras": {
+      "cables": [
+        [
+          -0.6,
+          5.73
+        ],
+        [
+          0,
+          6.08
+        ],
+        [
+          0.6,
+          5.73
+        ]
+      ],
+      "size": [
+        1.2,
+        6.13,
+        1.946
+      ]
+    }
+  },
+  "farol_calle": {
+    "file": "models/utileria/farol_calle.glb",
+    "use": "Farol de calle (poste + lámpara de brazo)",
+    "name": "Modular Electricity Poles + Street Lamp 02",
+    "sources": [
+      "https://polyhaven.com/a/modular_electricity_poles",
+      "https://polyhaven.com/a/street_lamp_02"
+    ],
+    "authors": [
+      "James Ray Cock",
+      "Josh Dean"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "cerca": 1383,
+      "lejos": 60
+    },
+    "bytes": 152760,
+    "extras": {
+      "size": [
+        0.521,
+        7.2,
+        1.297
+      ],
+      "luz": [
+        0,
+        6.11,
+        -0.38
+      ]
+    }
+  },
+  "arbol_copa_ancha": {
+    "file": "models/utileria/arbol_copa_ancha.glb",
+    "use": "Árbol de copa ancha (guayacanes, ceiba)",
+    "name": "Jacaranda Tree",
+    "sources": [
+      "https://polyhaven.com/a/jacaranda_tree"
+    ],
+    "authors": [
+      "Rob Tuytel",
+      "Rico Cilliers"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "cerca": 7258,
+      "lejos": 739
+    },
+    "bytes": 690096,
+    "extras": {
+      "size": [
+        25.67,
+        20.381,
+        20.346
+      ],
+      "copa": {
+        "minY": 5.77,
+        "radio": 12.83
+      }
+    }
+  },
+  "arbol_copa_redonda": {
+    "file": "models/utileria/arbol_copa_redonda.glb",
+    "use": "Árbol de copa redonda (mango, ficus)",
+    "name": "Island Tree 01",
+    "sources": [
+      "https://polyhaven.com/a/island_tree_01"
+    ],
+    "authors": [
+      "Rob Tuytel",
+      "Rico Cilliers"
+    ],
+    "license": "CC0",
+    "triangles": {
+      "cerca": 4995,
+      "lejos": 675
+    },
+    "bytes": 358648,
+    "extras": {
+      "size": [
+        5.23,
+        5.273,
+        5.211
+      ],
+      "copa": {
+        "minY": 0.9,
+        "radio": 2.62
+      }
+    }
+  }
+}

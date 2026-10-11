@@ -1,0 +1,11 @@
+# Generado por Unreal
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+*.sln
+# Lo que produce `npm run exportar:unreal` (se regenera) y lo que se importa de ahí
+Importar/
+Content/Medellin/Importado/
+__pycache__/
