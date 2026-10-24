@@ -1,6 +1,6 @@
 # claude-code-project
 
-Configuración de [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+Configuración de [Claude Code](https://code.claude.com/docs/en/overview)
 para trabajar en este repositorio: los marketplaces y plugins que se activan
 (`.claude/settings.json`) y el servidor MCP de documentación context7
 (`.mcp.json`). El detalle de qué incluye cada uno, cuánto cuesta en contexto y
