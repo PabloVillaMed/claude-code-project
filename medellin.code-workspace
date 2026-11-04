@@ -51,6 +51,22 @@
         "problemMatcher": []
       },
       {
+        "label": "Web: vista como en GitHub Pages",
+        "detail": "Build y servidor en http://localhost:4191/claude-code-project/",
+        "type": "shell",
+        "command": "npm run preview:pages",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "isBackground": true,
+        "problemMatcher": []
+      },
+      {
+        "label": "Web: pruebas e2e (web y táctil)",
+        "type": "shell",
+        "command": "npm run test:e2e:web",
+        "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },
+        "problemMatcher": []
+      },
+      {
         "label": "Juego: escritorio (Electron)",
         "type": "shell",
         "command": "npm run build && npx electron .",

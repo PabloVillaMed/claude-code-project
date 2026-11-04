@@ -10,16 +10,70 @@ import '@fontsource/barlow-condensed/latin-700.css';
 import { Game, loadSave, saveSettings } from './game/Game.js';
 import { LINE_ICONS, ropaIconHtml, weaponIconHtml } from './ui/icons.js';
 import { creditsHtml } from './ui/credits.js';
+import { installTouchControls } from './ui/touchControls.js';
+import { hasWebGL2, platform } from './web/platform.js';
+import { installBrowserGuards, requestPersistentStorage } from './web/browserGuards.js';
+import { handleSwKillSwitch, registerServiceWorker } from './web/pwa.js';
+import './web/web.css';
 import pkg from '../package.json';
 
 const $ = (id) => document.getElementById(id);
 const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const params = new URLSearchParams(location.search);
 const autotest = params.has('autotest');
+// ?sw=0 desregistra el service worker antes de todo: sirve aunque el juego no cargue.
+handleSwKillSwitch();
+
+// App de escritorio (Electron) o navegador; el CSS y los controles lo leen de <html>.
+document.documentElement.classList.add(platform.desktopApp ? 'desktop-app' : 'web');
+document.documentElement.classList.toggle('touch-primary', platform.touchPrimary);
+if (!platform.desktopApp) {
+  // window.close() no cierra una pestaña que abrió el usuario: sin "Salir" en la web.
+  $('menu').querySelector('[data-action="quit"]')?.classList.add('hidden');
+  // iPhone no tiene la API de pantalla completa: la casilla no haría nada.
+  if (!platform.fullscreen) $('set-full')?.closest('label')?.classList.add('hidden');
+}
+
+/** Sin WebGL 2 no hay juego: la pantalla de carga explica qué hacer. */
+function showWebGLError(err) {
+  const boot = $('boot');
+  boot.classList.add('failed');
+  const box = document.createElement('div');
+  box.className = 'boot-error';
+  box.setAttribute('role', 'alert');
+  box.innerHTML = `<h2>Este navegador no puede mostrar el juego</h2>
+<p>${platform.desktopApp ? 'La app' : 'Tu navegador'} no tiene WebGL&nbsp;2 o la aceleración por hardware (la tarjeta de video) está apagada.</p>
+<ul>
+<li>Actualiza el navegador a la versión más reciente.</li>
+<li>En Chrome o Edge, activa <b>Usar aceleración por hardware cuando esté disponible</b> en <code>chrome://settings/system</code> (en Edge, <code>edge://settings/system</code>) y reinicia el navegador.</li>
+<li>Prueba con Chrome, Edge o Firefox recientes.</li>
+<li>Si sigue igual, actualiza los controladores de la tarjeta de video.</li>
+</ul>${err ? `<p class="detail">Detalle: ${escapeHtml(err.message ?? err)}</p>` : ''}`;
+  boot.appendChild(box);
+}
+
+function createGame() {
+  if (!hasWebGL2()) {
+    showWebGLError(null);
+    return null;
+  }
+  try {
+    return new Game(canvas, { autotest, quality: params.get('quality') ?? undefined });
+  } catch (err) {
+    // THREE.WebGLRenderer: "Error creating WebGL context" (GPU en lista negra, sin controladores…)
+    console.error(err);
+    showWebGLError(err);
+    return null;
+  }
+}
 
 const canvas = $('game');
-const game = new Game(canvas, { autotest, quality: params.get('quality') ?? undefined });
+const game = createGame();
+// Sin juego, el resto del arranque no se evalúa: esta espera nunca termina.
+if (!game) await new Promise(() => {});
 window.__gameInstance = game;
+// Atajos del navegador, cerrar/ocultar la pestaña y Keyboard Lock en pantalla completa.
+installBrowserGuards({ game, autotest, desktopApp: platform.desktopApp });
 
 let returnTo = 'menu'; // a dónde vuelven Controles/Configuración
 
@@ -198,6 +252,14 @@ $('fullmap').addEventListener('click', (e) => {
 });
 $('fullmap').addEventListener('contextmenu', (e) => {
   e.preventDefault();
+  // Con el dedo, la pulsación larga también llega como contextmenu: marca el
+  // destino igual que el toque (borrarlo es solo del clic derecho).
+  if (e.pointerType === 'touch' || document.documentElement.classList.contains('touch-on')) {
+    const w = game.hud.fullMapToWorld(e.clientX, e.clientY);
+    game.setWaypoint(w.x, w.z);
+    game.audio.ui('tick');
+    return;
+  }
   game.waypoint = null;
   game.hud.route = null;
   game.hud.drawFullMap(game._hudState());
@@ -228,7 +290,8 @@ function loadSettingsUi() {
 // ---------------------------------------------------------------- pantalla completa
 // En la app de escritorio la ventana entra en pantalla completa desde Electron
 // (sin pedir gesto del usuario, así se recuerda entre sesiones); en el
-// navegador se usa la API estándar, que exige un clic o una tecla.
+// navegador se usa la API estándar, que exige un clic o una tecla (y al entrar
+// se activa el Keyboard Lock: ver web/browserGuards.js). iPhone no la tiene.
 let desktopFull = false;
 function isFullscreen() {
   return window.desktop?.setFullscreen ? desktopFull : !!document.fullscreenElement;
@@ -372,6 +435,42 @@ function finishBoot() {
   setTimeout(() => $('boot').remove(), 1200);
 }
 
+// ---------------------------------------------------------------- versión nueva (service worker)
+// Nunca se recarga en medio de una partida: en el menú queda un botón discreto
+// y, si se está jugando, solo se avisa.
+let applyUpdate = null;
+function onUpdateReady(apply) {
+  applyUpdate = apply;
+  if (!document.querySelector('.menu-update')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu-update';
+    btn.textContent = 'Hay una versión nueva · Actualizar';
+    btn.addEventListener('click', () => {
+      if (game.state !== 'menu' || !applyUpdate) return;
+      btn.disabled = true;
+      btn.textContent = 'Actualizando…';
+      const restore = () => {
+        btn.disabled = false;
+        btn.textContent = 'Hay una versión nueva · Actualizar';
+      };
+      Promise.resolve()
+        .then(() => applyUpdate())
+        .then((ok) => {
+          if (ok === false) restore();
+        })
+        .catch((err) => {
+          console.warn('No se pudo aplicar la versión nueva:', err);
+          restore();
+        });
+    });
+    // En el pie del menú, junto a la versión.
+    if ($('menu-version')) $('menu-version').after(btn);
+    else $('menu').appendChild(btn);
+  }
+  if (game.state !== 'menu' && game.state !== 'loading') game.hud?.toast?.('Versión nueva lista: se aplica al volver al menú', 6);
+}
+
 game
   .init((p) => {
     const pct = Math.round(p * 100);
@@ -382,6 +481,13 @@ game
     $('boot-stage').textContent = label;
   })
   .then(() => {
+    // Controles en pantalla (el módulo decide si este dispositivo los necesita).
+    try {
+      game.touch = installTouchControls(game) ?? null;
+    } catch (err) {
+      console.error('No se pudieron crear los controles táctiles:', err);
+      game.touch = null;
+    }
     refreshMenu();
     if (autotest) {
       finishBoot();
@@ -389,6 +495,11 @@ game
       game.newGame();
       return;
     }
+    Promise.resolve()
+      .then(() => registerServiceWorker({ onUpdateReady }))
+      .catch((err) => console.warn('Service worker:', err));
+    // Que el navegador no borre el guardado ni la caché del juego.
+    if (!platform.desktopApp) requestPersistentStorage();
     $('boot-stage').textContent = 'Listo';
     setTimeout(() => {
       showOverlay('menu');

@@ -1,0 +1,84 @@
+name: Medellín Aranjuez (web)
+
+# Publica el juego en GitHub Pages: https://pablovillamed.github.io/claude-code-project/
+#
+# Configuración (una sola vez, la hace el dueño del repositorio):
+#   Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   O desde la terminal:
+#     gh api -X POST repos/PabloVillaMed/claude-code-project/pages -f build_type=workflow
+#   Sin eso falla el paso configure-pages ("Get Pages site failed").
+# El ambiente github-pages solo deja publicar desde main: corrido a mano desde
+# otra rama hace el build pero el deploy lo rechaza (es a propósito).
+#
+# Pensado para gastar pocos minutos de GitHub, como el workflow de las pruebas:
+#  - Solo corre al hacer push a main con cambios del juego (o a mano: Actions →
+#    "Medellín Aranjuez (web)" → Run workflow). Los pull requests ya los revisa
+#    "Medellín Aranjuez" con las pruebas unitarias.
+#  - Ubuntu (cuenta sencillo) y sin descargar Electron ni navegadores: aquí no
+#    se corren las e2e.
+#  - El build pesa ~88 MB; el artefacto de Pages se borra al día siguiente.
+#  - Dos publicaciones seguidas no se pisan: la segunda espera a la primera.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'medellin-aranjuez/**'
+      - '.github/workflows/medellin-web.yml'
+
+# Una publicación a la vez; la que está en curso se deja terminar.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: medellin-aranjuez
+
+jobs:
+  build:
+    name: Build web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read # configure-pages lee la configuración de Pages
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: medellin-aranjuez/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      # Si las pruebas unitarias fallan no se publica nada.
+      - run: npm test
+      # Vite usa base './' (rutas relativas): el mismo build sirve bajo la
+      # subruta /claude-code-project/ de Pages y dentro de Electron.
+      - run: npm run build
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: medellin-aranjuez/dist
+          retention-days: 1
+
+  deploy:
+    name: Publicar en GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

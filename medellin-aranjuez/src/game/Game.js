@@ -40,6 +40,7 @@ import { Boarding } from './boarding.js';
 import { playerStyle, purchaseGestures, EMOTES, nextEmote } from '../sim/animSelect.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
+import { defaultQuality } from '../web/platform.js';
 
 // Tomas del menú principal (relativas al punto de interés, en metros; y sobre el suelo).
 const MENU_SHOTS = [
@@ -65,7 +66,9 @@ function safeStorage(fn, fallback = null) {
 
 export function loadSettings() {
   const raw = safeStorage(() => localStorage.getItem(SETTINGS_KEY));
-  return { ...DEFAULT_SETTINGS, ...(raw ? safeStorage(() => JSON.parse(raw), {}) : {}) };
+  // Sin configuración guardada, los celulares y tabletas arrancan en Baja (con resolución dinámica).
+  if (!raw) return { ...DEFAULT_SETTINGS, quality: defaultQuality() };
+  return { ...DEFAULT_SETTINGS, ...safeStorage(() => JSON.parse(raw), {}) };
 }
 
 export function saveSettings(s) {
@@ -1403,7 +1406,8 @@ export class Game {
     this.setState('paused');
     this.input.exitLock();
     this.wheel.close();
-    this.save();
+    // Muerto no se guarda: quedaría la salud en cero sin pasar por el hospital.
+    if (!this.player.dead) this.save();
   }
 
   resume() {
