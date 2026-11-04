@@ -52,7 +52,7 @@
       },
       {
         "label": "Web: vista como en GitHub Pages",
-        "detail": "Build y servidor en http://localhost:4191/claude-code-project/",
+        "detail": "Build y servidor en http://localhost:4191/medellin-aranjuez/",
         "type": "shell",
         "command": "npm run preview:pages",
         "options": { "cwd": "${workspaceFolder:Juego web (three.js)}" },

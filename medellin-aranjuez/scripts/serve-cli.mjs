@@ -1,8 +1,8 @@
 // Sirve el build (dist/) por http. Opciones (también por entorno):
 //   --port=4190                  (PORT)      puerto
-//   --base=/claude-code-project/ (BASE)      subruta, como queda en GitHub Pages
+//   --base=/medellin-aranjuez/ (BASE)      subruta, como queda en GitHub Pages
 //   --dir=dist-otro              (DIST_DIR)  otra carpeta de build
-// Ejemplo: node scripts/serve-cli.mjs --port=4191 --base=/claude-code-project/
+// Ejemplo: node scripts/serve-cli.mjs --port=4191 --base=/medellin-aranjuez/
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeBase, serveDist } from './serve.mjs';
@@ -19,10 +19,10 @@ function arg(name) {
 
 const port = +(arg('port') ?? process.env.PORT ?? 4190);
 const rawBase = arg('base') ?? process.env.BASE ?? '/';
-// Git Bash (MSYS) convierte '/claude-code-project/' en 'C:/Program Files/Git/claude-code-project/'
+// Git Bash (MSYS) convierte '/medellin-aranjuez/' en 'C:/Program Files/Git/medellin-aranjuez/'
 // al llamar a node directamente; por npm (cmd.exe) no pasa.
 if (/^[A-Za-z]:[\\/]/.test(rawBase)) {
-  console.error(`La base "${rawBase}" parece una ruta de Windows (Git Bash la convirtió). Escríbela sin la barra inicial (--base=claude-code-project/) o usa MSYS_NO_PATHCONV=1.`);
+  console.error(`La base "${rawBase}" parece una ruta de Windows (Git Bash la convirtió). Escríbela sin la barra inicial (--base=medellin-aranjuez/) o usa MSYS_NO_PATHCONV=1.`);
   process.exit(1);
 }
 const base = normalizeBase(rawBase);

@@ -48,7 +48,7 @@ Un nivel de detalle como el de GTA V/VI requiere miles de modelos y texturas hec
 
 ## Jugar en el navegador
 
-Una vez activado GitHub Pages en el repositorio, el juego queda publicado en **https://pablovillamed.github.io/claude-code-project/** (lo sube el workflow *Medellín Aranjuez (web)* en cada push a `main` que toque el juego). Mientras tanto, o para probar un cambio, `npm run preview:pages` lo sirve igual que Pages en http://localhost:4191/claude-code-project/.
+Una vez activado GitHub Pages en el repositorio, el juego queda publicado en **https://pablovillamed.github.io/medellin-aranjuez/** (lo sube el workflow *Medellín Aranjuez (web)* en cada push a `main` que toque el juego). Mientras tanto, o para probar un cambio, `npm run preview:pages` lo sirve igual que Pages en http://localhost:4191/medellin-aranjuez/.
 
 **Requisitos**
 
@@ -114,7 +114,7 @@ Requisitos: Windows 10/11 de 64 bits y una GPU con WebGL 2 (cualquier integrada 
 ```bash
 npm install
 npm run dev           # navegador en http://localhost:5173 (recarga en vivo)
-npm run preview:pages # build servido como en GitHub Pages: http://localhost:4191/claude-code-project/
+npm run preview:pages # build servido como en GitHub Pages: http://localhost:4191/medellin-aranjuez/
 npm start             # app de escritorio (Electron)
 npm test              # pruebas unitarias (Vitest)
 npm run test:e2e      # todas las pruebas de extremo a extremo en Chromium (Playwright)
@@ -152,7 +152,7 @@ docs/         Capturas y la guía técnica de la versión web (WEB.md)
 - **Unitarias (Vitest)**: generación determinista de la ciudad, accesibilidad de los puntos de interés, colisiones, movilidad a pie (velocidades, estamina, salto, paredes a cualquier framerate, andenes y pendientes), física de cada vehículo (0–100, frenado, giro, derrape, lomas, choques), tráfico autónomo circulando 3 minutos por el barrio sin salirse de la vía, persecución policial, peatones en andenes y huyendo, armas (cadencia, cargador, recarga, cambio, dispersión, daño), balística, misiones, cámara (hombro, primera persona, colisión, suavizado), cielo (sol y luna por hora, dispersión, nubosidad, ruido sin costuras) y pájaros (palomas que se espantan y vuelven, gallinazos, loros).
 - **Extremo a extremo (Playwright)**, en tres proyectos sobre el mismo build:
   - *juego*: arranca el juego real y lo maneja con teclado y ratón: caminar, correr, saltar, cambiar de arma, disparar y recargar, subirse al taxi y a la moto, descubrir un lugar, completar una misión, comprar y ponerse ropa, activar la policía, morir y reaparecer, pausar.
-  - *web*: el build servido bajo `/claude-code-project/` como en GitHub Pages y sin la API de pruebas: llega al menú sin errores ni recursos fallidos, el manifiesto de la app instalable y sus íconos cargan, no aparece el botón Salir, y el service worker guarda el juego y lo deja arrancar sin conexión.
+  - *web*: el build servido bajo `/medellin-aranjuez/` como en GitHub Pages y sin la API de pruebas: llega al menú sin errores ni recursos fallidos, el manifiesto de la app instalable y sus íconos cargan, no aparece el botón Salir, y el service worker guarda el juego y lo deja arrancar sin conexión.
   - *tactil*: un celular acostado (844 × 390) con pantalla táctil.
 - **Capturas de vitrinas**: `npx vite build && node scripts/tiendas.mjs <carpeta>` fotografía los locales de día y de noche (y al jugador con otra pinta) y anota llamadas de dibujo y triángulos.
 - **Prueba de humo del .exe**: en CI se abre el ejecutable empaquetado en Windows, se entra a jugar y se guarda una captura.

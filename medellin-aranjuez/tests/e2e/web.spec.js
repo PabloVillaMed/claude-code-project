@@ -1,5 +1,5 @@
 // Pruebas de la versión web tal como queda en GitHub Pages: el build servido
-// bajo la subruta /claude-code-project/ (https://pablovillamed.github.io/claude-code-project/),
+// bajo la subruta /medellin-aranjuez/ (https://pablovillamed.github.io/medellin-aranjuez/),
 // SIN ?autotest (arranca como lo ve un visitante, hasta el menú) y en calidad
 // baja porque el render de CI es por software (puede tardar varios minutos).
 // Revisa la app instalable (manifiesto e íconos), que no salga el botón Salir y
@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 
 const MIN = 60 * 1000;
-const BASE_PATH = '/claude-code-project/';
+const BASE_PATH = '/medellin-aranjuez/';
 
 let context;
 let page;
@@ -61,7 +61,7 @@ test('arranca hasta el menú bajo la subruta, sin errores ni recursos fallidos',
   const report = await page.evaluate(() => window.__gameInstance.assetReport);
   expect(report.loaded).toBeGreaterThan(0);
   expect(report.failed).toEqual([]);
-  expect(outside, 'pedidos por fuera de /claude-code-project/ (rutas absolutas en vez de relativas)').toEqual([]);
+  expect(outside, 'pedidos por fuera de /medellin-aranjuez/ (rutas absolutas en vez de relativas)').toEqual([]);
   expect(failedResponses).toEqual([]);
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);

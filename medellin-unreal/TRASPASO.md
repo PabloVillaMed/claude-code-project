@@ -6,7 +6,7 @@ pasos de importación del mundo: `medellin-unreal/` (ver `LEEME.md`).
 ## Estado (noviembre de 2026)
 
 **Decisión: la ruta principal es la web.** El juego se publica como sitio
-estático en GitHub Pages (https://pablovillamed.github.io/claude-code-project/
+estático en GitHub Pages (https://pablovillamed.github.io/medellin-aranjuez/
 una vez activado Pages), se puede instalar como app desde el navegador, funciona
 sin conexión y tiene controles táctiles; la app de Windows (Electron) sigue
 como alternativa. Ver [`medellin-aranjuez/docs/WEB.md`](../medellin-aranjuez/docs/WEB.md).

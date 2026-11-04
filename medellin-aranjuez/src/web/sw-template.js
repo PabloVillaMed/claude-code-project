@@ -31,7 +31,7 @@ const CONCURRENCY = 6;
 const MATCH = { ignoreVary: true };
 
 // Las listas van relativas al alcance (sin barra inicial): sirven igual bajo
-// /claude-code-project/ que en la raíz. Las claves son URLs absolutas, tal
+// /medellin-aranjuez/ que en la raíz. Las claves son URLs absolutas, tal
 // como las normaliza el navegador.
 const SCOPE = self.registration ? self.registration.scope : new URL('./', self.location.href).href;
 const toKey = (rel) => new URL(rel, SCOPE).href;

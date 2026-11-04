@@ -16,7 +16,7 @@
     {
       "name": "juego-pages",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["medellin-aranjuez/scripts/serve-cli.mjs", "--port=4192", "--base=claude-code-project/"],
+      "runtimeArgs": ["medellin-aranjuez/scripts/serve-cli.mjs", "--port=4192", "--base=medellin-aranjuez/"],
       "port": 4192,
       "url": "http://localhost:4192"
     }

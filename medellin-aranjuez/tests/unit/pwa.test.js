@@ -8,7 +8,7 @@ import { classify, formatSummary, injectServiceWorker, listFiles, PLACEHOLDERS, 
 import { handleSwKillSwitch, registerServiceWorker, secureOrigin } from '../../src/web/pwa.js';
 
 const TEMPLATE = fs.readFileSync(new URL('../../src/web/sw-template.js', import.meta.url), 'utf8');
-const SCOPE = 'https://pablovillamed.github.io/claude-code-project/';
+const SCOPE = 'https://pablovillamed.github.io/medellin-aranjuez/';
 
 describe('listas del service worker', () => {
   it('clasifica cada archivo de dist/', () => {

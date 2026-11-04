@@ -7,8 +7,8 @@ El mismo build (`dist/`) sirve para tres cosas sin cambiar nada:
 
 | Dónde | URL | Quién lo sirve |
 | --- | --- | --- |
-| GitHub Pages | https://pablovillamed.github.io/claude-code-project/ (cuando Pages esté activado) | Pages, bajo la subruta `/claude-code-project/` |
-| Prueba local como Pages | http://localhost:4191/claude-code-project/ | `npm run preview:pages` (`scripts/serve-cli.mjs --base=…`) |
+| GitHub Pages | https://pablovillamed.github.io/medellin-aranjuez/ (cuando Pages esté activado) | Pages, bajo la subruta `/medellin-aranjuez/` |
+| Prueba local como Pages | http://localhost:4191/medellin-aranjuez/ | `npm run preview:pages` (`scripts/serve-cli.mjs --base=…`) |
 | App de Windows | `app://juego/` | Electron (`electron/main.cjs`), sin service worker |
 
 ## 1. Cómo se construye
@@ -20,10 +20,10 @@ El mismo build (`dist/`) sirve para tres cosas sin cambiar nada:
 - **Base relativa** (`base: './'` en `vite.config.js`): `index.html` pide
   `./assets/index-<hash>.js` y el código pide `models/…`, `textures/…`,
   `sounds/…` sin barra inicial. Todo se resuelve contra la URL de la página,
-  por eso el mismo build anda en la raíz, bajo `/claude-code-project/` y dentro
+  por eso el mismo build anda en la raíz, bajo `/medellin-aranjuez/` y dentro
   de Electron. Lo único que exige es que la página termine en `/`: Pages (y
-  `serve.mjs` con `--base`) redirigen `/claude-code-project` a
-  `/claude-code-project/` con un 301.
+  `serve.mjs` con `--base`) redirigen `/medellin-aranjuez` a
+  `/medellin-aranjuez/` con un 301.
 - **No usar rutas absolutas** (`/models/x.glb`, `fetch('/sounds/…')`): en Pages
   irían a `pablovillamed.github.io/models/…` y darían 404. La prueba e2e *web*
   falla si algún pedido sale de la subruta.
@@ -56,7 +56,7 @@ de la primera visita el juego abre rápido y sin conexión.
   `localhost`), fuera de Electron y fuera de `?autotest`, y **después de que el
   juego terminó de cargar**, para que la primera carga no compita con la
   descarga de la precarga. `npm run dev` no usa service worker.
-- **Alcance**: la carpeta donde está `sw.js`, o sea `/claude-code-project/` en
+- **Alcance**: la carpeta donde está `sw.js`, o sea `/medellin-aranjuez/` en
   Pages. No toca otros sitios de `pablovillamed.github.io`.
 - **Precarga** (caché `medellin-<BUILD>`, ~35 MB): lo marcado *Precarga* en la
   tabla. Cada archivo va en la lista con su **revisión** (los primeros 12
@@ -160,7 +160,7 @@ muestra la GPU que detectó.
    *Settings → Pages → Build and deployment → Source: **GitHub Actions***.
    Desde la terminal:
    ```bash
-   gh api -X POST repos/PabloVillaMed/claude-code-project/pages -f build_type=workflow
+   gh api -X POST repos/PabloVillaMed/medellin-aranjuez/pages -f build_type=workflow
    ```
 2. El workflow [`.github/workflows/medellin-web.yml`](../../.github/workflows/medellin-web.yml)
    (*Medellín Aranjuez (web)*) corre en cada push a `main` que toque
@@ -168,7 +168,7 @@ muestra la GPU que detectó.
    workflow*. Hace `npm ci` (sin bajar Electron), `npm test`, `npm run build`,
    sube `dist/` como artefacto de Pages y lo publica. Si las pruebas unitarias
    fallan, no publica.
-3. Queda en **https://pablovillamed.github.io/claude-code-project/**. La URL
+3. Queda en **https://pablovillamed.github.io/medellin-aranjuez/**. La URL
    también sale en el resumen de la corrida (paso *Publicar en GitHub Pages*) y
    en el ambiente `github-pages` del repositorio.
 
@@ -179,7 +179,7 @@ publicaciones seguidas no se pisan: la segunda espera a la primera.
 
 ```bash
 npm test              # unitarias (Vitest, ~35 s), incluye el servidor estático
-npm run preview:pages # build + http://localhost:4191/claude-code-project/
+npm run preview:pages # build + http://localhost:4191/medellin-aranjuez/
 npm run test:e2e:web  # build + e2e de los proyectos web y tactil
 npm run test:e2e      # build + todas las e2e (juego, web, tactil)
 npm start             # la app de Windows (Electron) con el mismo build
@@ -187,7 +187,7 @@ npm start             # la app de Windows (Electron) con el mismo build
 
 - **Proyectos de Playwright** (`playwright.config.js`): *juego*
   (`gameplay.spec.js`, `http://localhost:4190`, con `?autotest`), *web*
-  (`web.spec.js`, `http://localhost:4191/claude-code-project/`) y *tactil*
+  (`web.spec.js`, `http://localhost:4191/medellin-aranjuez/`) y *tactil*
   (`touch.spec.js`, 844 × 390 con pantalla táctil). Playwright levanta los dos
   servidores (4190 en la raíz y 4191 bajo la subruta) o reusa los que ya estén
   corriendo. Un solo proyecto: `npx playwright test --project=web`.
@@ -201,12 +201,12 @@ npm start             # la app de Windows (Electron) con el mismo build
   `--base=/ruta/` y `--dir=carpeta` (o `PORT`, `BASE`, `DIST_DIR`). Imita a
   Pages: fuera de la base da 404, la base sin barra da 301, responde rangos de
   bytes y manda `Cache-Control: no-cache` para que las pruebas no vean un build
-  viejo. En Git Bash, `--base=/claude-code-project/` llega convertido en una
+  viejo. En Git Bash, `--base=/medellin-aranjuez/` llega convertido en una
   ruta de Windows si se llama a `node` directamente: escribirlo sin la barra
-  inicial (`--base=claude-code-project/`) o con `MSYS_NO_PATHCONV=1`; por `npm
+  inicial (`--base=medellin-aranjuez/`) o con `MSYS_NO_PATHCONV=1`; por `npm
   run` no pasa.
 - Para probar en un **celular** de la misma red: `npm run preview:pages` y abrir
-  `http://<ip-del-pc>:4191/claude-code-project/`. Ojo: por http y una IP que no
+  `http://<ip-del-pc>:4191/medellin-aranjuez/`. Ojo: por http y una IP que no
   es `localhost` el navegador no deja registrar el service worker (exige
   https), así que ahí no se prueba el modo sin conexión.
 

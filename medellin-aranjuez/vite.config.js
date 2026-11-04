@@ -3,7 +3,7 @@ import { serviceWorkerPlugin } from './scripts/web/vite-plugin-sw.js';
 
 // `base: './'` (rutas relativas) para que el mismo build funcione empaquetado
 // dentro de Electron (app://juego/) y publicado bajo una subruta
-// (GitHub Pages: /claude-code-project/).
+// (GitHub Pages: /medellin-aranjuez/).
 export default defineConfig({
   base: './',
   // Solo en `vite build`: escribe dist/sw.js con las listas de precarga.

@@ -1,7 +1,7 @@
 // Servidor estático mínimo para servir dist/ en pruebas y capturas.
 //
 // Con `base` imita a GitHub Pages, que publica el sitio bajo una subruta
-// (https://pablovillamed.github.io/claude-code-project/): solo responde lo que
+// (https://pablovillamed.github.io/medellin-aranjuez/): solo responde lo que
 // está debajo de la base, la base sin la barra final redirige (301) a la base
 // con barra y todo lo demás da 404. Sin `base` sirve desde la raíz, como antes.
 import http from 'node:http';
@@ -36,7 +36,7 @@ export const TYPES = {
   '.opus': 'audio/ogg',
 };
 
-/** '/claude-code-project' | 'claude-code-project/' | '' → '/claude-code-project/' (o '/'). */
+/** '/medellin-aranjuez' | 'medellin-aranjuez/' | '' → '/medellin-aranjuez/' (o '/'). */
 export function normalizeBase(base = '/') {
   const parts = String(base ?? '/').split(/[\\/]+/).filter(Boolean);
   return parts.length ? `/${parts.join('/')}/` : '/';

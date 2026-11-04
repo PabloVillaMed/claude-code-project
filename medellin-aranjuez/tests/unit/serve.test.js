@@ -7,7 +7,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { normalizeBase, resolveRequest, serveDist, TYPES } from '../../scripts/serve.mjs';
 
-const BASE = '/claude-code-project/';
+const BASE = '/medellin-aranjuez/';
 let tmp;
 let root;
 
@@ -34,8 +34,8 @@ describe('normalizeBase', () => {
     expect(normalizeBase()).toBe('/');
     expect(normalizeBase('')).toBe('/');
     expect(normalizeBase('/')).toBe('/');
-    expect(normalizeBase('/claude-code-project')).toBe(BASE);
-    expect(normalizeBase('claude-code-project/')).toBe(BASE);
+    expect(normalizeBase('/medellin-aranjuez')).toBe(BASE);
+    expect(normalizeBase('medellin-aranjuez/')).toBe(BASE);
     expect(normalizeBase('//a//b/')).toBe('/a/b/');
   });
 });
@@ -51,12 +51,12 @@ describe('resolveRequest', () => {
   it('con base: solo lo de adentro, la base sin barra redirige y la raíz da 404', () => {
     expect(resolveRequest('/', root, BASE).status).toBe(404);
     expect(resolveRequest('/index.html', root, BASE).status).toBe(404);
-    expect(resolveRequest('/claude-code-project', root, BASE)).toEqual({ status: 301, location: BASE });
-    expect(resolveRequest('/claude-code-project?quality=baja', root, BASE)).toEqual({ status: 301, location: BASE + '?quality=baja' });
+    expect(resolveRequest('/medellin-aranjuez', root, BASE)).toEqual({ status: 301, location: BASE });
+    expect(resolveRequest('/medellin-aranjuez?quality=baja', root, BASE)).toEqual({ status: 301, location: BASE + '?quality=baja' });
     expect(resolveRequest(BASE, root, BASE).file).toBe(path.join(root, 'index.html'));
     expect(resolveRequest(BASE + '?quality=baja', root, BASE).file).toBe(path.join(root, 'index.html'));
     expect(resolveRequest(BASE + 'models/silla.glb', root, BASE).file).toBe(path.join(root, 'models', 'silla.glb'));
-    expect(resolveRequest('/claude-code-projectx/index.html', root, BASE).status).toBe(404);
+    expect(resolveRequest('/medellin-aranjuezx/index.html', root, BASE).status).toBe(404);
   });
 
   it('las carpetas: sin barra redirigen, con barra y sin index.html dan 404', () => {
@@ -109,7 +109,7 @@ describe('serveDist', () => {
 
   it('imita la subruta de Pages', async () => {
     expect((await get('/')).status).toBe(404);
-    const r301 = await get('/claude-code-project');
+    const r301 = await get('/medellin-aranjuez');
     expect(r301.status).toBe(301);
     expect(r301.headers.location).toBe(BASE);
     const index = await get(BASE);
@@ -141,9 +141,9 @@ describe('serveDist', () => {
   });
 
   it('no entrega archivos de afuera aunque la ruta venga cruda', async () => {
-    expect((await get('/claude-code-project/../afuera.txt')).status).toBe(404);
-    expect((await get('/claude-code-project/..%5c..%5cafuera.txt')).status).toBe(404);
-    expect((await get('/claude-code-project/..%2f..%2fdist-secreto%2fclave.txt')).status).toBe(404);
+    expect((await get('/medellin-aranjuez/../afuera.txt')).status).toBe(404);
+    expect((await get('/medellin-aranjuez/..%5c..%5cafuera.txt')).status).toBe(404);
+    expect((await get('/medellin-aranjuez/..%2f..%2fdist-secreto%2fclave.txt')).status).toBe(404);
   });
 
   it('cubre los tipos que trae el build', () => {

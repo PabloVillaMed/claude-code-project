@@ -18,15 +18,14 @@ Blueprints o C++: abajo está el plan.
 Necesitas: Git, Node.js 22, VS Code y Unreal Engine 5 (5.3 o más nuevo).
 
 ```bat
-git clone https://github.com/PabloVillaMed/claude-code-project.git
-cd claude-code-project
-git checkout claude/medellin-third-person-game-od3odk
+git clone https://github.com/PabloVillaMed/medellin-aranjuez.git
+cd medellin-aranjuez
 cd medellin-aranjuez
 npm ci
 npx playwright install chromium
 ```
 
-Abre `claude-code-project/medellin.code-workspace` en VS Code: quedan las dos
+Abre `medellin-aranjuez/medellin.code-workspace` en VS Code: quedan las dos
 carpetas (juego web y Unreal) y las tareas (*Terminal > Run Task*):
 
 - **Juego: modo desarrollo**: el juego en el navegador con recarga en vivo.
@@ -35,7 +34,7 @@ carpetas (juego web y Unreal) y las tareas (*Terminal > Run Task*):
 - **Unreal: exportar el mundo**: genera `medellin-unreal/Importar`.
 
 Para seguir trabajando con Claude Code en tu PC: en una terminal dentro de
-`claude-code-project`, `claude` (o `claude remote-control` para manejar esa
+`medellin-aranjuez`, `claude` (o `claude remote-control` para manejar esa
 sesión local desde la app de Claude), o la app Claude Desktop.
 
 ## 2. Exportar el mundo del juego

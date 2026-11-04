@@ -6,7 +6,7 @@ const executablePath = process.env.PW_CHROMIUM || undefined;
 // Tres proyectos sobre el mismo build (dist/):
 //  - juego:  la partida completa con ?autotest (teclado, ratón, misiones…).
 //  - web:    el sitio como queda en GitHub Pages, bajo la subruta
-//            /claude-code-project/: manifiesto, service worker y sin conexión.
+//            /medellin-aranjuez/: manifiesto, service worker y sin conexión.
 //  - tactil: un celular acostado (844×390) con pantalla táctil.
 // `npm run test:e2e` corre los tres; `npm run test:e2e:web` solo web y táctil.
 export default defineConfig({
@@ -25,7 +25,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'juego', testMatch: 'gameplay.spec.js', use: { baseURL: 'http://localhost:4190' } },
-    { name: 'web', testMatch: 'web.spec.js', use: { baseURL: 'http://localhost:4191/claude-code-project/' } },
+    { name: 'web', testMatch: 'web.spec.js', use: { baseURL: 'http://localhost:4191/medellin-aranjuez/' } },
     {
       name: 'tactil',
       testMatch: 'touch.spec.js',
@@ -40,9 +40,9 @@ export default defineConfig({
       timeout: 30000,
     },
     {
-      // Como GitHub Pages: solo responde bajo /claude-code-project/.
-      command: 'node scripts/serve-cli.mjs --port=4191 --base=/claude-code-project/',
-      url: 'http://localhost:4191/claude-code-project/',
+      // Como GitHub Pages: solo responde bajo /medellin-aranjuez/.
+      command: 'node scripts/serve-cli.mjs --port=4191 --base=/medellin-aranjuez/',
+      url: 'http://localhost:4191/medellin-aranjuez/',
       reuseExistingServer: true,
       timeout: 30000,
     },

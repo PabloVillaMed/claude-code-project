@@ -1,11 +1,11 @@
 name: Medellín Aranjuez (web)
 
-# Publica el juego en GitHub Pages: https://pablovillamed.github.io/claude-code-project/
+# Publica el juego en GitHub Pages: https://pablovillamed.github.io/medellin-aranjuez/
 #
 # Configuración (una sola vez, la hace el dueño del repositorio):
 #   Settings → Pages → Build and deployment → Source: "GitHub Actions".
 #   O desde la terminal:
-#     gh api -X POST repos/PabloVillaMed/claude-code-project/pages -f build_type=workflow
+#     gh api -X POST repos/PabloVillaMed/medellin-aranjuez/pages -f build_type=workflow
 #   Sin eso falla el paso configure-pages ("Get Pages site failed").
 # El ambiente github-pages solo deja publicar desde main: corrido a mano desde
 # otra rama hace el build pero el deploy lo rechaza (es a propósito).
@@ -60,7 +60,7 @@ jobs:
       # Si las pruebas unitarias fallan no se publica nada.
       - run: npm test
       # Vite usa base './' (rutas relativas): el mismo build sirve bajo la
-      # subruta /claude-code-project/ de Pages y dentro de Electron.
+      # subruta /medellin-aranjuez/ de Pages y dentro de Electron.
       - run: npm run build
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
