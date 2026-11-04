@@ -1,0 +1,24 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "juego-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "medellin-aranjuez", "run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "juego-dist",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["medellin-aranjuez/scripts/serve-cli.mjs", "--port=4190"],
+      "port": 4190
+    },
+    {
+      "name": "juego-pages",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["medellin-aranjuez/scripts/serve-cli.mjs", "--port=4192", "--base=medellin-aranjuez/"],
+      "port": 4192,
+      "url": "http://localhost:4192"
+    }
+  ]
+}

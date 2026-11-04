@@ -1,8 +1,8 @@
 # Medellín: Aranjuez
 
-Juego de mundo abierto en tercera persona inspirado en el barrio **Aranjuez (Comuna 4, Medellín)**. Es un MVP para escritorio **Windows 11** hecho con Three.js (WebGL 2) y empaquetado con Electron.
+Juego de mundo abierto en tercera persona inspirado en el barrio **Aranjuez (Comuna 4, Medellín)**. Es un **juego web**: corre en el navegador (Three.js sobre WebGL 2), con teclado y ratón, mando o pantalla táctil; se puede **instalar como app** desde Chrome o Edge y, después de la primera carga, abre sin conexión. La **app de Windows** (Electron) sigue como alternativa para quien prefiera un ejecutable.
 
-> El barrio es una recreación libre, no un plano exacto. Todo el contenido (texturas, modelos, sonido) se genera por código al arrancar: el juego no usa assets externos.
+> El barrio es una recreación libre, no un plano exacto. El mundo (terreno, calles, manzanas, fachadas, techos, cables y metro) se arma por código al arrancar; encima van recursos de verdad: personajes y animaciones glTF de Microsoft Rocketbox, vehículos, armas, utilería y vegetación en glTF, texturas fotográficas PBR, un cielo HDRI, sonidos grabados (armas y motores), voces sintetizadas y música con licencia libre. Son ~83 MB en `public/`; fuentes y licencias en [ASSETS-CREDITS.md](ASSETS-CREDITS.md).
 
 ## Capturas (del juego corriendo)
 
@@ -27,7 +27,7 @@ Generadas con `npm run shots` (render por software en calidad Media; en una GPU 
 | **Tiendas y calle** | Locales con cortina metálica a medio subir y el interior armado según el negocio, que se ve desde la calle: tienda de barrio (mostrador con vitrina de dulces, tiras de mecato colgadas, canastas de cerveza, nevera encendida, "Hoy no fío, mañana sí"), panadería, droguería (cruz verde), carnicería, frutería, barbería (sillas y espejos), ferretería, papelería (fotocopiadora), heladería, cafetería, billares (mesa con lámpara) y almacenes de ropa (maniquíes y percheros); piso de baldosa roja, granito o ajedrez y tubos fluorescentes que alumbran de noche. De lejos queda el cuarto pintado (sin utilería 3D). Vecinos sentados en sillas plásticas, venteros (minutos, frutas, mango biche, arepas, helados, dulces), placas de nomenclatura en las esquinas, paraderos y motos parqueadas en los andenes. |
 | **Ropa paisa** | Cinco almacenes en la 92 y en Carabobo (Almacén Moda Paisa, Boutique Estilo La 92, Remates Carabobo, Deportes La Cancha, Gorras y Tenis La 52) venden gorras planas y curvas, busos con capota, camisetas (verdiblanca y roja de fútbol, sin escudos), jeans, sudaderas, tenis, chanclas con medias, cadena, canguro terciado y gafas. Lo comprado se ve en el personaje (recoloreado de la ropa y mallas pegadas a los huesos), se puede poner y quitar en cualquier almacén y queda en el guardado. |
 | **Radio y música** | Al subirse a un carro o una moto suena la radio, como en GTA: cuatro emisoras inventadas con música libre de derechos (CC BY): **La Sabrosa 92.4** (salsa, cumbia, merengue), **Perreo FM 100.6** (reguetón y dancehall), **Parce Radio 97.8** (guaracha, moombahton y electrónica) y **Chill Comuna 4 88.2** (lo-fi). <kbd>Q</kbd> / <kbd>Z</kbd> (cruceta ← → en el mando) cambian de emisora o la apagan; la elección se recuerda. Cada emisora va "en vivo" (al volver no arranca de cero), cada pista muestra título, artista y licencia, la música baja sola cuando alguien habla o hay una cinemática, se pausa con el juego y calla en los menús, y tiene su propio volumen en Configuración. Billares, fritangas y algunas tiendas y mesas de dominó tienen un parlante que se oye bajito de cerca (máximo dos a la vez). Autores y licencias en [ASSETS-CREDITS.md](ASSETS-CREDITS.md#música-de-la-radio) y en la pantalla de créditos. |
-| **Sonido del barrio** | Sintetizado en vivo: cumbia saliendo de la tienda más cercana, pájaros de día, grillos de noche, perros a lo lejos, campanas de la iglesia cada hora, motor con cambios y chirrido de llantas. |
+| **Sonido del barrio** | Disparos grabados con eco de la calle y motores con explosiones grabadas (síntesis granular, con cambios); sintetizado en vivo: cumbia saliendo de la tienda más cercana, pájaros de día, grillos de noche, perros a lo lejos, campanas de la iglesia cada hora, pito, sirena y chirrido de llantas. |
 | **Movilidad a pie** | Caminar, trotar, correr con estamina, agacharse, saltar, subir andenes y pendientes, colisiones sin atravesar paredes aunque el framerate caiga. |
 | **Animaciones** | 75 clips de captura de movimiento de Microsoft Rocketbox (MIT, mismo esqueleto que los personajes): para subirse al carro el personaje camina a la puerta, la abre, se sienta de lado y se desliza al puesto (y al bajarse se levanta por la puerta; en moto pasa la pierna por encima), todo adelantable acelerando o caminando; al comprar recibe lo pedido y se lo come o se lo toma (con vaso en la mano); herido cojea; quieto un rato mira alrededor, se rasca o bosteza; <kbd>G</kbd> saluda, celebra, aplaude o baila. En la calle: vecinos sentados que gesticulan cuando hablan y asienten cuando escuchan, peatones con el celular (llamando o escribiendo), venteros que llaman con la mano, pandilleros que caminan sobrados y rumberos de noche. Cada peatón tiene su propia forma de estar quieto, gira en el sitio dando pasos (sin patinar), se inclina en las curvas al correr y voltea la cabeza para mirarte cuando pasas cerca. |
 | **Vida de barrio** | Cerca del jugador aparece gente haciendo lo de todos los días: señoras colgando la ropa en el balcón (sacan la prenda del platón y la cuelgan en la cuerda), vecinos fumando recostados a la fachada (cigarrillo con brasa que se ve de noche y bocanadas de humo) o hablando por celular junto a la puerta, gente barriendo el andén, cuatro jugando dominó en una mesa plástica frente a la tienda, el que lava la moto con balde y trapo, y el **picadito**: en las canchas (con arquero), en las placas con arquitos y en calles residenciales tranquilas con piedras de arco, con balón que rebota y rueda, pases, remates, goles celebrados y la pausa para dejar pasar los carros; al jugador también le dejan patear el balón. Todos se asustan con los disparos y salen corriendo (la del balcón se entra a la casa). Solo se ponen en escena los más cercanos, con un cupo de personas por calidad. |
@@ -44,9 +44,40 @@ Generadas con `npm run shots` (render por software en calidad Media; en una GPU 
 | **Rendimiento** | Pensado para 60 FPS: nivel de detalle por árbol/poste, personajes y conductores lejanos sin dibujar, sombras solo de cerca, ~500-800 llamadas de dibujo por frame en Alta, **resolución dinámica** (baja la resolución interna si un frame pasa de ~18 ms), precalentado de shaders en la carga y calidad Baja automática si WebGL corre por software. El contador de FPS (Configuración) muestra la escala de resolución y la pausa, la GPU detectada. |
 
 ### Sobre los "gráficos hiperrealistas"
-Un nivel de detalle como el de GTA V/VI requiere miles de modelos y texturas hechas por artistas y un motor como Unreal. Este MVP usa un pipeline realista (PBR, sombras, AO, iluminación atmosférica) sobre geometría procedural, así que se ve moderno pero **no fotorrealista**. El código está preparado para reemplazar las piezas procedurales por modelos glTF y texturas fotográficas cuando existan.
+Un nivel de detalle como el de GTA V/VI requiere miles de modelos y texturas hechas por artistas y un motor como Unreal. Este MVP usa un pipeline realista (PBR, sombras, AO, iluminación atmosférica) con modelos glTF y texturas fotográficas sobre un mundo de geometría procedural, así que se ve moderno pero **no fotorrealista**. El traspaso a Unreal quedó en pausa (ver [`medellin-unreal/TRASPASO.md`](../medellin-unreal/TRASPASO.md)): la ruta principal es la web.
 
-## Instalar en Windows 11
+## Jugar en el navegador
+
+Una vez activado GitHub Pages en el repositorio, el juego queda publicado en **https://pablovillamed.github.io/medellin-aranjuez/** (lo sube el workflow *Medellín Aranjuez (web)* en cada push a `main` que toque el juego). Mientras tanto, o para probar un cambio, `npm run preview:pages` lo sirve igual que Pages en http://localhost:4191/medellin-aranjuez/.
+
+**Requisitos**
+
+- Un navegador con **WebGL 2** y la **aceleración por hardware** activada: Chrome o Edge recientes, Firefox reciente, o Safari 17 o más nuevo (Mac, iPhone y iPad). Sin WebGL 2 el juego no corre y lo dice con un aviso de qué revisar; si WebGL va por software (aceleración apagada o controladores viejos) arranca solo en calidad Baja.
+- La **primera carga baja ~40 MB** (modelos, texturas, cielo y sonidos). Después queda en caché: abre rápido y **funciona sin conexión**, salvo la **radio**, que va por streaming y necesita internet.
+
+**Instalarlo como app.** En Chrome o Edge aparece el ícono de instalar al lado derecho de la barra de direcciones (o menú ⋮ → *Instalar*). Queda con su ícono en el escritorio o el menú Inicio y abre en su propia ventana, sin la barra del navegador. En Android: menú ⋮ → *Instalar app* (o *Agregar a la pantalla principal*); en iPhone y iPad: Safari → Compartir → *Agregar a inicio*.
+
+**Versiones nuevas.** Cuando se publica una versión, el juego la baja en segundo plano y en el menú aparece **Hay una versión nueva · Actualizar**; nunca se recarga en medio de una partida (jugando solo avisa). La partida guardada no se pierde.
+
+**Partida guardada.** Se guarda en el navegador, por sitio: no pasa de un navegador a otro ni a la app de Windows, y si se borran los datos del sitio se borra la partida.
+
+**Teclado en el navegador.** En pantalla completa (F11 o Configuración) el juego captura el teclado en Chrome y Edge, así que atajos como Ctrl+W no cierran la pestaña sin querer; para salir de la pantalla completa hay que **mantener Esc**. Si se intenta cerrar la pestaña en plena partida, el navegador pregunta antes, y al cambiar de pestaña el juego se pausa solo. Detalles técnicos en [docs/WEB.md](docs/WEB.md).
+
+## Controles táctiles (celular y tableta)
+
+En pantallas táctiles los controles aparecen solos (en equipos híbridos, con el primer toque; se esconden al volver al ratón, al teclado o al mando). Se juega con el celular **acostado**.
+
+- **Joystick a la izquierda**: aparece donde se pone el pulgar. A pie camina y, empujado hasta el borde, corre; en un vehículo, a los lados gira, arriba acelera y abajo frena (quieto, da reversa).
+- **Arrastrar en la mitad derecha** de la pantalla para mirar y apuntar (también con el dedo sobre Disparar).
+- **Botones a la derecha**: a pie, disparar, apuntar, saltar, agacharse, recargar, cambiar de arma, subirse al vehículo y usar (tiendas, locales y misiones); en vehículo, freno de mano, pito, mirar atrás, disparar, radio y bajarse. Arriba: pausa, mapa, cámara, gestos y pantalla completa.
+- Tocar la pantalla salta las cinemáticas.
+- En celular y tableta la **calidad arranca en Baja** (se sube en Configuración si el equipo aguanta).
+- En la URL, `?touch=1` muestra los controles siempre (para probarlos en el PC con el ratón) y `?touch=0` los apaga.
+- **Pantalla completa**: en Android, desde Configuración; en iPhone Safari no la permite en páginas web, pero instalado en el inicio abre sin las barras del navegador.
+
+## Instalar en Windows 11 (app de escritorio)
+
+La app de Windows es el mismo juego empaquetado con Electron. Sirve sin navegador y recuerda la pantalla completa entre sesiones.
 
 1. Descarga el artefacto **MedellinAranjuez-Windows** del flujo de GitHub Actions *Medellín Aranjuez* (pestaña **Actions** del repositorio, última ejecución).
 2. Elige una opción:
@@ -82,14 +113,18 @@ Requisitos: Windows 10/11 de 64 bits y una GPU con WebGL 2 (cualquier integrada 
 
 ```bash
 npm install
-npm run dev          # navegador en http://localhost:5173
-npm start            # app de escritorio (Electron)
-npm test             # pruebas unitarias (Vitest)
-npm run test:e2e     # pruebas de extremo a extremo en Chromium (Playwright)
-npm run dist:win     # instalador + portable + zip para Windows (desde Windows)
-npm run dist:win:zip # zip de Windows (funciona desde Linux/macOS sin wine)
-npm run shots        # capturas reales de una sesión guionizada en shots/
+npm run dev           # navegador en http://localhost:5173 (recarga en vivo)
+npm run preview:pages # build servido como en GitHub Pages: http://localhost:4191/medellin-aranjuez/
+npm start             # app de escritorio (Electron)
+npm test              # pruebas unitarias (Vitest)
+npm run test:e2e      # todas las pruebas de extremo a extremo en Chromium (Playwright)
+npm run test:e2e:web  # solo las de la versión web (subruta, service worker) y las táctiles
+npm run dist:win      # instalador + portable + zip para Windows (desde Windows)
+npm run dist:win:zip  # zip de Windows (funciona desde Linux/macOS sin wine)
+npm run shots         # capturas reales de una sesión guionizada en shots/
 ```
+
+Cómo se construye y se publica la versión web, qué guarda el service worker y cómo depurarlo: [docs/WEB.md](docs/WEB.md).
 
 ### Estructura
 
@@ -99,15 +134,25 @@ src/sim/      Lógica pura y testeable: terreno, ciudad, colisiones, jugador,
 src/render/   Three.js: texturas procedurales, ciudad, cielo, personajes,
               vehículos, efectos y postprocesado
 src/game/     Orquestación: bucle, entrada, audio, mundo vivo, combate, cámara
-src/ui/       HUD, minimapa/GPS, rueda de armas y estilos
+src/ui/       HUD, minimapa/GPS, rueda de armas, controles táctiles y estilos
+src/web/      Navegador: plataforma (táctil, celular, app de Windows), service
+              worker y app instalable
+public/       Modelos, texturas, cielo HDRI y sonidos (se copian tal cual al build)
 electron/     Proceso principal y preload de la app de escritorio
-tests/unit/   Pruebas de la simulación (Vitest)
-tests/e2e/    Pruebas del juego real con teclado y ratón (Playwright)
+scripts/      Servidor estático (serve.mjs), capturas, medición de rendimiento
+              y herramientas de recursos
+tests/unit/   Pruebas de la simulación y de las herramientas (Vitest)
+tests/e2e/    Pruebas del juego real (Playwright): partida con teclado y
+              ratón, versión web bajo subruta y controles táctiles
+docs/         Capturas y la guía técnica de la versión web (WEB.md)
 ```
 
 ### Pruebas
 
 - **Unitarias (Vitest)**: generación determinista de la ciudad, accesibilidad de los puntos de interés, colisiones, movilidad a pie (velocidades, estamina, salto, paredes a cualquier framerate, andenes y pendientes), física de cada vehículo (0–100, frenado, giro, derrape, lomas, choques), tráfico autónomo circulando 3 minutos por el barrio sin salirse de la vía, persecución policial, peatones en andenes y huyendo, armas (cadencia, cargador, recarga, cambio, dispersión, daño), balística, misiones, cámara (hombro, primera persona, colisión, suavizado), cielo (sol y luna por hora, dispersión, nubosidad, ruido sin costuras) y pájaros (palomas que se espantan y vuelven, gallinazos, loros).
-- **Extremo a extremo (Playwright)**: arranca el juego real y lo maneja con teclado y ratón: caminar, correr, saltar, cambiar de arma, disparar y recargar, subirse al taxi y a la moto, descubrir un lugar, completar una misión, comprar y ponerse ropa, activar la policía, morir y reaparecer, pausar.
+- **Extremo a extremo (Playwright)**, en tres proyectos sobre el mismo build:
+  - *juego*: arranca el juego real y lo maneja con teclado y ratón: caminar, correr, saltar, cambiar de arma, disparar y recargar, subirse al taxi y a la moto, descubrir un lugar, completar una misión, comprar y ponerse ropa, activar la policía, morir y reaparecer, pausar.
+  - *web*: el build servido bajo `/medellin-aranjuez/` como en GitHub Pages y sin la API de pruebas: llega al menú sin errores ni recursos fallidos, el manifiesto de la app instalable y sus íconos cargan, no aparece el botón Salir, y el service worker guarda el juego y lo deja arrancar sin conexión.
+  - *tactil*: un celular acostado (844 × 390) con pantalla táctil.
 - **Capturas de vitrinas**: `npx vite build && node scripts/tiendas.mjs <carpeta>` fotografía los locales de día y de noche (y al jugador con otra pinta) y anota llamadas de dibujo y triángulos.
 - **Prueba de humo del .exe**: en CI se abre el ejecutable empaquetado en Windows, se entra a jugar y se guarda una captura.

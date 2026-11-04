@@ -1,4 +1,5 @@
-// Genera build/icon.png (512 px) y build/icon.ico (Windows, PNG embebido 256 px).
+// Genera build/icon.png (512 px), build/icon.ico (Windows, PNG embebido 256 px)
+// y los íconos de la versión web en public/icons/ (scripts/web/iconos-web.mjs).
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 
@@ -52,3 +53,8 @@ entry.writeUInt32LE(png256.length, 8);
 entry.writeUInt32LE(22, 12);
 fs.writeFileSync('build/icon.ico', Buffer.concat([header, entry, png256]));
 console.log('icono listo', png512.length, png256.length);
+// Íconos de la versión web (public/icons/: manifiesto, maskable, iOS,
+// favicon) a partir del PNG recién hecho. Solos: node scripts/web/iconos-web.mjs
+const { makeWebIcons } = await import('./web/iconos-web.mjs');
+await makeWebIcons();
+console.log('íconos web listos en public/icons/');

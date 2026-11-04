@@ -1,0 +1,108 @@
+/* Lo propio del juego en el navegador (main.js pone en <html> la clase
+   `web` o `desktop-app`, y `touch-primary` en pantallas táctiles). */
+
+/* Que arrastrar hacia abajo en el celular no recargue la página (Chrome
+   Android) ni haga rebotar el documento (Safari). */
+html.web,
+html.web body {
+  overscroll-behavior: none;
+}
+
+/* ---------- Sin WebGL 2: la pantalla de carga explica qué hacer ---------- */
+/* Centrado con márgenes automáticos: si no cabe (celular acostado), se
+   desplaza desde arriba en vez de cortarse por los dos lados. */
+#boot.failed {
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+/* El fondo (más grande que la pantalla y animado) no cuenta para el desplazamiento. */
+#boot.failed .boot-bg {
+  position: fixed;
+}
+#boot.failed .boot-center {
+  margin-top: auto;
+}
+#boot.failed .boot-error {
+  margin-bottom: auto;
+}
+#boot.failed .boot-bottom {
+  display: none;
+}
+#boot.failed .brand-main {
+  font-size: clamp(44px, 8vw, 120px);
+}
+.boot-error {
+  position: relative;
+  flex-shrink: 0;
+  width: min(560px, calc(100vw - 32px));
+  margin-top: clamp(18px, 4vh, 40px);
+  padding: 20px 24px 18px;
+  background: linear-gradient(180deg, rgba(16, 19, 21, 0.94), rgba(9, 11, 12, 0.94));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 3px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(240, 240, 240, 0.86);
+  user-select: text;
+}
+.boot-error h2 {
+  margin: 0 0 8px;
+  font-family: var(--hud-cond);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.boot-error p {
+  margin: 0 0 10px;
+}
+.boot-error ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.boot-error li {
+  margin-bottom: 6px;
+}
+.boot-error code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.92em;
+  color: var(--accent);
+}
+.boot-error .detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.8;
+  word-break: break-word;
+}
+
+/* ---------- Versión nueva del juego (service worker) ---------- */
+.menu-update {
+  appearance: none;
+  padding: 4px 12px;
+  border: 1px solid rgba(232, 182, 76, 0.55);
+  border-radius: 3px;
+  background: rgba(8, 10, 12, 0.55);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.menu-update:hover,
+.menu-update:focus-visible {
+  background: var(--accent);
+  color: #111;
+  outline: none;
+}
+.menu-update:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

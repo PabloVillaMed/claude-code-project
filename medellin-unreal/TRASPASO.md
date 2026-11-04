@@ -3,6 +3,29 @@
 Juego actual: `medellin-aranjuez/` (web + escritorio). Proyecto de Unreal y
 pasos de importación del mundo: `medellin-unreal/` (ver `LEEME.md`).
 
+## Estado (noviembre de 2026)
+
+**Decisión: la ruta principal es la web.** El juego se publica como sitio
+estático en GitHub Pages (https://pablovillamed.github.io/medellin-aranjuez/
+una vez activado Pages), se puede instalar como app desde el navegador, funciona
+sin conexión y tiene controles táctiles; la app de Windows (Electron) sigue
+como alternativa. Ver [`medellin-aranjuez/docs/WEB.md`](../medellin-aranjuez/docs/WEB.md).
+
+**El traspaso a Unreal queda en pausa** con lo que hay:
+
+| Pieza | Estado |
+| --- | --- |
+| Proyecto `MedellinAranjuez.uproject` | Escrito: sin C++, con los plugins de Python y Editor Scripting. Nunca se ha abierto en el editor. |
+| Configuración (`Config/`) | Escrita, sin probar. |
+| Exportador (`npm run exportar:unreal`) | Escrito, **nunca corrido de punta a punta**: no existe `medellin-unreal/Importar/`. |
+| Importador (`Content/Python/importar_medellin.py`) | Escrito, **nunca probado** en un Unreal real. |
+| Jugabilidad portada | **0 de 10 fases** (sección 6). |
+| Motor | El PC de desarrollo tiene **Unreal Engine 5.8** instalado. |
+
+El resto del documento sigue valiendo como plan si se retoma: lo primero sería
+la fase 1 (correr el exportador, abrir el proyecto en UE 5.8 e importar), que
+es la que dice si el exportador y el importador sirven.
+
 ## 1. Tecnología actual
 
 | Pieza | Versión | Uso |
@@ -10,8 +33,9 @@ pasos de importación del mundo: `medellin-unreal/` (ver `LEEME.md`).
 | JavaScript (ES modules) | Node 22 | Todo el juego; sin TypeScript |
 | three.js | 0.186 | Render 3D, animación esquelética, carga de glTF |
 | postprocessing / n8ao | 6.39 / 2.0 | Postproceso y oclusión ambiental |
-| Vite | 8.3 | Servidor de desarrollo y empaquetado |
-| Electron / electron-builder | 44.4 / 26.15 | App de escritorio para Windows (zip) |
+| Vite | 8.3 | Servidor de desarrollo y empaquetado (base relativa: el mismo build sirve en la web y en Electron) |
+| Navegador: WebGL 2, service worker, manifiesto web | Chrome/Edge, Firefox, Safari 17+ | Distribución principal: sitio estático en GitHub Pages, instalable como app, sin conexión, táctil |
+| Electron / electron-builder | 44.4 / 26.15 | App de escritorio para Windows (zip), como alternativa |
 | Vitest / Playwright | 5.0 / 1.63 | Pruebas unitarias y de juego (Chromium) |
 | glTF-Transform, meshoptimizer, sharp | 4.5 / 1.2 / 0.35 | Optimización de modelos y texturas (solo herramientas) |
 | Web Audio + AudioWorklet | navegador | Sonido 3D y motor granular |
