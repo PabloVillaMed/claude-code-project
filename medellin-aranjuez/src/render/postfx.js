@@ -73,6 +73,15 @@ export class PostFX {
         aoSamples: quality.ao === 'half' ? 12 : 16,
         denoiseSamples: 8,
       });
+      // Sin el modo "consciente de transparencias": con él N8AO dibujaba la
+      // escena dos veces más por cuadro (solo lo transparente, cambiando
+      // `visible` de los ~20 000 nodos en 4 recorridos) y volvía a calcular
+      // todas las matrices y el mapa de sombras. Lo único que hacía era quitar
+      // la oclusión sobre los vidrios (carros, estación del metro): medido en
+      // Alta, cambia <0,25 % de los píxeles en más de 3/255, a simple vista
+      // igual. La detección automática lo prendía sola en el primer cuadro.
+      ao.autoDetectTransparency = false;
+      ao.configuration.transparencyAware = false;
       this.ao = ao;
       composer.addPass(ao);
     } else {
@@ -123,9 +132,14 @@ export class PostFX {
 // vehicleDraw/parkedDraw: distancia a la que se dibujan vehículos en marcha y parqueados.
 // minScale: resolución mínima que puede usar el escalado dinámico.
 // skyLow: cielo horneado más pequeño y nubes de una sola capa (render/sky.js).
+// texMax: lado máximo (px) de las texturas fotográficas y de los modelos al
+// cargarlas (render/assets.js); canvasScale: escala de los lienzos
+// procedurales grandes (render/textures.js). Las dos solo en Baja (celulares).
+// groundTol: tolerancia (m) del suelo drapeado de las manzanas (andenes, patios,
+// prados, sardineles): se subdivide solo donde la ladera se curva.
 export const QUALITY_PRESETS = {
-  baja: { label: 'Baja', skyLow: true, pixelRatio: 0.75, minScale: 0.5, shadows: 0, shadowExtent: 50, post: false, ao: false, smaa: false, hdTextures: false, horizonBearings: 480, horizonRings: 80, horizonLights: 6000, backdropHouses: 4000, peds: 24, traffic: 14, drawDistance: 900, pedDraw: 60, driverDraw: 35, shadowChars: 0, treeFar: 350, treeNear: 50, detailDraw: 80, lampLights: 0, headlight: false, vehicleDraw: 160, parkedDraw: 80 },
-  media: { label: 'Media', pixelRatio: 1, minScale: 0.65, shadows: 2048, shadowExtent: 65, post: true, ao: false, smaa: true, hdTextures: false, horizonBearings: 640, horizonRings: 100, horizonLights: 10000, backdropHouses: 10000, peds: 34, traffic: 20, drawDistance: 1500, pedDraw: 80, driverDraw: 45, shadowChars: 25, treeFar: 500, treeNear: 65, detailDraw: 120, lampLights: 4, headlight: true, vehicleDraw: 200, parkedDraw: 100 },
+  baja: { label: 'Baja', texMax: 512, canvasScale: 0.5, groundTol: 0.05, skyLow: true, pixelRatio: 0.75, minScale: 0.5, shadows: 0, shadowExtent: 50, post: false, ao: false, smaa: false, hdTextures: false, horizonBearings: 480, horizonRings: 80, horizonLights: 6000, backdropHouses: 4000, peds: 24, traffic: 14, drawDistance: 900, pedDraw: 60, driverDraw: 35, shadowChars: 0, treeFar: 350, treeNear: 50, detailDraw: 80, lampLights: 0, headlight: false, vehicleDraw: 160, parkedDraw: 80 },
+  media: { label: 'Media', groundTol: 0.03, pixelRatio: 1, minScale: 0.65, shadows: 2048, shadowExtent: 65, post: true, ao: false, smaa: true, hdTextures: false, horizonBearings: 640, horizonRings: 100, horizonLights: 10000, backdropHouses: 10000, peds: 34, traffic: 20, drawDistance: 1500, pedDraw: 80, driverDraw: 45, shadowChars: 25, treeFar: 500, treeNear: 65, detailDraw: 120, lampLights: 4, headlight: true, vehicleDraw: 200, parkedDraw: 100 },
   alta: { label: 'Alta', pixelRatio: 1, minScale: 0.75, shadows: 4096, shadowExtent: 80, post: true, ao: 'half', smaa: true, hdTextures: true, horizonBearings: 720, horizonRings: 110, horizonLights: 24000, backdropHouses: 16000, peds: 44, traffic: 26, drawDistance: 2500, pedDraw: 110, driverDraw: 60, shadowChars: 40, treeFar: 650, treeNear: 95, detailDraw: 170, lampLights: 8, headlight: true, vehicleDraw: 260, parkedDraw: 120 },
   ultra: { label: 'Ultra', pixelRatio: 1.5, minScale: 0.8, shadows: 4096, shadowExtent: 95, post: true, ao: 'full', smaa: true, hdTextures: true, horizonBearings: 960, horizonRings: 130, horizonLights: 32000, backdropHouses: 24000, peds: 56, traffic: 32, drawDistance: 4000, pedDraw: 140, driverDraw: 80, shadowChars: 60, treeFar: 900, treeNear: 130, detailDraw: 240, lampLights: 12, headlight: true, headlightShadow: true, vehicleDraw: 320, parkedDraw: 160 },
 };

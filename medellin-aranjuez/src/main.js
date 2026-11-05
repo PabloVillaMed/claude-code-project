@@ -58,7 +58,8 @@ function createGame() {
     return null;
   }
   try {
-    return new Game(canvas, { autotest, quality: params.get('quality') ?? undefined });
+    // ?reloj=libre: con ?autotest, sin el reloj fijo de 20 cuadros (para medir FPS).
+    return new Game(canvas, { autotest, freeClock: params.get('reloj') === 'libre', quality: params.get('quality') ?? undefined });
   } catch (err) {
     // THREE.WebGLRenderer: "Error creating WebGL context" (GPU en lista negra, sin controladores…)
     console.error(err);

@@ -220,11 +220,79 @@ function checkerTexture() {
 const _ray = new THREE.Raycaster();
 const _v = new THREE.Vector3();
 /** Primer impacto de un rayo contra las mallas de `root` (espacio mundo). */
-function hit(root, origin, dir) {
+export function hit(root, origin, dir) {
   _ray.set(origin, dir);
   _ray.far = 50;
   const h = _ray.intersectObject(root, true);
   return h.length ? h[0] : null;
+}
+
+/**
+ * Copia liviana de `root` para una tanda de rayos que viven en el plano
+ * x = 0 del mundo (el barrido del techo de cada plantilla, cientos de rayos):
+ * las mismas mallas en el mismo orden, con sus matrices, materiales, capas y
+ * volúmenes envolventes, pero solo con los triángulos que tocan ese plano (con
+ * holgura) y en su orden. three hace las mismas cuentas sobre los mismos
+ * triángulos y da el mismo primer impacto que contra el modelo entero; los que
+ * se dejan por fuera no los puede tocar ningún rayo del plano. Si algo no se
+ * puede copiar así (huesos, morphs, líneas…), devuelve `root` tal cual.
+ */
+export function midPlaneProxy(root, margin = 1e-3) {
+  const proxy = new THREE.Group();
+  const p = new THREE.Vector3();
+  let ok = true;
+  root.traverse((o) => {
+    if (!ok || o.raycast === THREE.Object3D.prototype.raycast) return;
+    const g = o.geometry;
+    const det = o.matrixWorld.determinant();
+    if (o.constructor !== THREE.Mesh || !g?.attributes.position || g.morphAttributes.position || !Number.isFinite(det) || det === 0) {
+      ok = false;
+      return;
+    }
+    if (o.material === undefined) return; // three tampoco la prueba
+    const pos = g.attributes.position;
+    const idx = g.index;
+    const n = idx ? idx.count : pos.count;
+    // x de mundo de cada vértice, una vez.
+    const wx = new Float64Array(pos.count);
+    for (let i = 0; i < pos.count; i++) wx[i] = p.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).x;
+    const xOf = (v) => (v >= 0 && v < pos.count ? wx[v] : NaN);
+    const keep = [];
+    const groups = [];
+    // Mismos rangos que Mesh._computeIntersections (por grupo si hay varios materiales).
+    const range = (start, end, materialIndex) => {
+      if ((end - start) % 3 !== 0 && end > start) ok = false;
+      const k0 = keep.length;
+      for (let j = start; j < end; j += 3) {
+        const a = idx ? idx.getX(j) : j;
+        const b = idx ? idx.getX(j + 1) : j + 1;
+        const c = idx ? idx.getX(j + 2) : j + 2;
+        const xa = xOf(a);
+        const xb = xOf(b);
+        const xc = xOf(c);
+        // Con NaN se conserva (que decida three).
+        if (!(Math.min(xa, xb, xc) > margin || Math.max(xa, xb, xc) < -margin)) keep.push(a, b, c);
+      }
+      if (materialIndex !== undefined) groups.push([k0, keep.length - k0, materialIndex]);
+    };
+    const dr = g.drawRange;
+    if (Array.isArray(o.material)) for (const gr of g.groups) range(Math.max(gr.start, dr.start), Math.min(n, Math.min(gr.start + gr.count, dr.start + dr.count)), gr.materialIndex);
+    else range(Math.max(0, dr.start), Math.min(n, dr.start + dr.count));
+    const pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', pos);
+    pg.setIndex(new THREE.BufferAttribute(Uint32Array.from(keep), 1));
+    for (const [s, c, mi] of groups) pg.addGroup(s, c, mi);
+    if (g.boundingSphere === null) g.computeBoundingSphere();
+    pg.boundingSphere = g.boundingSphere;
+    pg.boundingBox = g.boundingBox;
+    const m = new THREE.Mesh(pg, o.material);
+    m.matrixAutoUpdate = false;
+    m.matrixWorldAutoUpdate = false;
+    m.matrixWorld.copy(o.matrixWorld);
+    m.layers.mask = o.layers.mask;
+    proxy.add(m);
+  });
+  return ok ? proxy : root;
 }
 
 /**
@@ -346,12 +414,14 @@ function modelTemplate(type, variant = null) {
     return { content, steer, pos, front: w.name.startsWith('rueda_del') };
   });
 
-  // Techo: barrido de rayos hacia abajo por el eje central.
+  // Techo: barrido de rayos hacia abajo por el eje central (contra una copia
+  // con solo los triángulos que cruzan ese eje: mismo resultado, mucho menos trabajo).
   let roofY = 0;
   const roofZ = [];
   const samples = [];
+  const axis = midPlaneProxy(body);
   for (let z = box.min.z; z <= box.max.z; z += 0.05) {
-    const h = hit(body, _v.set(0, box.max.y + 1, z), new THREE.Vector3(0, -1, 0));
+    const h = hit(axis, _v.set(0, box.max.y + 1, z), new THREE.Vector3(0, -1, 0));
     if (h) samples.push([z, h.point.y]);
   }
   for (const [, y] of samples) roofY = Math.max(roofY, y);
@@ -592,7 +662,10 @@ export class VehicleView {
     if (type === 'buseta') {
       // Letrero de ruta sobre el parabrisas.
       const y = tpl.roofY - 0.28;
-      const front = hit(body, _v.set(0, y, tpl.box.min.z - 2), new THREE.Vector3(0, 0, 1));
+      // Todas las busetas de la plantilla son iguales (misma malla, matrices y
+      // materiales): el parabrisas se busca con la primera y se recuerda.
+      if (!('destFront' in tpl)) tpl.destFront = hit(body, _v.set(0, y, tpl.box.min.z - 2), new THREE.Vector3(0, 0, 1))?.point.z ?? null;
+      const front = tpl.destFront === null ? null : { point: { z: tpl.destFront } };
       const destMat = shared('bus-dest', () => {
         const t = textTexture('ARANJUEZ - CENTRO', { w: 1024, h: 128, bg: '#111111', fg: '#ffb000', font: 'bold 80px Arial', border: '#111111' });
         return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.6 });

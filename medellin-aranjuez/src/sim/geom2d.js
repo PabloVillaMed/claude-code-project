@@ -12,12 +12,22 @@ export function polyArea(poly) {
   return s / 2;
 }
 
+// Se llama cientos de miles de veces al generar la ciudad: sin desestructurar
+// ni releer el vértice anterior (las mismas cuentas, el mismo resultado).
 export function pointInPoly(x, z, poly) {
   let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, zi] = poly[i];
-    const [xj, zj] = poly[j];
+  const n = poly.length;
+  if (!n) return inside;
+  const last = poly[n - 1];
+  let xj = last[0];
+  let zj = last[1];
+  for (let i = 0; i < n; i++) {
+    const p = poly[i];
+    const xi = p[0];
+    const zi = p[1];
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    xj = xi;
+    zj = zi;
   }
   return inside;
 }
@@ -37,10 +47,17 @@ export function closestOnSeg(x, z, ax, az, bx, bz) {
 export function distToPolyEdge(x, z, poly) {
   let best = Infinity;
   for (let i = 0, n = poly.length; i < n; i++) {
-    const [ax, az] = poly[i];
-    const [bx, bz] = poly[(i + 1) % n];
-    const c = closestOnSeg(x, z, ax, az, bx, bz);
-    if (c.d2 < best) best = c.d2;
+    // closestOnSeg en línea (sin crear un objeto por lado): las mismas cuentas.
+    const a = poly[i];
+    const b = poly[(i + 1) % n];
+    const ax = a[0];
+    const az = a[1];
+    const dx = b[0] - ax;
+    const dz = b[1] - az;
+    const l2 = dx * dx + dz * dz || 1e-12;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    const d2 = (x - (ax + dx * t)) ** 2 + (z - (az + dz * t)) ** 2;
+    if (d2 < best) best = d2;
   }
   return Math.sqrt(best);
 }
@@ -161,20 +178,17 @@ export function frameBounds(f) {
 
 /** ¿Se solapan dos rectángulos orientados (con holgura `gap`)? SAT 2D. */
 export function framesOverlap(a, b, gap = 0) {
-  const axes = [
-    [a.ux, a.uz],
-    [a.nx, a.nz],
-    [b.ux, b.uz],
-    [b.nx, b.nz],
-  ];
+  // Los cuatro ejes en el mismo orden (u y n de a, u y n de b), sin arreglos.
   const dx = b.x - a.x;
   const dz = b.z - a.z;
-  for (const [px, pz] of axes) {
-    const ra = Math.abs(a.ux * px + a.uz * pz) * a.hu + Math.abs(a.nx * px + a.nz * pz) * a.hv;
-    const rb = Math.abs(b.ux * px + b.uz * pz) * b.hu + Math.abs(b.nx * px + b.nz * pz) * b.hv;
-    if (Math.abs(dx * px + dz * pz) >= ra + rb + gap) return false;
-  }
-  return true;
+  return !(separates(a, b, dx, dz, a.ux, a.uz, gap) || separates(a, b, dx, dz, a.nx, a.nz, gap) || separates(a, b, dx, dz, b.ux, b.uz, gap) || separates(a, b, dx, dz, b.nx, b.nz, gap));
+}
+
+/** ¿El eje (px, pz) separa los dos rectángulos? (con NaN no separa, como antes). */
+function separates(a, b, dx, dz, px, pz, gap) {
+  const ra = Math.abs(a.ux * px + a.uz * pz) * a.hu + Math.abs(a.nx * px + a.nz * pz) * a.hv;
+  const rb = Math.abs(b.ux * px + b.uz * pz) * b.hu + Math.abs(b.nx * px + b.nz * pz) * b.hv;
+  return Math.abs(dx * px + dz * pz) >= ra + rb + gap;
 }
 
 /** Rectángulo orientado contra un segmento (engrosado `r`): ¿se tocan? */

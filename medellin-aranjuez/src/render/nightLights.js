@@ -1,8 +1,9 @@
 // Iluminación nocturna dinámica con presupuesto fijo:
 //  - Un grupo de N luces puntuales que se asignan a los faroles más cercanos
 //    a la cámara (N según la calidad). El número de luces nunca cambia
-//    durante el juego (así no se recompilan shaders al anochecer); de día se
-//    apagan con `visible` y las dos variantes se precompilan en la carga.
+//    durante el juego: three cuenta las luces VISIBLES en la clave de cada
+//    programa, así que de día no se ocultan sino que quedan con intensidad 0
+//    (una sola variante de shaders: nada que recompilar al anochecer).
 //  - Un foco real con los faros del vehículo del jugador.
 //  - La luz de todos los faroles cercanos y de los faros del tráfico sobre el
 //    piso y los muros se calcula en los shaders (render/groundLights.js).
@@ -30,8 +31,13 @@ export class NightLights {
     this.spot = null;
     if (quality.headlight) {
       this.spot = new THREE.SpotLight(0xfff1dc, 0, 55, 0.48, 0.55, 1.4);
+      // castShadow también entra en la clave del programa: queda fijo. Lo que
+      // se apaga es el dibujo del mapa de sombra mientras el foco no alumbra.
       this.spot.castShadow = !!quality.headlightShadow;
-      if (this.spot.castShadow) this.spot.shadow.mapSize.set(1024, 1024);
+      if (this.spot.castShadow) {
+        this.spot.shadow.mapSize.set(1024, 1024);
+        this.spot.shadow.needsUpdate = true; // el primer cuadro crea el mapa
+      }
       scene.add(this.spot, this.spot.target);
     }
     // Número de haces de faros activos en groundLights (pruebas: __game.lights().pools).
@@ -44,12 +50,22 @@ export class NightLights {
     };
   }
 
-  /** Enciende/apaga el grupo (cambia la variante de shaders: ambas se precompilan). */
+  /**
+   * Enciende/apaga el grupo. Las luces siguen visibles (los mismos programas
+   * de día y de noche): apagadas solo quedan con intensidad 0.
+   */
   setEnabled(on) {
     if (this.on === on) return;
     this.on = on;
-    for (const l of this.lights) l.visible = on;
-    if (this.spot) this.spot.visible = on;
+    if (on) return; // update() les sube la intensidad
+    for (const l of this.lights) l.intensity = 0;
+    if (this.spot) this._spotIntensity(0);
+  }
+
+  /** Intensidad del foco; su mapa de sombra (Ultra) solo se dibuja mientras alumbra. */
+  _spotIntensity(v) {
+    this.spot.intensity = v;
+    this.spot.shadow.autoUpdate = v > 0;
   }
 
   update(dt, camPos, night, vehicles, playerVehicle) {
@@ -96,8 +112,8 @@ export class NightLights {
         this.spot.position.set(s.x + fx * half, s.y + 0.8, s.z + fz * half);
         this.spot.target.position.set(s.x + fx * (half + 18), groundHeight(s.x + fx * 18, s.z + fz * 18), s.z + fz * (half + 18));
         this.spot.target.updateMatrixWorld();
-        this.spot.intensity = 14 * night; // el piso lo iluminan los haces de groundLights; esto es para personas y carros
-      } else this.spot.intensity = 0;
+        this._spotIntensity(14 * night); // el piso lo iluminan los haces de groundLights; esto es para personas y carros
+      } else this._spotIntensity(0);
     }
   }
 }

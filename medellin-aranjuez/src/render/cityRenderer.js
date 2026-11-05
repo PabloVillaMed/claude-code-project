@@ -14,7 +14,7 @@ import { makeRng } from '../sim/rng.js';
 import { GRID, MAPA, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, RIVER, backdropHeight, terrainHeight } from '../sim/terrain.js';
 import { faceFrame } from '../sim/facades.js';
 import { pointAlong, pointInPoly, polyArea } from '../sim/geom2d.js';
-import { densify, drapePolygon, drapeTris, orientedQuad, polylineFrames, polyWall, ribbon } from './drape.js';
+import { densify, drapePolygon, drapeTris, lastValue, orientedQuad, polylineFrames, polyWall, ribbon } from './drape.js';
 import { buildRoof, roofParapet } from './roofs.js';
 import { buildMetro } from './metro.js';
 import { applyGroundLights } from './groundLights.js';
@@ -177,11 +177,8 @@ export class CityRenderer {
     const col = [0.9, 0.95, 0.85];
     // Fuera del área jugable sigue el mismo suelo que el fondo (backdropHeight):
     // así las casas lejanas no quedan enterradas bajo la ladera del mapa.
-    g.heightGrid(x0, z0, x1, z1, step, terrainHeight, 8, col);
-    // Variación de color (tierra seca / pasto) por vértice.
-    for (let i = 0; i < g.col.length; i += 3) {
-      const x = g.pos[i];
-      const z = g.pos[i + 2];
+    // Variación de color (tierra seca / pasto) por vértice, en el orden de la rejilla.
+    const tint = (x, z) => {
       const n = 0.5 + 0.5 * Math.sin(x * 0.05 + z * 0.03) * Math.cos(z * 0.07 - x * 0.02);
       const k = 0.75 + 0.3 * n + rng.range(-0.04, 0.04);
       // Fuera del área jugable el suelo es de ciudad (calles, patios), no potrero.
@@ -189,10 +186,9 @@ export class CityRenderer {
       const u = Math.min(1, out / 30);
       // Prado verde de Medellín con manchas más secas.
       const dry = (1 - n) * 0.35;
-      g.col[i] = k * (0.64 + dry * 0.4) * (1 - u) + 0.3 * u;
-      g.col[i + 1] = k * (0.84 - dry * 0.1) * (1 - u) + 0.28 * u;
-      g.col[i + 2] = k * (0.5 + dry * 0.1) * (1 - u) + 0.28 * u;
-    }
+      return [k * (0.64 + dry * 0.4) * (1 - u) + 0.3 * u, k * (0.84 - dry * 0.1) * (1 - u) + 0.28 * u, k * (0.5 + dry * 0.1) * (1 - u) + 0.28 * u];
+    };
+    g.heightGrid(x0, z0, x1, z1, step, terrainHeight, 8, col, null, tint);
     this._mesh(g.build(), this.materials.terrain, { cast: false, name: 'terreno' });
   }
 
@@ -417,8 +413,16 @@ export class CityRenderer {
     const lots = this._chunked();
     const green = this._chunked();
     const curb = this._chunked();
-    const hf = (x, z) => terrainHeight(x, z) + GRID.curb;
-    const hLot = (x, z) => terrainHeight(x, z) + GRID.curb + 0.01;
+    // El sardinel pide la altura de abajo y la de arriba en el mismo punto: una sola consulta.
+    const th = lastValue(terrainHeight);
+    const hf = (x, z) => th(x, z) + GRID.curb;
+    const hLot = (x, z) => th(x, z) + GRID.curb + 0.01;
+    // En Baja y Media (quality.groundTol, m) andenes, patios, prados y
+    // sardineles se subdividen solo donde la ladera se curva: en lo parejo van
+    // con triángulos grandes. Sin la clave (Alta, Ultra) queda como siempre.
+    const tol = this.quality.groundTol ?? 0;
+    const adapt = tol > 0 ? { tol, maxStep: this.quality.groundMaxStep ?? 24 } : {};
+    const hLow = (x, z) => th(x, z) - 0.08;
     // Área construida por manzana: los lotes casi vacíos son solares con prado
     // y matas (en Medellín todo lo que no se pavimenta se vuelve verde).
     const built = new Map();
@@ -426,22 +430,22 @@ export class CityRenderer {
     const greenAreas = this.city.areas.filter((a) => ['verde', 'parque', 'colegio', 'salud', 'cancha'].includes(a.kind));
     for (const b of this.city.blocks) {
       const out = polyArea(b.curb) > 0 ? -1 : 1;
-      polyWall(curb(b.cx, b.cz), b.curb, out, (x, z) => terrainHeight(x, z) - 0.08, hf, { step: 4, uvScale: 2, color: [0.85, 0.83, 0.8] });
+      polyWall(curb(b.cx, b.cz), b.curb, out, hLow, hf, { step: 4, uvScale: 2, color: [0.85, 0.83, 0.8], ...adapt });
       if (b.type !== 'residencial') {
         // Separadores y orillas del río: prado.
-        drapePolygon(green(b.cx, b.cz), b.curb, hf, { step: 8, uv: (x, z) => [x / 10, -z / 10] });
+        drapePolygon(green(b.cx, b.cz), b.curb, hf, { step: 8, uv: (x, z) => [x / 10, -z / 10], ...adapt });
         continue;
       }
       // Andén: el contorno menos los lotes; los lotes son patios de concreto.
-      drapePolygon(walk(b.cx, b.cz), b.curb, hf, { step: 5, simplify: 0.25, uv: (x, z) => [x / 4, -z / 4] }, b.lots);
+      drapePolygon(walk(b.cx, b.cz), b.curb, hf, { step: 5, simplify: 0.25, uv: (x, z) => [x / 4, -z / 4], ...adapt }, b.lots);
       const lotArea = b.lots.reduce((acc, l) => acc + Math.abs(polyArea(l)), 0);
       const coverage = (built.get(b.id) ?? 0) / Math.max(1, lotArea);
       for (const l of b.lots) {
         const [cx, cz] = l[Math.floor(l.length / 2)];
         // Colegios, salud y parques: lo que no es edificio es prado aunque la manzana esté construida.
         const isGreen = coverage < 0.35 || greenAreas.some((a) => (a.block === b || a.block === b.id || ['colegio', 'salud', 'parque'].includes(a.kind)) && pointInPoly(cx, cz, a.poly));
-        if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 10, -z / 10] });
-        else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74] });
+        if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 10, -z / 10], ...adapt });
+        else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74], ...adapt });
       }
     }
     walk.build(this.materials.sidewalk, { cast: false, name: 'andenes' });
@@ -524,6 +528,7 @@ export class CityRenderer {
       }
     }
     // Quebradas a cielo abierto: cauce angosto entre muros de piedra.
+    const thw = lastValue(terrainHeight); // el fin de un tramo es el comienzo del siguiente
     for (const w of this.city.water) {
       if (/Medell/i.test(w.name)) continue;
       const hw = w.kind === 'canal' ? 2.6 : 1.5;
@@ -546,8 +551,8 @@ export class CityRenderer {
             const x1 = P[i + 1][0] + F[i + 1].nx * a * F[i + 1].miter;
             const z1 = P[i + 1][1] + F[i + 1].nz * a * F[i + 1].miter;
             const nrm = [F[i].nx * Math.sign(a - o + 1e-9 * sgn), 0, F[i].nz * Math.sign(a - o + 1e-9 * sgn)];
-            const y0 = terrainHeight(x0, z0);
-            const y1 = terrainHeight(x1, z1);
+            const y0 = thw(x0, z0);
+            const y1 = thw(x1, z1);
             orientedQuad(stone, [[x0, y0 - 0.1, z0], [x1, y1 - 0.1, z1], [x1, y1 + 0.8, z1], [x0, y0 + 0.8, z0]], nrm, [[i * 1.5, 0], [(i + 1) * 1.5, 0], [(i + 1) * 1.5, 0.45], [i * 1.5, 0.45]]);
           }
         }

@@ -11,8 +11,31 @@ export function canvas(w, h = w) {
   return c;
 }
 
+// Lienzos grandes (atlas de placas, avisos e interiores de 2048 px de ancho)
+// según la calidad: con quality.canvasScale < 1 (Baja) se suben a la GPU
+// reducidos. Es la misma imagen escalada y las UV (0..1) no cambian.
+let canvasScale = 1;
+const BIG_CANVAS = 1.5e6; // px; las fachadas de 1024² no entran
+
+/** Ajusta las texturas procedurales a la calidad (antes de crearlas). */
+export function setTextureQuality(quality) {
+  const s = quality?.canvasScale;
+  canvasScale = s > 0 && s < 1 ? s : 1;
+}
+
+/** Copia reducida de un lienzo (suavizado alto: queda como un supermuestreo). */
+function scaledCanvas(c, s) {
+  const out = canvas(Math.max(1, Math.round(c.width * s)), Math.max(1, Math.round(c.height * s)));
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c, 0, 0, out.width, out.height);
+  return out;
+}
+
 export function toTexture(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
-  const t = new THREE.CanvasTexture(c);
+  const big = c && canvasScale < 1 && c.width * c.height >= BIG_CANVAS;
+  const t = new THREE.CanvasTexture(big ? scaledCanvas(c, canvasScale) : c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = aniso;
@@ -22,7 +45,22 @@ export function toTexture(c, { srgb = true, repeat = true, aniso = 8 } = {}) {
   return t;
 }
 
-/** Normal map a partir de un canvas de alturas (escala de grises). */
+// Alturas 0..255 -> 0..1 (mismos valores que v / 255).
+const H255 = Float64Array.from({ length: 256 }, (_, k) => k / 255);
+
+/** ¿v está tan cerca de x.5 que un ulp de diferencia cambiaría el byte? */
+const nearHalf = (v) => {
+  const f = v - Math.floor(v);
+  return f > 0.499999 && f < 0.500001;
+};
+
+/**
+ * Normal map a partir de un canvas de alturas (escala de grises).
+ * La longitud sale con Math.sqrt (2-3 veces más rápida que Math.hypot) y solo
+ * se recalcula con hypot cuando el byte podría redondearse distinto: el
+ * resultado es idéntico bit a bit (comprobado con todas las diferencias de
+ * altura posibles y todas las fuerzas que se usan).
+ */
 function normalFromHeight(hc, strength = 2) {
   const w = hc.width;
   const h = hc.height;
@@ -30,18 +68,36 @@ function normalFromHeight(hc, strength = 2) {
   const out = canvas(w, h);
   const ctx = out.getContext('2d');
   const img = ctx.createImageData(w, h);
-  const H = (x, y) => src[(((y + h) % h) * w + ((x + w) % w)) * 4] / 255;
+  const d = img.data;
   for (let y = 0; y < h; y++) {
+    const row = y * w;
+    const up = (y === 0 ? h - 1 : y - 1) * w;
+    const dn = (y === h - 1 ? 0 : y + 1) * w;
     for (let x = 0; x < w; x++) {
-      const dx = (H(x + 1, y) - H(x - 1, y)) * strength;
-      const dy = (H(x, y + 1) - H(x, y - 1)) * strength;
-      const nz = 1;
-      const l = Math.hypot(dx, dy, nz);
-      const i = (y * w + x) * 4;
-      img.data[i] = ((-dx / l) * 0.5 + 0.5) * 255;
-      img.data[i + 1] = ((dy / l) * 0.5 + 0.5) * 255;
-      img.data[i + 2] = ((nz / l) * 0.5 + 0.5) * 255;
-      img.data[i + 3] = 255;
+      const i = (row + x) * 4;
+      const dx = (H255[src[(row + (x === w - 1 ? 0 : x + 1)) * 4]] - H255[src[(row + (x === 0 ? w - 1 : x - 1)) * 4]]) * strength;
+      const dy = (H255[src[(dn + x) * 4]] - H255[src[(up + x) * 4]]) * strength;
+      d[i + 3] = 255;
+      if (dx === 0 && dy === 0) {
+        // Plano: (0, 0, 1) exacto.
+        d[i] = 127.5;
+        d[i + 1] = 127.5;
+        d[i + 2] = 255;
+        continue;
+      }
+      let l = Math.sqrt(dx * dx + dy * dy + 1);
+      let r = ((-dx / l) * 0.5 + 0.5) * 255;
+      let g = ((dy / l) * 0.5 + 0.5) * 255;
+      let b = ((1 / l) * 0.5 + 0.5) * 255;
+      if ((dx !== 0 && nearHalf(r)) || (dy !== 0 && nearHalf(g)) || nearHalf(b)) {
+        l = Math.hypot(dx, dy, 1);
+        r = ((-dx / l) * 0.5 + 0.5) * 255;
+        g = ((dy / l) * 0.5 + 0.5) * 255;
+        b = ((1 / l) * 0.5 + 0.5) * 255;
+      }
+      d[i] = r;
+      d[i + 1] = g;
+      d[i + 2] = b;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -685,27 +741,73 @@ function facadeLayers(seed, style) {
   return { overlay, mask, emissiveMap: emissiveWindows(makeRng(seed + 7), style) };
 }
 
-/** Crea (una sola vez) todas las texturas del juego. */
-export function createTextureLibrary() {
+/**
+ * Juego de texturas que se pinta la primera vez que alguien pide la imagen de
+ * una de ellas (three, al subirla a la GPU). Los objetos Texture existen desde
+ * ya, con la misma configuración que les daría toTexture (`spec`: opciones por
+ * clave, iguales a las del generador). Las que la ciudad no usa (las fachadas
+ * y suelos procedurales cuando hay texturas fotográficas) nunca se pintan:
+ * menos arranque y ~60 MB menos de lienzos. Cada juego usa su propia semilla,
+ * así que pintarlo antes o después da la misma imagen.
+ */
+function lazySet(make, spec) {
+  let real = null;
+  const out = {};
+  for (const [key, opts] of Object.entries(spec)) {
+    const t = toTexture(null, opts);
+    let data;
+    Object.defineProperty(t.source, 'data', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        if (data === undefined) {
+          real ??= make();
+          data = real[key].image;
+        }
+        return data;
+      },
+      set(v) {
+        data = v;
+      },
+    });
+    out[key] = t;
+  }
+  return out;
+}
+
+const FACADE_SPEC = { map: {}, normalMap: { srgb: false }, emissiveMap: {} };
+const GROUND_SPEC = { map: {}, normalMap: { srgb: false } };
+const LAYERS_SPEC = { overlay: {}, mask: { srgb: false }, emissiveMap: {} };
+
+/**
+ * Crea (una sola vez) todas las texturas del juego; cada una se pinta cuando
+ * se usa por primera vez. `quality` (opcional) ajusta los lienzos grandes.
+ */
+export function createTextureLibrary(quality) {
+  if (quality) setTextureQuality(quality);
+  const facade = (seed, style) => lazySet(() => (style === 'ladrillo' ? brickFacade(seed) : stuccoFacade(seed, style)), FACADE_SPEC);
+  const ground = (make) => lazySet(make, GROUND_SPEC);
+  const mural = (seed) => lazySet(() => ({ map: muralTexture(seed) }), { map: {} }).map;
+  const layers = (seed, style) => lazySet(() => facadeLayers(seed, style), LAYERS_SPEC);
   return {
-    brick: [brickFacade(11), brickFacade(12)],
-    stucco: [stuccoFacade(21), stuccoFacade(22)],
-    tower: stuccoFacade(31, 'torre'),
-    mural: [muralTexture(41), muralTexture(42), muralTexture(43)],
-    concrete: concreteTexture(51),
-    roof: concreteTexture(52, '#7d7a74'),
-    asphalt: asphaltTexture(61, true),
-    asphaltPlain: asphaltTexture(62, false),
-    sidewalk: sidewalkTexture(71),
-    pavers: paversTexture(81),
-    grass: grassTexture(91),
-    dryGrass: grassTexture(92, [96, 104, 58]),
-    field: grassTexture(93, [52, 110, 45]),
-    tiles: tilesTexture(101),
-    metal: metalTexture(111),
+    brick: [facade(11, 'ladrillo'), facade(12, 'ladrillo')],
+    stucco: [facade(21), facade(22)],
+    tower: facade(31, 'torre'),
+    mural: [mural(41), mural(42), mural(43)],
+    concrete: ground(() => concreteTexture(51)),
+    roof: ground(() => concreteTexture(52, '#7d7a74')),
+    asphalt: ground(() => asphaltTexture(61, true)),
+    asphaltPlain: ground(() => asphaltTexture(62, false)),
+    sidewalk: ground(() => sidewalkTexture(71)),
+    pavers: ground(() => paversTexture(81)),
+    grass: ground(() => grassTexture(91)),
+    dryGrass: ground(() => grassTexture(92, [96, 104, 58])),
+    field: ground(() => grassTexture(93, [52, 110, 45])),
+    tiles: ground(() => tilesTexture(101)),
+    metal: ground(() => metalTexture(111)),
     // Capas para fachadas con texturas fotográficas.
-    facadeBrick: [facadeLayers(211, 'ladrillo'), facadeLayers(212, 'ladrillo')],
-    facadeStucco: [facadeLayers(221, 'pintada'), facadeLayers(222, 'pintada')],
-    facadeTower: facadeLayers(231, 'torre'),
+    facadeBrick: [layers(211, 'ladrillo'), layers(212, 'ladrillo')],
+    facadeStucco: [layers(221, 'pintada'), layers(222, 'pintada')],
+    facadeTower: layers(231, 'torre'),
   };
 }

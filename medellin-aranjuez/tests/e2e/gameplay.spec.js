@@ -241,10 +241,14 @@ test('animaciones: subirse y bajarse del carro con animación, gestos con G', as
   await G(() => window.__game.advance(4));
   expect(await G(() => window.__game.boarding())).toBe(null);
   // Bajarse: queda afuera de una vez (lógica) y el personaje termina de levantarse.
-  await G(() => window.__gameInstance.exitVehicle());
-  let s = await st();
-  expect(s.inVehicle).toBe(false);
-  expect((await G(() => window.__game.boarding()))?.mode).toBe('exit');
+  // En la misma evaluación: con GPU corren varios cuadros entre dos consultas.
+  const exited = await G(() => {
+    window.__gameInstance.exitVehicle();
+    return { inVehicle: window.__game.state().inVehicle, mode: window.__game.boarding()?.mode };
+  });
+  expect(exited.inVehicle).toBe(false);
+  expect(exited.mode).toBe('exit');
+  let s;
   await G(() => window.__game.advance(3));
   s = await st();
   expect(await G(() => window.__game.boarding())).toBe(null);

@@ -522,6 +522,7 @@ export class FacadeBuilder {
       const mat = key === 'railingBars' ? this.r.materials.railingBars : this.mats[key];
       if (!mat) continue;
       const mesh = new THREE.Mesh(g.build(), mat);
+      g.release(); // baja el pico de memoria mientras se arman los demás
       mesh.name = `fachadas-${key}`;
       mesh.castShadow = !NO_SHADOW.has(key) && !DETAIL.has(key);
       mesh.receiveShadow = true;

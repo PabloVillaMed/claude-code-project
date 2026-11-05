@@ -17,6 +17,8 @@ import { assets } from '../render/assets.js';
 import '../render/assetManifest.js';
 import { CityRenderer } from '../render/cityRenderer.js';
 import { NightLights } from '../render/nightLights.js';
+import { checkStatic, freezeStatic, sceneSkipsHidden } from '../render/staticScene.js';
+import { releaseStaticGeometry } from '../render/releaseGeometry.js';
 import { Environment } from '../render/environment.js';
 import { Horizon } from '../render/horizon.js';
 import { BirdRenderer } from '../render/birds.js';
@@ -154,9 +156,15 @@ export class Game {
     renderer.shadowMap.enabled = this.quality.shadows > 0;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.info.autoReset = false; // se reinicia por frame (incluye sombras y postproceso)
+    // Revisar cada programa (getProgramInfoLog) obliga a esperar a que el
+    // controlador lo termine de compilar: ~2.7 s de la carga en Alta (D3D11).
+    // Solo en desarrollo, en las pruebas (?autotest) o con ?debug.
+    const debugUrl = typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug');
+    renderer.debug.checkShaderErrors = !!(import.meta.env.DEV || opts.autotest || debugUrl);
     this.renderer = renderer;
     this._detectGpu(qKey, opts);
-    this.scene = new THREE.Scene();
+    // Vehículos y personajes ocultos no se recorren al dibujar (render/staticScene.js).
+    this.scene = sceneSkipsHidden(new THREE.Scene());
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, window.innerWidth / window.innerHeight, 0.1, this.quality.drawDistance);
     this.scene.add(this.camera);
     window.addEventListener('resize', () => this.resize());
@@ -215,11 +223,13 @@ export class Game {
     await step(0.05);
     this.city = generateCity(4);
     await step(0.2);
-    this.textures = createTextureLibrary();
+    this.textures = createTextureLibrary(this.quality);
     await step(0.3);
     // Recursos externos (modelos, texturas fotográficas, HDRI). Si alguno
     // falta, cada módulo usa su versión procedural.
     assets.hd = !!this.quality.hdTextures;
+    // En Baja (celulares) las texturas fotográficas se reducen al cargar.
+    assets.texMax = this.quality.texMax ?? 0;
     this.assetReport = await assets.loadAll(this.renderer, (p) => progress(0.3 + p * 0.15));
     await step(0.45);
     this.env = new Environment(this.renderer, this.scene, this.quality);
@@ -227,6 +237,9 @@ export class Game {
     this.horizon = new Horizon(this.scene, this.quality);
     await step(0.55);
     this.cityRenderer = new CityRenderer(this.scene, this.city, this.textures, this.quality);
+    // La ciudad fusionada no se vuelve a leer en JS: sus arreglos se sueltan al
+    // subirse a la GPU (cientos de MB menos; con ?exportar no se suelta nada).
+    this.releasedGeometry = releaseStaticGeometry(this.cityRenderer.root);
     this.nightLights = new NightLights(this.scene, this.quality, this.cityRenderer.lampHeads ?? []);
     await step(0.8);
     this.effects = new Effects(this.scene);
@@ -258,6 +271,9 @@ export class Game {
     // Precalentar: pobla el barrio y compila shaders antes de mostrarlo.
     this.world.populate(sp.x, sp.z);
     for (let i = 0; i < 30; i++) this.world.update(0.05, this.player);
+    // La ciudad ya está completa: sus matrices se calculan una sola vez. Solo
+    // el metro (tren y ascensores) se mueve; el resto no se vuelve a recorrer.
+    this.staticCity = freezeStatic(this.cityRenderer.root, { dynamic: (o) => o.name === 'metro' || o.userData.dinamico === true });
     await this._warmUp(sp);
     await step(1);
     this.state = 'menu';
@@ -296,15 +312,42 @@ export class Game {
    */
   async _warmUp(sp) {
     const r = this.renderer;
-    // Las dos variantes de iluminación (día sin luces de faroles, noche con
-    // ellas) quedan compiladas: al anochecer no hay tirones.
-    for (const on of [true, false]) {
-      this.nightLights.setEnabled(on);
+    const env = this.env;
+    // Las luces de faroles y el foco nunca se ocultan (render/nightLights.js):
+    // hay una sola variante de luces. Lo que sí cambia la clave de los
+    // programas es el mapa de entorno: de día el HDRI y al atardecer y de
+    // noche el cielo horneado (otro tamaño de PMREM). Se compilan las dos: la
+    // actual antes de mostrar el juego y la otra en segundo plano (el
+    // controlador la termina mientras se ve el menú).
+    // Con postproceso la escena se dibuja en un render target (espacio lineal,
+    // sin tonemapping), no en el lienzo: se compila para ese destino, si no
+    // los programas no sirven y se vuelven a compilar en pleno juego.
+    const target = this.postfx.composer?.readBuffer ?? null;
+    const hour = env.timeOfDay;
+    const compile = async () => {
+      // compileAsync arma los programas de una vez (con el destino actual) y
+      // después solo espera a que el controlador los termine.
+      r.setRenderTarget(target);
+      let ready = null;
       try {
-        await r.compileAsync(this.scene, this.camera);
+        ready = r.compileAsync(this.scene, this.camera);
       } catch {
         r.compile(this.scene, this.camera);
+      } finally {
+        r.setRenderTarget(null);
       }
+      await ready;
+    };
+    await compile();
+    if (env.dayEnv) {
+      // La otra variante de entorno: de noche si ahora está el HDRI, si no de
+      // día. compile() arma los programas antes de su primer await; no se
+      // espera a que el controlador los termine.
+      env.setTime(this.scene.environment === env.dayEnv ? 20 : 12);
+      env.update(0, this.camera.position);
+      this._envWarm = compile().catch(() => {});
+      env.setTime(hour);
+      env.update(0, this.camera.position);
     }
     const seen = new Set();
     this.scene.traverse((o) => {
@@ -490,6 +533,11 @@ export class Game {
   // ================================================================ bucle
   frame(t) {
     if (this.contextLost) return; // sin GPU no se dibuja (se recarga al recuperarla)
+    // Pruebas automáticas: a lo sumo 20 cuadros por segundo de 0,05 s cada uno
+    // (ver abajo), así el tiempo de juego va con el reloj tanto por software
+    // como con una GPU que daría 100+ FPS.
+    const testClock = this.opts.autotest && !this.opts.freeClock;
+    if (testClock && t - this.last < 49) return;
     this.frameCount = (this.frameCount ?? 0) + 1;
     const tCpu0 = performance.now();
     this.renderer.info.reset();
@@ -498,6 +546,10 @@ export class Game {
     this.last = t;
     this._adaptResolution(realDt);
     if (!(dt > 0)) dt = 1 / 60;
+    // Pruebas automáticas: cada cuadro avanza el máximo (0,05 s), como cuando
+    // se dibuja por software: "N cuadros" es el mismo tiempo de juego en
+    // cualquier máquina (la música sigue en tiempo real).
+    if (testClock) dt = 0.05;
     const a = this.input.poll();
     // Durante la entrada cinematográfica el jugador no se mueve.
     if (this.intro) for (const k of Object.keys(a)) a[k] = typeof a[k] === 'number' ? 0 : false;
@@ -1580,6 +1632,13 @@ export class Game {
       perf() {
         const r = g.renderer.info;
         return { ...g.perf, geometries: r.memory.geometries, textures: r.memory.textures, programs: r.programs?.length ?? 0, pixelRatio: g.renderer.getPixelRatio() };
+      },
+      /**
+       * Ciudad congelada (render/staticScene.js): {moved, added} en 0 si nada
+       * de lo congelado se movió ni recibió hijos nuevos; sample dice qué.
+       */
+      staticCheck() {
+        return g.staticCity ? checkStatic(g.staticCity) : null;
       },
       assetReport() {
         return { ...g.assetReport, keys: [...assets.items.keys()] };

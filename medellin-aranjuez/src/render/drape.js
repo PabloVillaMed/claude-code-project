@@ -26,6 +26,30 @@ export function orientedTri(g, pts, n, uvs, color) {
   else g.tri(pts[0], pts[1], pts[2], n, uvs, color);
 }
 
+/**
+ * Recuerda el último valor de `fn(x, z)`: las paredes y bordes piden la misma
+ * altura varias veces seguidas en el mismo punto (arriba y abajo, fin de un
+ * tramo y comienzo del siguiente). Da exactamente lo mismo que llamar `fn`.
+ */
+export function lastValue(fn) {
+  let lx = NaN;
+  let lz = NaN;
+  let ly = 0;
+  return (x, z) => {
+    if (x !== lx || z !== lz) {
+      ly = fn(x, z);
+      lx = x;
+      lz = z;
+    }
+    return ly;
+  };
+}
+
+// Clave numérica del vértice redondeado a cm (la misma que "x,z" en texto, sin
+// armar cadenas): |z| < 20 km cabe en los 22 bits bajos.
+const KEY_Z = 4194304;
+const vertKey = (rx, rz) => (rz > -2097152 && rz < 2097152 ? rx * KEY_Z + rz : `${rx},${rz}`);
+
 /** Normal del terreno por diferencias finitas. */
 function normalAt(hf, x, z) {
   const e = 0.6;
@@ -36,13 +60,33 @@ function normalAt(hf, x, z) {
 }
 
 /**
+ * Error de la cuerda P-Q contra `h`: cuánto se aparta la recta entre los
+ * extremos de la altura real en el punto medio y en los cuartos. Las cuentas
+ * son simétricas (P-Q da lo mismo que Q-P), así los dos triángulos que
+ * comparten un lado deciden igual y la malla no queda con grietas.
+ */
+function chordError(h, px, pz, hp, qx, qz, hq) {
+  const em = Math.abs(h((px + qx) / 2, (pz + qz) / 2) - (hp + hq) / 2);
+  const e1 = Math.abs(h((3 * px + qx) / 4, (3 * pz + qz) / 4) - (3 * hp + hq) / 4);
+  const e3 = Math.abs(h((px + 3 * qx) / 4, (pz + 3 * qz) / 4) - (hp + 3 * hq) / 4);
+  return Math.max(em, e1, e3);
+}
+
+/**
  * Triángulos 2D ([[x,z],[x,z],[x,z]]) colgados del terreno, subdivididos
  * hasta que ningún lado supere `step` metros.
+ *
+ * Con `tol` (m) la subdivisión es adaptativa: un lado de más de `step` m solo
+ * se parte si supera `maxStep` o si la recta entre sus extremos se aparta del
+ * terreno más de `tol` (es decir, donde la pendiente cambia: una ladera pareja
+ * se representa exacta con triángulos grandes). La decisión depende solo del
+ * lado, así que vecinos con el mismo lado lo parten igual (sin huecos).
  */
-export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4], color } = {}) {
+export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4], color, tol = 0, maxStep = Infinity } = {}) {
+  if (tol > 0) return drapeTrisAdaptive(g, tris, hf, step, uv, color, tol, maxStep);
   const cache = new Map();
   const vert = (x, z) => {
-    const k = `${Math.round(x * 100)},${Math.round(z * 100)}`;
+    const k = vertKey(Math.round(x * 100), Math.round(z * 100));
     let i = cache.get(k);
     if (i === undefined) {
       const n = normalAt(hf, x, z);
@@ -81,6 +125,75 @@ export function drapeTris(g, tris, hf, { step = 4, uv = (x, z) => [x / 4, -z / 4
   };
   for (const [A, B, C] of tris) {
     // Orientación: la cara debe mirar hacia arriba.
+    const cross = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    if (Math.abs(cross) < 1e-6) continue;
+    if (cross < 0) split(A, B, C, 0);
+    else split(A, C, B, 0);
+  }
+  for (let i = 0; i < out.length; i += 3) g.idx.push(vert(out[i][0], out[i][1]), vert(out[i + 1][0], out[i + 1][1]), vert(out[i + 2][0], out[i + 2][1]));
+}
+
+/** drapeTris con subdivisión adaptativa (ver arriba). */
+function drapeTrisAdaptive(g, tris, hf, step, uv, color, tol, maxStep) {
+  const cache = new Map(); // clave -> índice del vértice
+  const hc = new Map(); // clave -> altura (para medir las cuerdas)
+  const height = (P) => {
+    const k = vertKey(Math.round(P[0] * 100), Math.round(P[1] * 100));
+    let y = hc.get(k);
+    if (y === undefined) hc.set(k, (y = hf(P[0], P[1])));
+    return y;
+  };
+  const vert = (x, z) => {
+    const k = vertKey(Math.round(x * 100), Math.round(z * 100));
+    let i = cache.get(k);
+    if (i === undefined) {
+      const n = normalAt(hf, x, z);
+      const [u, v] = uv(x, z);
+      i = g.vertex(x, hc.get(k) ?? hf(x, z), z, n[0], n[1], n[2], u, v, color);
+      cache.set(k, i);
+    }
+    return i;
+  };
+  // ¿Hay que partir el lado P-Q de largo L? La respuesta se guarda por el punto
+  // medio del lado (cada lado se pregunta de nuevo en cada nivel de la bisección).
+  const dec = new Map();
+  const needs = (P, Q, L) => {
+    if (L <= step) return false;
+    if (L > maxStep) return true;
+    const k = vertKey(Math.round(((P[0] + Q[0]) / 2) * 100), Math.round(((P[1] + Q[1]) / 2) * 100));
+    let d = dec.get(k);
+    if (d === undefined) dec.set(k, (d = chordError(hf, P[0], P[1], height(P), Q[0], Q[1], height(Q)) > tol));
+    return d;
+  };
+  const out = [];
+  const split = (A, B, C, depth) => {
+    const ab = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    const bc = Math.hypot(C[0] - B[0], C[1] - B[1]);
+    const ca = Math.hypot(A[0] - C[0], A[1] - C[1]);
+    // Se parte el más largo de los lados que lo necesitan.
+    const sab = needs(A, B, ab) ? ab : -1;
+    const sbc = needs(B, C, bc) ? bc : -1;
+    const sca = needs(C, A, ca) ? ca : -1;
+    const L = Math.max(sab, sbc, sca);
+    if (L < 0 || depth > 14) {
+      out.push(A, B, C);
+      return;
+    }
+    if (L === sab) {
+      const M = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+      split(A, M, C, depth + 1);
+      split(M, B, C, depth + 1);
+    } else if (L === sbc) {
+      const M = [(B[0] + C[0]) / 2, (B[1] + C[1]) / 2];
+      split(A, B, M, depth + 1);
+      split(A, M, C, depth + 1);
+    } else {
+      const M = [(C[0] + A[0]) / 2, (C[1] + A[1]) / 2];
+      split(A, B, M, depth + 1);
+      split(M, B, C, depth + 1);
+    }
+  };
+  for (const [A, B, C] of tris) {
     const cross = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
     if (Math.abs(cross) < 1e-6) continue;
     if (cross < 0) split(A, B, C, 0);
@@ -223,7 +336,7 @@ export function ribbon(g, pts, off0, off1, hf, { step = 3, across = 1, uv, color
 }
 
 /** Pared vertical a lo largo del borde de un polígono cerrado (sardinel, muro). */
-export function polyWall(g, poly, outwardSign, yFn0, yFn1, { step = 3, uvScale = 1, color } = {}) {
+export function polyWall(g, poly, outwardSign, yFn0, yFn1, { step = 3, uvScale = 1, color, tol = 0, maxStep = Infinity } = {}) {
   const n = poly.length;
   let acc = 0;
   for (let i = 0; i < n; i++) {
@@ -234,23 +347,30 @@ export function polyWall(g, poly, outwardSign, yFn0, yFn1, { step = 3, uvScale =
     const tx = (bx - ax) / l;
     const tz = (bz - az) / l;
     const N = [tz * outwardSign, 0, -tx * outwardSign];
-    const k = Math.max(1, Math.ceil(l / step));
+    // Con `tol`: tramos adaptativos (largos donde el borde de arriba es casi recto).
+    const ts = tol > 0 ? wallBreaks(ax, az, tx, tz, l, yFn1, step, tol, maxStep) : null;
+    const k = ts ? ts.length - 1 : Math.max(1, Math.ceil(l / step));
+    // El fin de cada tramo es el comienzo del siguiente (mismas cuentas): sus alturas se reusan.
+    let a0 = yFn0(ax, az);
+    let a1 = yFn1(ax, az);
     for (let j = 0; j < k; j++) {
-      const t0 = (l * j) / k;
-      const t1 = (l * (j + 1)) / k;
+      const t0 = ts ? ts[j] : (l * j) / k;
+      const t1 = ts ? ts[j + 1] : (l * (j + 1)) / k;
       const x0 = ax + tx * t0;
       const z0 = az + tz * t0;
       const x1 = ax + tx * t1;
       const z1 = az + tz * t1;
       const u0 = (acc + t0) / uvScale;
       const u1 = (acc + t1) / uvScale;
+      const b0 = yFn0(x1, z1);
+      const b1 = yFn1(x1, z1);
       orientedQuad(
         g,
         [
-          [x0, yFn0(x0, z0), z0],
-          [x1, yFn0(x1, z1), z1],
-          [x1, yFn1(x1, z1), z1],
-          [x0, yFn1(x0, z0), z0],
+          [x0, a0, z0],
+          [x1, b0, z1],
+          [x1, b1, z1],
+          [x0, a1, z0],
         ],
         N,
         [
@@ -261,7 +381,33 @@ export function polyWall(g, poly, outwardSign, yFn0, yFn1, { step = 3, uvScale =
         ],
         color,
       );
+      a0 = b0;
+      a1 = b1;
     }
     acc += l;
   }
+}
+
+/** Cortes (distancias desde el comienzo) de un borde de largo l: bisección donde la cuerda de `yFn` se aparta más de `tol`. */
+function wallBreaks(ax, az, tx, tz, l, yFn, step, tol, maxStep) {
+  const ts = [0];
+  const rec = (t0, h0, t1, h1, depth) => {
+    const len = t1 - t0;
+    if (len > step && depth < 14) {
+      const x0 = ax + tx * t0;
+      const z0 = az + tz * t0;
+      const x1 = ax + tx * t1;
+      const z1 = az + tz * t1;
+      if (len > maxStep || chordError(yFn, x0, z0, h0, x1, z1, h1) > tol) {
+        const tm = (t0 + t1) / 2;
+        const hm = yFn(ax + tx * tm, az + tz * tm);
+        rec(t0, h0, tm, hm, depth + 1);
+        rec(tm, hm, t1, h1, depth + 1);
+        return;
+      }
+    }
+    ts.push(t1);
+  };
+  rec(0, yFn(ax, az), l, yFn(ax + tx * l, az + tz * l), 0);
+  return ts;
 }

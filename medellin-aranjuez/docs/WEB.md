@@ -196,7 +196,10 @@ npm start             # la app de Windows (Electron) con el mismo build
   el manifiesto y sus íconos, que no esté el botón Salir, y que el service
   worker precargue y el juego vuelva a llegar al menú **sin red**
   (`context.setOffline(true)` y recarga). El render es por software
-  (SwiftShader): cada carga puede tardar varios minutos.
+  (SwiftShader): cada carga puede tardar varios minutos, y con un vehículo en
+  pantalla cada cuadro tarda segundos. En un PC con tarjeta de video,
+  `PW_GPU=1 npx playwright test` dibuja con la GPU (en Windows, Direct3D 11) y
+  la suite completa corre en minutos.
 - **Servidor de pruebas** (`scripts/serve-cli.mjs`): `--port=N`,
   `--base=/ruta/` y `--dir=carpeta` (o `PORT`, `BASE`, `DIST_DIR`). Imita a
   Pages: fuera de la base da 404, la base sin barra da 301, responde rangos de

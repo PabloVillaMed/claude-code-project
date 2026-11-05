@@ -283,11 +283,23 @@ export class Input {
     // Jugando con los dedos no hay cursor que capturar (y en Android el
     // pointer lock se quedaría con los toques).
     if (this.touch?.active) return;
+    // Sin gesto del usuario (o con la ventana sin foco) el navegador rechaza la
+    // captura (WrongDocumentError, NotAllowedError): no es un error del juego,
+    // el siguiente clic en el canvas la vuelve a pedir.
+    const quiet = (r) => r?.catch?.(() => {});
+    const plain = () => {
+      try {
+        quiet(this.el.requestPointerLock?.());
+      } catch {
+        // navegador sin pointer lock
+      }
+    };
     try {
       const r = this.el.requestPointerLock?.({ unadjustedMovement: true });
-      if (r && r.catch) r.catch(() => this.el.requestPointerLock?.());
+      // Sin soporte para unadjustedMovement: se pide la captura normal.
+      if (r?.catch) r.catch(plain);
     } catch {
-      this.el.requestPointerLock?.();
+      plain();
     }
   }
 

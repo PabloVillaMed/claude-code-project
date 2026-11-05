@@ -126,6 +126,104 @@ export function generateCity(seed = 4) {
   return city;
 }
 
+// ------------------------------------------------------------------ búsquedas cercanas
+/**
+ * Rejilla para preguntar "¿hay algo de esta lista cerca de (x, z)?" sin
+ * recorrerla entera. La lista solo crece (utilería, motos): antes de cada
+ * consulta se indexa lo nuevo, y la condición exacta se sigue evaluando sobre
+ * cada candidato, así que la respuesta es la misma que con `list.some(...)`.
+ * Cada elemento ocupa las celdas de su caja (x ± ex, z ± ez); `some` revisa
+ * las celdas a `r` (+ holgura) del punto.
+ */
+class NearGrid {
+  constructor(list, keep, ex = () => 0, ez = ex, cs = 8) {
+    this.list = list;
+    this.keep = keep;
+    this.ex = ex;
+    this.ez = ez;
+    this.cs = cs;
+    this.n = 0;
+    this.cells = new Map();
+    this.wide = []; // cajas enormes o raras: se revisan siempre
+  }
+
+  _sync() {
+    const { list, cs } = this;
+    for (; this.n < list.length; this.n++) {
+      const p = list[this.n];
+      if (!this.keep(p)) continue;
+      const ex = Math.abs(this.ex(p));
+      const ez = Math.abs(this.ez(p));
+      const i0 = Math.floor((p.x - ex) / cs);
+      const i1 = Math.floor((p.x + ex) / cs);
+      const j0 = Math.floor((p.z - ez) / cs);
+      const j1 = Math.floor((p.z + ez) / cs);
+      // Lo enorme, infinito o NaN no se indexa: se revisa siempre (la condición exacta decide).
+      if (!(i1 - i0 < 64 && j1 - j0 < 64)) {
+        this.wide.push(p);
+        continue;
+      }
+      for (let i = i0; i <= i1; i++) {
+        for (let j = j0; j <= j1; j++) {
+          const k = i * 65536 + j;
+          let c = this.cells.get(k);
+          if (!c) this.cells.set(k, (c = []));
+          c.push(p);
+        }
+      }
+    }
+  }
+
+  some(x, z, r, test) {
+    this._sync();
+    for (const p of this.wide) if (test(p)) return true;
+    const { cs } = this;
+    const m = Math.abs(r) + 0.01; // holgura: lo que cumple la condición nunca queda por fuera
+    const i0 = Math.floor((x - m) / cs);
+    const i1 = Math.floor((x + m) / cs);
+    const j0 = Math.floor((z - m) / cs);
+    const j1 = Math.floor((z + m) / cs);
+    if (!(i1 - i0 < 64 && j1 - j0 < 64)) return this.list.some((p) => this.keep(p) && test(p));
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const c = this.cells.get(i * 65536 + j);
+        if (c) for (const p of c) if (test(p)) return true;
+      }
+    }
+    return false;
+  }
+}
+
+/**
+ * Primera manzana (en el orden de city.blocks) con anillo peatonal cuyo
+ * sardinel contiene (x, z): lo mismo que el `city.blocks.find(...)` de antes,
+ * pero mirando solo las manzanas cuya caja toca la celda del punto.
+ */
+function blockFinder(city) {
+  const CS = 32;
+  const cells = new Map();
+  for (const b of city.blocks) {
+    if (!b.ring) continue;
+    const i0 = Math.floor(b.minX / CS);
+    const i1 = Math.floor(b.maxX / CS);
+    const j0 = Math.floor(b.minZ / CS);
+    const j1 = Math.floor(b.maxZ / CS);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        const k = i * 65536 + j;
+        let c = cells.get(k);
+        if (!c) cells.set(k, (c = []));
+        c.push(b);
+      }
+    }
+  }
+  return (x, z) => {
+    const c = cells.get(Math.floor(x / CS) * 65536 + Math.floor(z / CS));
+    if (!c) return undefined;
+    return c.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+  };
+}
+
 function addPropCollider(city, p) {
   if (!p.collider) return;
   const c = p.collider;
@@ -1170,9 +1268,13 @@ function addSidewalkProps(ctx, block) {
     addProp(ctx, { type: 'lamp', x, z, rot: s.rot + Math.PI, collider: { hx: 0.15, hz: 0.15 } });
   });
   // Árboles de andén (más verde que antes: mango, ficus, guayacán…).
+  // Las rejillas (faroles, utilería sólida, motos) se comparten entre manzanas.
+  ctx.lampGrid ??= new NearGrid(city.props, (p) => p.type === 'lamp');
+  ctx.solidGrid ??= new NearGrid(city.props, (p) => p.collider);
+  ctx.motoGrid ??= new NearGrid(city.parkedVehicles, () => true);
   walkCurb(block, 0.55, rng.range(12, 20), rng.range(6, 12), (x, z) => {
     if (!rng.chance(0.5) || onRoadCheck(x, z)) return;
-    if (city.props.some((p) => p.type === 'lamp' && Math.abs(p.x - x) < 3 && Math.abs(p.z - z) < 3)) return;
+    if (ctx.lampGrid.some(x, z, 3, (p) => p.type === 'lamp' && Math.abs(p.x - x) < 3 && Math.abs(p.z - z) < 3)) return;
     addProp(ctx, { type: 'tree', kind: rng.pick(['mango', 'mango', 'ficus', 'carbonero', 'almendro', 'guayacan', 'guayacanRosado', 'palma', 'aguacate']), x, z, scale: rng.range(0.75, 1.15), collider: { hx: 0.25, hz: 0.25 } });
   });
   // Motos parqueadas en el andén (muy de Medellín).
@@ -1184,7 +1286,7 @@ function addSidewalkProps(ctx, block) {
       const t = rng.range(1.5, s.len - 1.5);
       const x = s.x0 + s.tx * t;
       const z = s.z0 + s.tz * t;
-      const clash = city.props.some((p) => p.collider && Math.abs(p.x - x) < 1.8 && Math.abs(p.z - z) < 1.8) || city.parkedVehicles.some((v) => Math.hypot(v.x - x, v.z - z) < 2.2) || onRoadCheck(x, z);
+      const clash = ctx.solidGrid.some(x, z, 1.8, (p) => p.collider && Math.abs(p.x - x) < 1.8 && Math.abs(p.z - z) < 1.8) || ctx.motoGrid.some(x, z, 2.2, (v) => Math.hypot(v.x - x, v.z - z) < 2.2) || onRoadCheck(x, z);
       if (clash) continue;
       city.parkedVehicles.push({ type: 'moto', x, z, heading: Math.atan2(-s.tx, -s.tz) });
       break;
@@ -1642,11 +1744,21 @@ function addPowerLines(ctx) {
  * queda sobre el centro del andén (por donde caminan los peatones).
  */
 function addStreetLife(city, rng) {
-  const solids = city.props.filter((p) => p.collider);
+  // Utilería sólida (la que ya había y la que se va poniendo: todo pasa por
+  // city.props) y motos parqueadas en rejillas: mismas respuestas, sin
+  // recorrer miles de objetos por cada silla o caneca.
+  const solids = new NearGrid(
+    city.props,
+    (p) => p.collider,
+    (p) => p.collider.hx ?? 0.3,
+    (p) => p.collider.hz ?? 0.3,
+  );
+  const motos = new NearGrid(city.parkedVehicles, () => true);
+  const blockAt = blockFinder(city);
   const added = [];
   const blocked = (x, z, r) => {
-    for (const p of solids) if (Math.abs(p.x - x) < r + (p.collider.hx ?? 0.3) && Math.abs(p.z - z) < r + (p.collider.hz ?? 0.3)) return true;
-    for (const v of city.parkedVehicles) if (Math.hypot(v.x - x, v.z - z) < r + 2.6) return true;
+    if (solids.some(x, z, r, (p) => Math.abs(p.x - x) < r + (p.collider.hx ?? 0.3) && Math.abs(p.z - z) < r + (p.collider.hz ?? 0.3))) return true;
+    if (motos.some(x, z, r + 2.6, (v) => Math.hypot(v.x - x, v.z - z) < r + 2.6)) return true;
     for (const poi of city.pois) if (Math.hypot(poi.x - x, poi.z - z) < r + 3) return true;
     if (Math.hypot(city.spawn.x - x, city.spawn.z - z) < r + 2) return true;
     if (city.collision.pointBlocked(x, z)) return true;
@@ -1661,7 +1773,6 @@ function addStreetLife(city, rng) {
     if (city.inStation?.(p.x, p.z)) return null;
     city.props.push(p);
     added.push(p);
-    if (p.collider) solids.push(p);
     return p;
   };
   const ground = (x, z) => terrainHeight(x, z) + GRID.curb;
@@ -1768,7 +1879,7 @@ function addStreetLife(city, rng) {
       const x = n.x + Math.cos(ang) * r;
       const z = n.z + Math.sin(ang) * r;
       if (onRoadCheck(x, z)) continue;
-      const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+      const block = blockAt(x, z);
       if (!block || distToPolyEdge(x, z, block.curb) > 0.9) continue;
       if (place({ type: 'streetSign', x, z, names: names.slice(0, 2), rots, collider: { hx: 0.07, hz: 0.07 } }, block)) break;
     }
@@ -1784,7 +1895,7 @@ function addStreetLife(city, rng) {
     const off = c.hw + 0.6;
     const x = c.x - c.dz * off * side;
     const z = c.z + c.dx * off * side;
-    const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+    const block = blockAt(x, z);
     if (!block) continue;
     const rot = Math.atan2(c.dz * side, -c.dx * side);
     if (place({ type: 'busStop', x, z, rot, name: st.n ?? '', collider: { hx: 0.8, hz: 0.8, maxY: ground(x, z) + 0.9 } }, block)) realStops.push({ x, z });
@@ -1800,7 +1911,7 @@ function addStreetLife(city, rng) {
       const x = p.x - p.dz * off * side;
       const z = p.z + p.dx * off * side;
       if (!insideMap(x, z)) continue;
-      const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+      const block = blockAt(x, z);
       if (!block) continue;
       const rot = Math.atan2(p.dz * side, -p.dx * side);
       if (place({ type: 'busStop', x, z, rot, collider: { hx: 0.8, hz: 0.8, maxY: ground(x, z) + 0.9 } }, block)) break;
@@ -1817,7 +1928,7 @@ function addStreetLife(city, rng) {
         const x = sx + Math.cos(a) * r;
         const z = sz + Math.sin(a) * r;
         if (onRoadCheck(x, z) || !insideMap(x, z)) continue;
-        const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+        const block = blockAt(x, z);
         if (!block || distToPolyEdge(x, z, block.curb) > 0.7) continue;
         const arm = Math.min(4.2, Math.max(2, r * 0.55));
         if (place({ type: 'trafficLight', x, z, rot: Math.atan2(sx - x, sz - z), arm, collider: { hx: 0.12, hz: 0.12 } }, block)) done = true;
@@ -1839,7 +1950,7 @@ function addStreetLife(city, rng) {
       const x = sp.x + Math.cos(ang) * rr;
       const z = sp.z + Math.sin(ang) * rr;
       if (onRoadCheck(x, z)) continue;
-      const block = city.blocks.find((b) => b.ring && x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && pointInPoly(x, z, b.curb));
+      const block = blockAt(x, z);
       if (!block) continue;
       // Solo sobre el andén (entre sardinel y paramento).
       if (block.lots.some((l) => pointInPoly(x, z, l))) continue;

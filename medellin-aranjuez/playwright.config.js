@@ -2,6 +2,11 @@ import { defineConfig } from '@playwright/test';
 
 // En este contenedor se usa el Chromium preinstalado; en CI/Windows, el de Playwright.
 const executablePath = process.env.PW_CHROMIUM || undefined;
+// Por defecto se dibuja por software (SwiftShader), igual en todas partes. Con
+// PW_GPU=1 se usa la tarjeta de video de la máquina: en un PC con GPU las
+// pruebas de vehículos pasan de horas a minutos.
+const gpuArgs = process.platform === 'win32' ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--enable-gpu', '--ignore-gpu-blocklist'];
+const renderArgs = process.env.PW_GPU === '1' ? gpuArgs : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 
 // Tres proyectos sobre el mismo build (dist/):
 //  - juego:  la partida completa con ?autotest (teclado, ratón, misiones…).
@@ -20,7 +25,7 @@ export default defineConfig({
     viewport: { width: 800, height: 450 },
     launchOptions: {
       executablePath,
-      args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+      args: renderArgs,
     },
   },
   projects: [

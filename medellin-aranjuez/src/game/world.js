@@ -12,6 +12,7 @@ import { POLICE_AI, canSee, planOfficerSearch, planPatrol } from '../sim/policeA
 import { VehicleView } from '../render/vehicleMesh.js';
 import { pickVariant, randomPaint } from '../sim/vehicleVariants.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
+import { skipWhenHidden } from '../render/staticScene.js';
 import { walkStyle, walkSpeedScale, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
 import { Activities } from './activities.js';
 
@@ -458,13 +459,17 @@ export class World {
       // pequeños como las motos, desde más cerca).
       const dv = dist2D(s.x, s.z, camPos.x, camPos.z);
       const moving = v.driver || Math.abs(s.forwardSpeed) > 0.5 || v.burnTimer >= 0;
+      // Oculto, three tampoco le recalcula las matrices (render/staticScene.js);
+      // al volverse visible se actualiza en el siguiente dibujo.
       v.view.group.visible = dv < (moving ? q.vehicleDraw ?? 260 : q.parkedDraw ?? 120);
+      skipWhenHidden(v.view.group);
       if (v.view.group.visible) v.view.sync(s, dt, night, v.siren);
       if (v.driverRig) {
         // Conductores: solo se dibujan (y animan) de cerca; en moto se ven desde más lejos.
         const dc = dist2D(s.x, s.z, camPos.x, camPos.z);
         const show = dc < (v.type === 'moto' ? q.driverDraw * 1.6 : q.driverDraw);
         v.driverRig.root.visible = show;
+        skipWhenHidden(v.driverRig.root);
         if (show) {
           v.driverRig.setShadow(dc < q.shadowChars);
           v.driverRig.animate(dt, { speed: 0, onGround: true, driving: v.type === 'moto' ? 'moto' : 'car' });
@@ -536,6 +541,7 @@ export class World {
       const dc = dist2D(s.x, s.z, camPos.x, camPos.z);
       const visible = dc < this.quality.pedDraw;
       p.rig.root.visible = visible;
+      skipWhenHidden(p.rig.root);
       if (visible) {
         p.rig.setShadow(dc < this.quality.shadowChars);
         const body = this._body(p, s, dt);

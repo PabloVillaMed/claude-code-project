@@ -33,10 +33,16 @@ const T = MAPA.terrain;
 const HGT = Float32Array.from(T.dm, (v) => v / 10 - GEO_REF);
 const EDGE_BLEND = 180; // m: en el borde de la rejilla se funde con el valle
 
+const NX = T.nx;
+const NZ = T.nz;
+const TX0 = T.x0;
+const TZ0 = T.z0;
+const TSTEP = T.step;
+
 function cell(i, j) {
-  i = i < 0 ? 0 : i >= T.nx ? T.nx - 1 : i;
-  j = j < 0 ? 0 : j >= T.nz ? T.nz - 1 : j;
-  return HGT[j * T.nx + i];
+  i = i < 0 ? 0 : i >= NX ? NX - 1 : i;
+  j = j < 0 ? 0 : j >= NZ ? NZ - 1 : j;
+  return HGT[j * NX + i];
 }
 
 // Catmull-Rom: continuo en pendiente (sin quiebres en los bordes de celda).
@@ -44,13 +50,28 @@ function cr(p0, p1, p2, p3, t) {
   return p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 }
 
+// Es lo que más se llama al construir el mundo (cada vértice colgado del
+// terreno y sus normales): adentro de la rejilla lee las 16 alturas seguidas,
+// sin recortar índices ni crear funciones; las mismas cuentas en el mismo
+// orden, así que da exactamente lo mismo que el camino general del borde.
 function gridHeight(x, z) {
-  const u = (x - T.x0) / T.step;
-  const v = (z - T.z0) / T.step;
+  const u = (x - TX0) / TSTEP;
+  const v = (z - TZ0) / TSTEP;
   const i = Math.floor(u);
   const j = Math.floor(v);
   const fu = u - i;
   const fv = v - j;
+  if (i >= 1 && i + 2 < NX && j >= 1 && j + 2 < NZ) {
+    let k = (j - 1) * NX + i - 1;
+    const r0 = cr(HGT[k], HGT[k + 1], HGT[k + 2], HGT[k + 3], fu);
+    k += NX;
+    const r1 = cr(HGT[k], HGT[k + 1], HGT[k + 2], HGT[k + 3], fu);
+    k += NX;
+    const r2 = cr(HGT[k], HGT[k + 1], HGT[k + 2], HGT[k + 3], fu);
+    k += NX;
+    const r3 = cr(HGT[k], HGT[k + 1], HGT[k + 2], HGT[k + 3], fu);
+    return cr(r0, r1, r2, r3, fv);
+  }
   const row = (jj) => cr(cell(i - 1, jj), cell(i, jj), cell(i + 1, jj), cell(i + 2, jj), fu);
   return cr(row(j - 1), row(j), row(j + 1), row(j + 2), fv);
 }
@@ -71,13 +92,73 @@ for (let k = 1; k < RIVER.pts.length; k++) {
 }
 const RIVER_R = RIVER.half + RIVER.bank;
 
+// Índice espacial del río: celdas de RIVER_CS m con los tramos cuya caja
+// (ampliada en RIVER_R) las toca, en su orden original. Un tramo que no está en
+// la celda del punto tampoco pasaría la prueba de caja, así que el mínimo sale
+// exactamente igual que recorriéndolos todos (y se hace la misma prueba).
+const RIVER_CS = 32;
+const RS = 9; // por tramo: ax, az, dx, dz, l2, minX−R, maxX+R, minZ−R, maxZ+R
+const RIVER_F = new Float64Array(RIVER_SEGS.length * RS);
+let RX0 = Infinity;
+let RX1 = -Infinity;
+let RZ0 = Infinity;
+let RZ1 = -Infinity;
+for (const [n, s] of RIVER_SEGS.entries()) {
+  const o = n * RS;
+  RIVER_F[o] = s.ax;
+  RIVER_F[o + 1] = s.az;
+  RIVER_F[o + 2] = s.dx;
+  RIVER_F[o + 3] = s.dz;
+  RIVER_F[o + 4] = s.l2;
+  RIVER_F[o + 5] = s.minX - RIVER_R;
+  RIVER_F[o + 6] = s.maxX + RIVER_R;
+  RIVER_F[o + 7] = s.minZ - RIVER_R;
+  RIVER_F[o + 8] = s.maxZ + RIVER_R;
+  RX0 = Math.min(RX0, RIVER_F[o + 5]);
+  RX1 = Math.max(RX1, RIVER_F[o + 6]);
+  RZ0 = Math.min(RZ0, RIVER_F[o + 7]);
+  RZ1 = Math.max(RZ1, RIVER_F[o + 8]);
+}
+const RNI = RIVER_SEGS.length ? Math.floor((RX1 - RX0) / RIVER_CS) + 1 : 0;
+const RNJ = RIVER_SEGS.length ? Math.floor((RZ1 - RZ0) / RIVER_CS) + 1 : 0;
+const RIVER_START = new Int32Array(RNI * RNJ + 1);
+let RIVER_LIST = new Int32Array(0);
+{
+  // Dos pasadas (contar y llenar) para dejar las listas seguidas en un solo arreglo.
+  const span = (o) => [Math.floor((RIVER_F[o + 5] - RX0) / RIVER_CS), Math.floor((RIVER_F[o + 6] - RX0) / RIVER_CS), Math.floor((RIVER_F[o + 7] - RZ0) / RIVER_CS), Math.floor((RIVER_F[o + 8] - RZ0) / RIVER_CS)];
+  const count = new Int32Array(RNI * RNJ);
+  for (let n = 0; n < RIVER_SEGS.length; n++) {
+    const [i0, i1, j0, j1] = span(n * RS);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) count[j * RNI + i]++;
+  }
+  for (let c = 0; c < count.length; c++) RIVER_START[c + 1] = RIVER_START[c] + count[c];
+  RIVER_LIST = new Int32Array(RIVER_START[count.length]);
+  const fill = RIVER_START.slice(0, count.length);
+  for (let n = 0; n < RIVER_SEGS.length; n++) {
+    const [i0, i1, j0, j1] = span(n * RS);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) RIVER_LIST[fill[j * RNI + i]++] = n;
+  }
+}
+
 /** Distancia al eje del río (Infinity si está lejos). */
 export function riverDistance(x, z) {
+  // Fuera de la caja de todos los tramos (o NaN): ninguno pasaría la prueba.
+  if (!(x >= RX0 && x <= RX1 && z >= RZ0 && z <= RZ1)) return Infinity;
+  let i = Math.floor((x - RX0) / RIVER_CS);
+  let j = Math.floor((z - RZ0) / RIVER_CS);
+  if (i >= RNI) i = RNI - 1;
+  if (j >= RNJ) j = RNJ - 1;
+  const c = j * RNI + i;
   let best = Infinity;
-  for (const s of RIVER_SEGS) {
-    if (x < s.minX - RIVER_R || x > s.maxX + RIVER_R || z < s.minZ - RIVER_R || z > s.maxZ + RIVER_R) continue;
-    const t = Math.max(0, Math.min(1, ((x - s.ax) * s.dx + (z - s.az) * s.dz) / s.l2));
-    const d = Math.hypot(x - s.ax - s.dx * t, z - s.az - s.dz * t);
+  for (let q = RIVER_START[c], q1 = RIVER_START[c + 1]; q < q1; q++) {
+    const o = RIVER_LIST[q] * RS;
+    if (x < RIVER_F[o + 5] || x > RIVER_F[o + 6] || z < RIVER_F[o + 7] || z > RIVER_F[o + 8]) continue;
+    const ax = RIVER_F[o];
+    const az = RIVER_F[o + 1];
+    const dx = RIVER_F[o + 2];
+    const dz = RIVER_F[o + 3];
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / RIVER_F[o + 4]));
+    const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
     if (d < best) best = d;
   }
   return best;
