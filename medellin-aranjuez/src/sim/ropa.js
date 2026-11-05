@@ -1,6 +1,7 @@
 // Ropa del jugador: el catálogo de los almacenes de la 92 y de Carabobo
 // (gorras, busos, camisetas, jeans, sudaderas, tenis, chanclas, cadena,
-// canguro y gafas), qué se lleva puesto y cómo se guarda en la partida.
+// canguro y gafas) y de los de vestimenta paisa (sombrero aguadeño, poncho,
+// carriel, alpargatas), qué se lleva puesto y cómo se guarda en la partida.
 // Puro y sin three.js: render/outfit.js convierte la pinta en colores del
 // avatar y mallas pegadas a los huesos.
 //
@@ -8,9 +9,9 @@
 // camisetas "de fútbol" son solo colores y rayas).
 
 /** Partes del cuerpo: cada una lleva a lo sumo una prenda. */
-export const SLOTS = ['cabeza', 'torso', 'piernas', 'pies', 'cuello', 'cintura', 'ojos'];
+export const SLOTS = ['cabeza', 'torso', 'piernas', 'pies', 'cuello', 'cintura', 'ojos', 'hombro'];
 /** Partes que pueden ir vacías (se pueden quitar). */
-export const OPTIONAL = new Set(['cabeza', 'cuello', 'cintura', 'ojos']);
+export const OPTIONAL = new Set(['cabeza', 'cuello', 'cintura', 'ojos', 'hombro']);
 
 // Colores (0xRRGGBB).
 const C = {
@@ -32,6 +33,12 @@ const C = {
   plata: 0xc9ccd1,
   mostaza: 0xc9962b,
   oliva: 0x5b6b35,
+  paja: 0xeee2bf,
+  cuero: 0x6b3f1f,
+  cueroOscuro: 0x3a2312,
+  crudo: 0xe9e2cf,
+  fique: 0xd9c9a3,
+  dril: 0xb9a27a,
 };
 
 /**
@@ -83,12 +90,32 @@ export const ROPA = [
   { id: 'canguro-camuflado', slot: 'cintura', type: 'canguro', name: 'Canguro verde', desc: 'Terciado, con cremallera', price: 80, color: C.oliva, color2: C.negro },
   { id: 'gafas-negras', slot: 'ojos', type: 'gafas', name: 'Gafas oscuras', desc: 'Pa el sol del mediodía', price: 70, color: C.negro },
   { id: 'gafas-espejo', slot: 'ojos', type: 'gafas', name: 'Gafas espejo', desc: 'Lente espejado azul', price: 95, color: C.celeste },
+  // ---- vestimenta paisa (la del arriero, como se lleva hoy en la ciudad)
+  { id: 'sombrero-aguadeno', slot: 'cabeza', type: 'sombrero', name: 'Sombrero aguadeño', desc: 'De paja de iraca, ala ancha y cinta negra', price: 160, color: C.paja, color2: C.negro },
+  { id: 'sombrero-aguadeno-fino', slot: 'cabeza', type: 'sombrero', name: 'Aguadeño fino', desc: 'Tejido apretado, cinta café: pa las fiestas', price: 240, color: 0xf4ecd2, color2: C.cueroOscuro },
+  { id: 'poncho-blanco', slot: 'hombro', type: 'poncho', name: 'Poncho blanco', desc: 'Al hombro, como buen paisa; rayitas negras en las puntas', price: 120, color: C.crudo, color2: C.negro },
+  { id: 'poncho-rayas', slot: 'hombro', type: 'poncho', name: 'Poncho de rayas rojas', desc: 'Pa el sol, el frío y pa saludar', price: 130, color: C.crudo, color2: C.rojo },
+  { id: 'carriel', slot: 'cintura', type: 'carriel', name: 'Carriel de cuero', desc: 'Terciado a la cadera, con sus bolsillos secretos', price: 280, color: C.cuero, color2: C.cueroOscuro },
+  { id: 'carriel-negro', slot: 'cintura', type: 'carriel', name: 'Carriel negro', desc: 'Cuero curtido negro, hebillas de bronce', price: 300, color: 0x241c18, color2: C.dorado },
+  { id: 'alpargatas', slot: 'pies', type: 'alpargatas', name: 'Alpargatas de fique', desc: 'Suela de fique y capellada de lona: frescas', price: 60, color: C.fique, color2: C.negro },
+  { id: 'camisa-blanca-larga', slot: 'torso', type: 'camisa', name: 'Camisa blanca de manga larga', desc: 'La del arriero, arremangada pa trabajar', price: 90, color: C.blanco, long: true },
+  { id: 'camisa-cuadros', slot: 'torso', type: 'camisa', name: 'Camisa de cuadros', desc: 'Manga larga, rayas rojas sobre crudo', price: 100, color: 0xb23a2c, color2: C.crudo, pattern: 'rayas', long: true },
+  { id: 'pantalon-dril', slot: 'piernas', type: 'jean', name: 'Pantalón de dril', desc: 'Color caqui, el de la finca', price: 110, color: C.dril },
+  // ---- ropa gastada de los habitantes de calle (no se vende: hidden)
+  { id: 'harapo', slot: 'torso', type: 'harapo', name: 'Saco viejo', desc: '', price: 0, color: 0x4a4136, long: true, hidden: true },
+  { id: 'harapo-gris', slot: 'torso', type: 'harapo', name: 'Buso viejo', desc: '', price: 0, color: 0x55524c, long: true, hidden: true },
+  { id: 'pantalon-viejo', slot: 'piernas', type: 'pantalon-viejo', name: 'Pantalón viejo', desc: '', price: 0, color: 0x3b342b, hidden: true },
+  { id: 'chanclas-viejas', slot: 'pies', type: 'chanclas', name: 'Chanclas viejas', desc: '', price: 0, color: 0x2b2b2b, color2: 0x8b8577, hidden: true },
+  { id: 'cobija', slot: 'hombro', type: 'cobija', name: 'Cobija', desc: '', price: 0, color: 0x6e6253, color2: 0x3d352c, hidden: true },
 ];
 
 export const ROPA_BY_ID = Object.fromEntries(ROPA.map((r) => [r.id, r]));
 
-/** La pinta con la que arranca el jugador (la del avatar: camiseta blanca, jean y tenis negros). */
-export const DEFAULT_OUTFIT = Object.freeze({ torso: 'camiseta-blanca', piernas: 'jean-azul', pies: 'tenis-negros' });
+/**
+ * La pinta con la que arranca el jugador: paisa de ciudad, con camisa blanca
+ * de manga larga, jean, tenis blancos, poncho al hombro y carriel.
+ */
+export const DEFAULT_OUTFIT = Object.freeze({ torso: 'camisa-blanca-larga', piernas: 'jean-azul', pies: 'tenis-blancos', hombro: 'poncho-blanco', cintura: 'carriel' });
 
 /**
  * Almacenes de ropa: qué vende cada uno (por id o por tipo) y a qué precio
@@ -100,6 +127,11 @@ export const ROPA_STORES = {
   remates: { ids: ['camiseta-blanca', 'camiseta-negra', 'camiseta-gris', 'sudadera-negra', 'sudadera-gris', 'chanclas', 'gorra-curva-beige', 'gorra-curva-negra', 'canguro-camuflado', 'gafas-negras', 'jean-azul', 'tenis-negros'], factor: 0.7 },
   deportes: { types: ['sudadera', 'tenis'], ids: ['camiseta-verdiblanca', 'camiseta-roja', 'camiseta-amarilla', 'gorra-curva-verde', 'gorra-curva-azul', 'buso-negro', 'chanclas'], factor: 1 },
   gorras52: { types: ['gorra-plana', 'gorra-curva', 'tenis'], ids: ['cadena-dorada', 'gafas-negras'], factor: 1 },
+  // Vestimenta paisa: el sombrero y el poncho donde El Arriero; el cuero en la
+  // talabartería; de todo un poco (y más barato) en el puesto de artesanías.
+  arriero: { types: ['sombrero', 'poncho', 'camisa'], ids: ['pantalon-dril', 'alpargatas'], factor: 1 },
+  talabarteria: { types: ['carriel'], ids: ['canguro-negro', 'alpargatas', 'sombrero-aguadeno', 'sombrero-aguadeno-fino', 'pantalon-dril'], factor: 1.1 },
+  silletera: { ids: ['sombrero-aguadeno', 'poncho-blanco', 'poncho-rayas', 'alpargatas', 'camisa-blanca-larga', 'camisa-cuadros', 'carriel'], factor: 0.85 },
 };
 
 /** Precio de una prenda en un almacén (redondeado a $5). */
@@ -115,7 +147,7 @@ export function storeCatalog(store) {
   const ids = new Set(s.ids ?? []);
   const types = new Set(s.types ?? []);
   const ex = new Set(s.exclude ?? []);
-  return ROPA.filter((r) => !ex.has(r.id) && (ids.has(r.id) || types.has(r.type))).map((r) => ({ ...r, price: priceIn(r, store) }));
+  return ROPA.filter((r) => !r.hidden && !ex.has(r.id) && (ids.has(r.id) || types.has(r.type))).map((r) => ({ ...r, price: priceIn(r, store) }));
 }
 
 /** Pinta nueva con la prenda puesta (reemplaza lo que hubiera en esa parte). */
@@ -137,15 +169,22 @@ export function takeOff(outfit, slot) {
 export function sanitizeOutfit(raw) {
   const out = { ...DEFAULT_OUTFIT };
   if (raw && typeof raw === 'object') {
+    let valid = 0;
     for (const slot of SLOTS) {
       const id = raw[slot];
       if (id === undefined) {
+        // Lo opcional que no está se lo quitó (o nunca lo tuvo un guardado viejo).
         if (OPTIONAL.has(slot)) delete out[slot];
         continue;
       }
       const it = ROPA_BY_ID[id];
-      if (it && it.slot === slot) out[slot] = id;
+      if (it && it.slot === slot) {
+        out[slot] = id;
+        valid++;
+      }
     }
+    // Nada reconocible (guardado dañado): la pinta de siempre, completa.
+    if (!valid) return { ...DEFAULT_OUTFIT };
   }
   return out;
 }

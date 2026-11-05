@@ -170,6 +170,10 @@ const CATS = {
   muerte: { pri: 3, radius: 36, ref: 7, vol: 1 },
   policia: { pri: 4, radius: 55, ref: 10, vol: 1 },
   radio: { pri: 2, radius: 30, ref: 6, vol: 0.8 },
+  limosna: { pri: 2, radius: 14, ref: 4, vol: 0.85 },
+  banda: { pri: 2, radius: 16, ref: 4, vol: 0.9 },
+  campanero: { pri: 3, radius: 45, ref: 8, vol: 1 },
+  balacera: { pri: 3, radius: 70, ref: 10, vol: 1 },
 };
 const catInfo = (cat) => CATS[cat] ?? CATS[cat.split('_')[0]] ?? CATS.charla;
 
@@ -515,7 +519,7 @@ export class Dialogue {
     // Saludo al pasar (de vez en cuando).
     if (this.cool.ready('saludo', this.now) && p.speed < 6 && !p.aiming) {
       for (const q of peds) {
-        if (q.faction !== 'civil' || !q.alive || q.sim?.mode === 'flee' || this._inConversation(q) || this._speaking(q)) continue;
+        if (q.faction !== 'civil' || q.calle || !q.alive || q.sim?.mode === 'flee' || this._inConversation(q) || this._speaking(q)) continue;
         if (Math.abs(q.x - p.x) > 4 || Math.abs(q.z - p.z) > 4 || d2(q, p) > 3.8) continue;
         if (!this.cool.ready(`saludo|${q.id}`, this.now)) continue;
         this.cool.set(`saludo|${q.id}`, this.now, 90);
@@ -528,7 +532,7 @@ export class Dialogue {
     // Alguien quieto hablando solo.
     if (this.cool.ready('comentario', this.now)) {
       for (const q of peds) {
-        if (q.faction !== 'civil' || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
+        if (q.faction !== 'civil' || q.calle || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
         if (d2(q, p) > 7) continue;
         if (this.rand() < 0.3 && this.speak(q, 'comentario', { hour })) this.cool.set('comentario', this.now, 30 + this.rand() * 25);
         else this.cool.set('comentario', this.now, 4);
@@ -635,6 +639,11 @@ export class Dialogue {
   }
 
   /** Dice una línea de la categoría con la voz del hablante. Devuelve la voz o null. */
+  /** Corta lo que esté diciendo `speaker` (para que diga otra cosa de una). */
+  interrupt(speaker) {
+    for (const u of this.active) if (u.speaker === speaker && !u.done) this._stop(u);
+  }
+
   speak(speaker, cat, opts = {}) {
     const voice = opts.voice ?? (speaker.radio ? null : this.voiceOf(speaker));
     const line = this.picker.pick(cat, { voice, hour: opts.hour, kind: opts.kind }, this.rand);
@@ -686,6 +695,8 @@ export class Dialogue {
   _label(speaker, line) {
     if (speaker.radio) return 'Radio';
     if (speaker.faction === 'police') return 'Policía';
+    if (speaker.calle) return 'Habitante de calle';
+    if (speaker.faction === 'banda') return speaker.look?.female ? 'Muchacha' : 'Muchacho';
     const f = speaker.look?.female;
     if (line.cat === 'pregon') return f ? 'Vendedora' : 'Vendedor';
     return f ? 'Vecina' : 'Vecino';

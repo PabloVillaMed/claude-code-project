@@ -246,6 +246,42 @@ export class Combat {
     }
   }
 
+  /**
+   * Un NPC le dispara a otro (las balaceras entre bandas): la misma balística,
+   * fogonazo, trazadora y sonido; si la bala se cruza con el jugador, le pega.
+   * `spread`: dispersión (las balaceras de esquina son a lo loco). Devuelve
+   * si disparó (sin línea de vista no dispara).
+   */
+  npcShootAt(ped, target, { spread = 0.06 } = {}) {
+    const w = WEAPON_BY_ID[ped.weapon ?? 'pistol'];
+    if (!w || w.kind !== 'gun') return false;
+    const eye = { x: ped.x, y: ped.y + 1.45, z: ped.z };
+    const tgt = { x: target.x, y: (target.y ?? 0) + 1.1, z: target.z };
+    if (!this.lineOfSight(eye, tgt)) return false;
+    ped.sim.yaw = yawFromDir(tgt.x - eye.x, tgt.z - eye.z);
+    const dx = tgt.x - eye.x;
+    const dy = tgt.y - eye.y;
+    const dz = tgt.z - eye.z;
+    const dl = Math.hypot(dx, dy, dz);
+    const base = { x: dx / dl, y: dy / dl, z: dz / dl };
+    const sigma = spread + dl * 0.0012;
+    const d = deviate(base, (Math.random() - 0.5) * 2 * sigma, (Math.random() - 0.5) * 2 * sigma);
+    // Lejos (sin dibujar) el esqueleto no se actualiza: el tiro sale de los ojos.
+    const muzzle = ped.rig.root.visible ? ped.rig.muzzleWorld(v3).clone() : new THREE.Vector3(eye.x + base.x * 0.5, eye.y - 0.1, eye.z + base.z * 0.5);
+    const g = this.game;
+    const hit = traceShot(muzzle, d, w.range, this._scene(new Set([ped])));
+    g.effects.muzzleFlash(muzzle, d);
+    g.effects.tracer(muzzle, new THREE.Vector3(hit.x, hit.y, hit.z));
+    g.audio.gunshot(w.id, muzzle);
+    g.events?.emit('shot', { x: muzzle.x, z: muzzle.z, by: ped.faction, weapon: w.id });
+    if (hit.kind === 'character' && hit.ref === g.player) {
+      this.damagePlayer(computeDamage(w, dl, false) * 0.5, eye);
+      g.effects.impact({ x: hit.x, y: hit.y, z: hit.z }, hit.normal, 'blood');
+      g.audio.bulletImpact('character', hit);
+    } else this._applyHit(hit, w, 'npc', muzzle);
+    return true;
+  }
+
   explode(pos, source) {
     const g = this.game;
     g.effects.explosion(pos);

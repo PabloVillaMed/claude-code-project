@@ -27,7 +27,9 @@ describe('catálogo de ropa paisa', () => {
       expect(ids.has(r.id), r.id).toBe(false);
       ids.add(r.id);
       expect(SLOTS).toContain(r.slot);
-      expect(r.price).toBeGreaterThan(0);
+      // Lo oculto (la ropa gastada de los habitantes de calle) no se vende.
+      if (r.hidden) expect(ROPA_STORES && Object.keys(ROPA_STORES).every((s) => !storeCatalog(s).some((x) => x.id === r.id)), r.id).toBe(true);
+      else expect(r.price).toBeGreaterThan(0);
       expect(r.price).toBeLessThanOrEqual(400); // ropa: más barata que una pistola ($800)
       expect(r.name.length).toBeGreaterThan(3);
     }
@@ -35,6 +37,8 @@ describe('catálogo de ropa paisa', () => {
     // fútbol, jeans y sudaderas, tenis, chanclas, cadena, canguro, gafas.
     const types = new Set(ROPA.map((r) => r.type));
     for (const t of ['gorra-plana', 'gorra-curva', 'buso', 'camiseta', 'jean', 'sudadera', 'tenis', 'chanclas', 'cadena', 'canguro', 'gafas']) expect(types.has(t), t).toBe(true);
+    // Y la vestimenta paisa: sombrero aguadeño, poncho, carriel, alpargatas y camisa de manga larga.
+    for (const t of ['sombrero', 'poncho', 'carriel', 'alpargatas', 'camisa']) expect(types.has(t), t).toBe(true);
     expect(ROPA_BY_ID['camiseta-verdiblanca'].pattern).toBe('rayas');
     expect(ROPA_BY_ID['camiseta-roja'].color).toBeTruthy();
     // Nada de marcas ni escudos en los nombres.
@@ -95,10 +99,10 @@ describe('catálogo de ropa paisa', () => {
 });
 
 describe('almacenes de ropa en el barrio', () => {
-  it('cinco almacenes en la 92 y en Carabobo, con aviso y vitrina de ropa', () => {
+  it('ocho almacenes (cinco de ropa y tres de vestimenta paisa), con aviso y vitrina de ropa', () => {
     const c = city();
     const stores = c.pois.filter((p) => p.type === 'ropa');
-    expect(stores.length).toBe(5);
+    expect(stores.length).toBe(8);
     for (const p of stores) {
       expect(ROPA_STORES[p.store], p.id).toBeTruthy();
       const b = c.buildings.find((q) => q.local?.name === p.name);
@@ -118,5 +122,8 @@ describe('almacenes de ropa en el barrio', () => {
     expect(names).toMatch(/Boutique/);
     expect(names).toMatch(/Remates/);
     expect(names).toMatch(/Deportes/);
+    expect(names).toMatch(/Arriero/);
+    expect(names).toMatch(/Talabartería/);
+    expect(names).toMatch(/Silletera/);
   });
 });

@@ -571,7 +571,6 @@ export class CityRenderer {
       if (!groups.has(key)) groups.set(key, new GeoBuilder());
       return groups.get(key);
     };
-    const concrete = get('concrete');
     const out = { tanks: [], rebar: [] };
     const rng = makeRng(123);
     const murals = [];
@@ -614,8 +613,10 @@ export class CityRenderer {
       const parapet = roofParapet(b);
       for (const side of ['S', 'N', 'W', 'E']) {
         const f = faceFrame(b, side);
-        // Cimiento visible en la ladera (concreto) + fachada.
-        if (groundY - baseY > 0.05) concrete.wall(f.x0, f.z0, f.nx, f.nz, f.len, baseY, groundY, 3, [0.8, 0.78, 0.74]);
+        // Cimiento visible en la ladera: el mismo ladrillo o pañete de la casa,
+        // más oscuro y sucio (antes era concreto casi blanco y la casa parecía
+        // montada sobre una base) + fachada.
+        if (groundY - baseY > 0.05) g.wall(f.x0, f.z0, f.nx, f.nz, f.len, baseY, groundY, uvScale, color.map((c) => c * 0.62), uOff, groundY);
         if (!layout) g.wall(f.x0, f.z0, f.nx, f.nz, f.len, groundY, topY + parapet, uvScale, color, uOff, groundY);
       }
       if (layout) this.facades.add(b, layout, parapet);

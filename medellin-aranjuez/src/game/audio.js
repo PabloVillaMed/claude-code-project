@@ -750,6 +750,30 @@ export class AudioSystem {
     src.stop(t + dur + 0.02);
   }
 
+  /** Animales de la calle (sim/animals.js): ladrido, maullido o chillido de rata, más bajito con la distancia. */
+  animal(kind, pos) {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.master) return;
+    const d = Math.hypot(pos.x - this.listener.x, pos.z - this.listener.z);
+    const k = Math.max(0, 1 - d / (kind === 'ladrido' ? 70 : 25));
+    if (k < 0.03) return;
+    const t = this.ctx.currentTime;
+    if (kind === 'ladrido') {
+      const barks = 1 + Math.floor(Math.random() * 3);
+      const f = 420 + Math.random() * 380;
+      for (let i = 0; i < barks; i++) {
+        this._noiseHit(t + i * 0.3, 0.15, 0.12 * k, f, 4);
+        this._tone(f * 0.5, t + i * 0.3, 0.12, 0.05 * k, 'sawtooth', this.master, -120);
+      }
+    } else if (kind === 'maullido') {
+      const f = 620 + Math.random() * 260;
+      this._tone(f, t, 0.2, 0.035 * k, 'triangle', this.master, 240);
+      this._tone(f + 240, t + 0.2, 0.38, 0.03 * k, 'triangle', this.master, -400);
+    } else {
+      this._tone(3100 + Math.random() * 900, t, 0.07, 0.018 * k, 'sine', this.master, 700);
+      this._tone(3500 + Math.random() * 700, t + 0.09, 0.06, 0.014 * k, 'sine', this.master, -500);
+    }
+  }
+
   /**
    * Ambiente: pájaros de día, grillos de noche, perros a lo lejos, la música
    * (cumbia) de la tienda más cercana y las campanas de la iglesia cada hora.

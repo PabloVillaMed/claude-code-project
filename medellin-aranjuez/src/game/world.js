@@ -276,7 +276,7 @@ export class World {
   /** Llena de inmediato el barrio alrededor de (x, z) con peatones y tráfico. */
   populate(x, z) {
     let guard = 0;
-    while (this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed).length < this.quality.peds && guard++ < this.quality.peds * 3) this.spawnPed(x, z, 12, 110);
+    while (this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed && !p.calle).length < this.quality.peds && guard++ < this.quality.peds * 3) this.spawnPed(x, z, 12, 110);
     guard = 0;
     while (this.vehicles.filter((v) => v.kind === 'traffic').length < this.quality.traffic && guard++ < this.quality.traffic * 3) this.spawnTraffic(x, z, 30, 200);
   }
@@ -336,7 +336,8 @@ export class World {
       this.spawnTimer = 0.4;
       const traffic = this.vehicles.filter((v) => v.kind === 'traffic').length;
       if (traffic < this.quality.traffic) this.spawnTraffic(px, pz);
-      const civ = this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed).length;
+      // Los habitantes de calle (game/streetLife.js) no cuentan en el cupo.
+      const civ = this.peds.filter((p) => p.faction === 'civil' && !p.sim.fixed && !p.calle).length;
       if (civ < this.quality.peds) this.spawnPed(px, pz);
       // Despawn lejano.
       for (const v of [...this.vehicles]) {
@@ -485,8 +486,10 @@ export class World {
       const d = dist2D(s.x, s.z, player.x, player.z);
       if (p.alive) {
         // Hostiles: detectar y atacar al jugador.
-        if (p.faction !== 'civil' && !p.police) {
-          const hostileNow = p.faction === 'gang' ? p.alerted || d < p.aggroRange : this.game.wanted.level > 0;
+        // (Los de las plazas solo atacan si los provocan; en una balacera entre
+        // bandas los maneja game/streetLife.js.)
+        if (p.faction !== 'civil' && !p.police && !p.war) {
+          const hostileNow = p.faction === 'gang' ? p.alerted || d < p.aggroRange : p.faction === 'banda' ? p.alerted : this.game.wanted.level > 0;
           if (hostileNow && !player.dead) {
             p.alerted = true;
             s.mode = 'attack';
@@ -499,7 +502,7 @@ export class World {
         }
         if (s.fixed) {
           // Quietos (sentados o atendiendo) hasta que algo los asuste.
-          const th = this.threats.find((t) => dist2D(t.x, t.z, s.x, s.z) < t.radius);
+          const th = p.faction === 'banda' ? null : this.threats.find((t) => dist2D(t.x, t.z, s.x, s.z) < t.radius);
           if (th && p.act?.threat(p, th)) {
             // La actividad se encarga (la del balcón se entra a la casa).
           } else if (th) {
@@ -549,7 +552,7 @@ export class World {
           speed: s.speed ?? 0,
           onGround: true,
           driving: s.sitting ? 'chair' : null,
-          aiming: s.mode === 'attack' && !!p.weapon && s.speed < 0.5,
+          aiming: (s.mode === 'attack' || !!p.war) && !!p.weapon && s.speed < 0.5,
           dead: !p.alive,
           aimPitch: 0,
           style: body.style,
@@ -600,7 +603,7 @@ export class World {
     if (s.mode !== p.lastMode) {
       p.lastMode = s.mode;
       p.stops++;
-      p.activity = s.fixed ? null : s.mode === 'idle' ? standingActivity(p.id, p.stops) : s.mode === 'walk' ? walkingActivity(p.id, p.stops) : null;
+      p.activity = s.fixed ? (p.fixedActivity ?? null) : s.mode === 'idle' ? standingActivity(p.id, p.stops) : s.mode === 'walk' ? walkingActivity(p.id, p.stops) : null;
     }
     const u = alive ? (dlg?.speechOf?.(p) ?? null) : null;
     if (u !== p.lastSpeech) {
@@ -617,7 +620,7 @@ export class World {
       upper = 'listen';
       // (Azar visual con Math.random: no gasta el generador de la simulación.)
       if (!p.rig.gesture && Math.random() < dt * 0.12) p.rig.play(Math.random() < 0.8 ? 'nod' : 'laugh', { fadeIn: 0.3 });
-    } else if (p.faction === 'civil' && (s.mode === 'idle' || s.mode === 'walk')) upper = p.activity;
+    } else if ((p.faction === 'civil' || p.faction === 'banda') && (s.mode === 'idle' || s.mode === 'walk')) upper = p.activity;
     return {
       style: alive && p.health < 45 ? 'injured' : p.walkStyle,
       upper,

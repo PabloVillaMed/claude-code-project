@@ -446,6 +446,28 @@ function exclusions(city) {
 }
 
 // ------------------------------------------------------------------ casas
+/**
+ * Cuánto se puede meter en la ladera la parte de atrás de una casa (m). En
+ * las calles comerciales, poco: los locales muestran su interior y el patio
+ * del lote (que sigue el terreno) no debe asomar adentro.
+ */
+const BURY = 1.6;
+const BURY_SHOP = 0.45;
+
+/** ¿La fachada principal da a la 92, la 51 o Carabobo? */
+function frontsCommercial(frame) {
+  const r = roadAt(frame.x + frame.nx * (frame.hv + GRID.sidewalk + 1.5), frame.z + frame.nz * (frame.hv + GRID.sidewalk + 1.5), 1);
+  return !!r && COMMERCIAL_STREETS.has(MAPA.edges[r.edge].name);
+}
+
+/** Altura del terreno en la fachada principal (sus dos esquinas y el centro). */
+function frontHeight(frame) {
+  const { x, z, nx, nz, ux, uz, hu, hv } = frame;
+  const fx = x + nx * hv;
+  const fz = z + nz * hv;
+  return Math.max(terrainHeight(fx, fz), terrainHeight(fx - ux * hu * 0.9, fz - uz * hu * 0.9), terrainHeight(fx + ux * hu * 0.9, fz + uz * hu * 0.9));
+}
+
 function footprintHeights(frame) {
   const pts = [...frameCorners(frame), [frame.x, frame.z]];
   const hs = pts.map(([x, z]) => terrainHeight(x, z));
@@ -460,7 +482,12 @@ function addBuilding(ctx, frame, b) {
   const fh = footprintHeights(frame);
   const floors = b.floors ?? 2;
   const baseY = fh.min - 0.6;
-  const groundY = fh.max + GRID.curb;
+  // El primer piso va al nivel del andén de la fachada: en la ladera la parte
+  // de atrás se mete en el terreno (hasta BURY m) en vez de levantar la casa
+  // entera sobre un cimiento alto (se veía elevada 1-2 m sobre una base clara).
+  const bury = b.style === 'tienda' || frontsCommercial(frame) ? BURY_SHOP : BURY;
+  const floorAt = b.topY === undefined && (b.front ?? 'S') === 'S' ? Math.max(frontHeight(frame), fh.max - bury) : fh.max;
+  const groundY = floorAt + GRID.curb;
   const topY = b.topY ?? groundY + (b.height ?? floors * FLOOR_H);
   const bb = frameBounds(frame);
   const building = {
@@ -1503,6 +1530,10 @@ export const LOCAL_SPOTS = [
   { id: 'remates', name: 'Remates Carabobo', at: [-126, 150], street: 'Carrera 52', store: 'remates', desc: 'Todo en promoción: lo básico a precio de fábrica.' },
   { id: 'deportes', name: 'Deportes La Cancha', at: [-138, -30], street: 'Carrera 52', store: 'deportes', desc: 'Camisetas de fútbol sin escudo, sudaderas y tenis.' },
   { id: 'gorras52', name: 'Gorras y Tenis La 52', at: [-100, -200], street: 'Carrera 52', store: 'gorras52', desc: 'Gorras planas y curvas de todos los colores, y tenis.' },
+  // Vestimenta paisa: sombrero aguadeño, poncho, carriel y alpargatas.
+  { id: 'arriero', name: 'Almacén El Arriero', at: [445, -250], street: 'Calle 92', store: 'arriero', desc: 'Sombreros aguadeños, ponchos, camisas de arriero y alpargatas.' },
+  { id: 'talabarteria', name: 'Talabartería Jericó', at: [-115, 60], street: 'Carrera 52', store: 'talabarteria', desc: 'Carrieles de cuero hechos a mano, como los de Jericó.' },
+  { id: 'silletera', name: 'Artesanías La Silletera', near: ['parque', 18, 22], store: 'silletera', desc: 'Lo paisa a buen precio: sombreros, ponchos, carrieles y alpargatas.' },
 ];
 
 /** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */

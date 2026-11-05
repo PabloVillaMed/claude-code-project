@@ -72,28 +72,30 @@ function checksum(root) {
 
 const PARTS = ['buildings', 'props', 'parkedVehicles', 'blocks', 'pois', 'collision', 'metro'];
 
-// Sumas de la ciudad tal como salía antes de acelerar la generación.
+// Sumas de la ciudad tal como salía antes de acelerar la generación (al
+// agregar locales o calles cambian edificios, lugares, utilería y colisión:
+// se actualizan aquí después de revisar que lo demás quedó igual).
 const EXPECTED = {
   4: {
-    all: '33864f7ae34ae37a',
-    counts: [14890, 22430, 261],
-    buildings: 'a4d1fbdc51fe9ecc',
-    props: 'be9819a114df05c3',
+    all: 'bb1a1fd5a20f3920',
+    counts: [14890, 22444, 261],
+    buildings: '34cb4149460fe561',
+    props: '8c619b9d489d05f3',
     parkedVehicles: '8f0b3d83691b3738',
     blocks: '7235efc8f8b15c92',
-    pois: '88278074b861f7bd',
-    collision: 'ca9788ddfde95dd6',
+    pois: '1125c9637ebc58a2',
+    collision: 'd11042e2f8b871bf',
     metro: '8ef5eeef08119bb0',
   },
   7: {
-    all: '7d1e41bde5b07d31',
-    counts: [14916, 22853, 256],
-    buildings: 'e9e44052ff0749c0',
-    props: '8e41c26a5379244d',
+    all: '987c10268812c4c7',
+    counts: [14916, 22846, 256],
+    buildings: '9f6e54bb61559541',
+    props: 'e531dde01ab999fd',
     parkedVehicles: '0f48bb75fb91742c',
     blocks: '7235efc8f8b15c92',
-    pois: '584851b39d269ac2',
-    collision: 'f183cac0ff35f46a',
+    pois: '36817d49f7283733',
+    collision: '4f3e724d728af3b2',
     metro: '8ef5eeef08119bb0',
   },
 };

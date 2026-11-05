@@ -1134,6 +1134,12 @@ h3 {
   z-index: 30;
   transition: opacity 0.35s linear;
 }
+/* En el menú principal el velo solo oscurece la ciudad del fondo (el corte
+   entre una toma y otra): el panel, la leyenda y el pie van encima y no
+   parpadean. Al salir a jugar se van con su propia animación. */
+body.menu-open #menu {
+  z-index: 32;
+}
 
 #letterbox i {
   position: fixed;

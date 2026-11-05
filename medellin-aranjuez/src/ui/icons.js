@@ -46,8 +46,12 @@ const ROPA_SHAPES = {
   cadena: '<path d="M5 4c0 9 3 12 7 12s7-3 7-12" fill="none" stroke-width="2.2"/><circle cx="12" cy="18" r="2.2"/>',
   canguro: '<rect x="4" y="9" width="16" height="9" rx="4"/><path d="M5 9L15 2" fill="none" stroke-width="1.6"/>',
   gafas: '<ellipse cx="7" cy="12" rx="4.5" ry="3.3"/><ellipse cx="17" cy="12" rx="4.5" ry="3.3"/><path d="M11 11h2" fill="none"/>',
+  sombrero: '<ellipse cx="12" cy="16" rx="10" ry="3"/><path d="M7 15.5V9c0-2 2.5-3 5-3s5 1 5 3v6.5"/><path d="M7 13.2h10" stroke-width="1.8"/>',
+  poncho: '<path d="M5 4h6v16H5zM13 4h6v16h-6z"/><path d="M5 17h6M13 17h6M5 18.6h6M13 18.6h6" fill="none"/><path d="M11 4c0-1.5 2-1.5 2 0" fill="none"/>',
+  carriel: '<path d="M5 9h14v6a5 5 0 01-5 5h-4a5 5 0 01-5-5z"/><path d="M5 9h14v4H5z"/><path d="M6 9L16 2" fill="none" stroke-width="1.6"/><rect x="11" y="12" width="2" height="2"/>',
+  alpargatas: '<path d="M3 17c0-3 2-5 5-5h5l4 2 4 1v2z"/><path d="M3 19h18" stroke-width="2.4"/><path d="M9 12v5M13 12v5" fill="none"/>',
 };
-const ROPA_SHAPE_OF = { 'gorra-plana': 'gorra', 'gorra-curva': 'gorra', camiseta: 'camiseta', buso: 'buso', jean: 'pantalon', sudadera: 'pantalon', tenis: 'tenis', chanclas: 'chanclas', cadena: 'cadena', canguro: 'canguro', gafas: 'gafas' };
+const ROPA_SHAPE_OF = { 'gorra-plana': 'gorra', 'gorra-curva': 'gorra', camiseta: 'camiseta', camisa: 'camiseta', buso: 'buso', jean: 'pantalon', sudadera: 'pantalon', tenis: 'tenis', chanclas: 'chanclas', alpargatas: 'alpargatas', cadena: 'cadena', canguro: 'canguro', carriel: 'carriel', gafas: 'gafas', sombrero: 'sombrero', poncho: 'poncho' };
 
 /** Ícono de una prenda del catálogo (sim/ropa.js), con su color. */
 export function ropaIconHtml(item) {

@@ -90,6 +90,10 @@ export const LOCALES = [
   ['Remates Carabobo', 'ropa', 'Todo en promoción · Precios de fábrica'],
   ['Deportes La Cancha', 'ropa', 'Camisetas · Sudaderas · Tenis'],
   ['Gorras y Tenis La 52', 'ropa', 'Gorras planas y curvas · Tenis'],
+  // Vestimenta paisa.
+  ['Almacén El Arriero', 'ropa', 'Sombreros · Ponchos · Alpargatas'],
+  ['Talabartería Jericó', 'ropa', 'Carrieles de cuero · Correas'],
+  ['Artesanías La Silletera', 'ropa', 'Artesanías paisas · Recuerdos'],
 ];
 
 /** Todos los avisos pintados, en el orden del atlas de letreros. */

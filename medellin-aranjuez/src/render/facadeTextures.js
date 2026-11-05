@@ -193,7 +193,7 @@ export function doorAtlas() {
 
 // ------------------------------------------------------------------ avisos
 export const SIGN_COLS = 4;
-export const SIGN_ROWS = 14; // 56 casillas: genéricos + locales con nombre propio
+export const SIGN_ROWS = 15; // 60 casillas: genéricos + locales con nombre propio
 
 const SIGN_STYLES = [
   ['#c1121f', '#ffffff'],

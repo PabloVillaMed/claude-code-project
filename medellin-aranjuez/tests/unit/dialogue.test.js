@@ -54,6 +54,8 @@ describe('líneas de diálogo', () => {
     if (!fs.existsSync(file)) return;
     const m = JSON.parse(fs.readFileSync(file, 'utf8'));
     for (const l of LINES) {
+      // Las de la calle (plazas, habitantes de calle) esperan su voz: solo subtítulos.
+      if (l.pendingVoice) continue;
       for (const v of l.voices) {
         const key = `${l.id}-${v}`;
         expect(m.files[key], key).toBeGreaterThan(0.4);

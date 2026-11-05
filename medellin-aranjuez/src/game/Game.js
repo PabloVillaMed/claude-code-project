@@ -24,6 +24,8 @@ import { Horizon } from '../render/horizon.js';
 import { BirdRenderer } from '../render/birds.js';
 import { BirdSim, pigeonHomes } from '../sim/birds.js';
 import { playBirdEvents } from './birdSounds.js';
+import { AnimalRenderer } from '../render/animals.js';
+import { AnimalSim, animalBudget, sidewalkPoints } from '../sim/animals.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
@@ -37,6 +39,7 @@ import { Combat } from './combat.js';
 import { CameraRig } from './cameraRig.js';
 import { Pickups } from './pickups.js';
 import { Dialogue } from './dialogue.js';
+import { StreetLife } from './streetLife.js';
 import { StoryDirector } from './storyDirector.js';
 import { Boarding } from './boarding.js';
 import { playerStyle, purchaseGestures, EMOTES, nextEmote } from '../sim/animSelect.js';
@@ -262,7 +265,9 @@ export class Game {
     this.world = new World(this);
     this.pickups = new Pickups(this);
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
+    this.street = new StreetLife(this); // plazas con sus bandas, habitantes de calle y balaceras
     this._initBirds();
+    this._initAnimals();
     this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
     this.radio = new RadioSystem(this); // radio de los vehículos y parlantes de los locales
     this.wheel = new WeaponWheel(this);
@@ -576,6 +581,7 @@ export class Game {
     this.nightLights.update(running ? dt : 0, this.camera.position, this.env.night, this.world.vehicles, this.player.vehicle);
     if (running) this.effects.update(dt);
     this._updateBirds(running ? dt : 0);
+    this._updateAnimals(running ? dt : 0);
     this.postfx.setNight(this.env.night);
     this.player.damageFlash = Math.max(0, this.player.damageFlash - dt * 1.5);
     this.postfx.setDamage(this.player.damageFlash + (this.player.health < 25 && !this.player.dead ? 0.25 : 0));
@@ -755,6 +761,7 @@ export class Game {
 
     // Mundo vivo.
     this.world.update(dt, p);
+    this.street.update(dt);
     this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
@@ -805,6 +812,31 @@ export class Game {
       playBirdEvents(this.audio, this.birds.events);
     }
     this.birdView.update(dt, this.birds.list, this.camera.position);
+  }
+
+  /** Perros, gatos y ratas de la calle (sim/animals.js, render/animals.js). */
+  _initAnimals() {
+    const col = this.city.collision;
+    const trash = this.city.props.filter((q) => q.type === 'trashbag').map((q) => ({ x: q.x, z: q.z }));
+    this.animals = new AnimalSim({ sidewalk: sidewalkPoints(this.city), trash, groundHeight, blocked: (x, z) => col.pointBlocked(x, z, groundHeight(x, z) + 0.25) });
+    this.animalBudget = animalBudget(this.quality.peds);
+    this.animalView = new AnimalRenderer(this.scene, this.animalBudget, { shadows: this.quality.shadows > 0 });
+    this.events?.on('shot', (e) => this.animals.alarm(e.x, e.z));
+    this.events?.on('explosion', (e) => this.animals.alarm(e.x, e.z, 70));
+  }
+
+  _updateAnimals(dt) {
+    if (!this.animals) return;
+    const p = this.player;
+    const playing = this.state === 'playing' || this.state === 'paused';
+    const focus = playing ? p : this.camera.position;
+    if (dt > 0) {
+      // (Los vehículos cercanos ya los juntó _updateBirds en este cuadro.)
+      const who = playing ? { x: p.x, z: p.z, speed: p.inVehicle ? Math.abs(p.vehicle.state.forwardSpeed ?? 0) : p.state.speed ?? 0, inVehicle: p.inVehicle, dead: p.dead } : null;
+      this.animals.update(dt, { focus: { x: focus.x, z: focus.z }, player: who, hour: this.env.timeOfDay, vehicles: this._nearVehicles, budget: this.animalBudget });
+      for (const e of this.animals.events) this.audio.animal(e.kind, e);
+    }
+    this.animalView.update(dt, this.animals.list, this.camera.position, this.quality.pedDraw ?? 80);
   }
 
   /** Sonido ambiente según dónde está el jugador y la hora. */
@@ -1309,6 +1341,8 @@ export class Game {
       if (prompt) this.hud.help(prompt, 4);
     }
     if (near && a.interact && !p.dead) this.interact(near);
+    // Sin local cerca: E le da los cien pesitos al habitante de calle que acaba de pedir.
+    else if (a.interact && !p.dead) this.street?.give();
   }
 
   _interactPrompt(poi) {
@@ -1574,10 +1608,13 @@ export class Game {
         const owned = w.owned.has(r.id);
         return { kind: 'ropa', id: r.id, ropa: r, name: r.name, icon: 'ropa', price: owned ? 0 : r.price, desc: r.desc, label: worn.has(r.id) ? 'Puesto' : owned ? 'Ponerse' : undefined, disabled: worn.has(r.id) };
       });
-      // Quitarse lo que sobra (gorra, gafas, cadena, canguro).
-      for (const [slot, what] of [['cabeza', 'la gorra'], ['ojos', 'las gafas'], ['cuello', 'la cadena'], ['cintura', 'el canguro']]) {
-        const id = w.outfit[slot];
-        if (id) items.push({ kind: 'quitar', id: `quitar-${slot}`, slot, ropa: ROPA_BY_ID[id], name: `Quitarse ${what}`, icon: 'ropa', price: 0, desc: ROPA_BY_ID[id]?.name ?? '', label: 'Quitar' });
+      // Quitarse lo que sobra (gorra o sombrero, gafas, cadena, canguro o carriel, poncho).
+      const WHAT = { gorra: 'la gorra', sombrero: 'el sombrero', gafas: 'las gafas', cadena: 'la cadena', canguro: 'el canguro', carriel: 'el carriel', poncho: 'el poncho' };
+      for (const slot of ['cabeza', 'ojos', 'cuello', 'cintura', 'hombro']) {
+        const it = ROPA_BY_ID[w.outfit[slot]];
+        if (!it) continue;
+        const what = WHAT[it.type] ?? WHAT[it.type.split('-')[0]] ?? it.name.toLowerCase();
+        items.push({ kind: 'quitar', id: `quitar-${slot}`, slot, ropa: it, name: `Quitarse ${what}`, icon: 'ropa', price: 0, desc: it.name, label: 'Quitar' });
       }
       return items;
     }
@@ -1789,6 +1826,31 @@ export class Game {
         return s ? { ...JSON.parse(JSON.stringify(s)), gy: groundHeight(s.x, s.z) } : null;
       },
       /** Gesto que está haciendo el jugador (o null). */
+      /** Vida de la calle: plazas, habitantes de calle y balacera en curso. */
+      street() {
+        return g.street.state();
+      },
+      /** Arma ya una balacera en la plaza más cercana al jugador (pruebas). */
+      startGangWar() {
+        const st = g.street;
+        const p = g.player;
+        const q = [...st.plazas].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+        const rival = st.plazas.find((x) => x.band !== q.band);
+        return !!st.startWar(q, rival.band);
+      },
+      /** Dónde está el habitante de calle k y la plaza k (pruebas). */
+      homelessSpot(k = 0) {
+        const h = g.street.homeless[k % g.street.homeless.length];
+        return { x: h.x, z: h.z, id: h.id };
+      },
+      plazaSpot(k = 0) {
+        const q = g.street.plazas[k % g.street.plazas.length];
+        return { x: q.x, z: q.z, band: q.band, id: q.id };
+      },
+      /** Animales cerca del jugador: cuántos de cada especie y cuántos se dibujan. */
+      animals() {
+        return { ...g.animals.counts(), drawn: Object.values(g.animalView.meshes).reduce((n, m) => n + m.count, 0), modes: g.animals.list.map((a) => `${a.kind}:${a.mode}:${a.pose.toFixed(1)}`) };
+      },
       playerGesture() {
         return g.player.rig.gesture ?? null;
       },

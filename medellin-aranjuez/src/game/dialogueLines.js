@@ -226,6 +226,42 @@ spread('radio_fin', [
   { text: 'Recibido. Todas las unidades, regresen a patrullaje.', voices: ['r1'] },
 ]);
 
+// ------------------------------------------------------------ la calle
+// (game/streetLife.js) En las seis voces: cualquiera las puede decir. Sin
+// audio todavía (pendingVoice): salen en subtítulos hasta que
+// scripts/assets/voces.mjs las genere (ese script genera todas las de LINES).
+// Habitantes de calle cuando el jugador pasa caminando cerca.
+spread('limosna', [
+  '¿Me da cien pesitos, por favor?',
+  "¿Me regala cien pesitos, por favor? Pa' un pancito.",
+  'Una monedita, mijo, que Dios se lo pague.',
+  'Patrón, ¿me colabora con lo que pueda?',
+  'Mi amor, una moneda, que hoy no he comido nada.',
+  '¿Me da cien pesitos? Lo que sea es bien recibido.',
+  "Ayúdeme con cien pesitos, por favor, pa' la aguapanela.",
+], 6, { pendingVoice: true });
+spread('limosna_gracias', [
+  '¡Dios le pague, mijo! Que le vaya bonito.',
+  'Gracias, mi amor. Dios me lo bendiga.',
+  'Uy, qué persona tan especial. Gracias, patrón.',
+  'Que la Virgen me lo acompañe, mijo.',
+], 6, { pendingVoice: true });
+spread('limosna_nada', ['Bueno, de todas formas, que Dios lo bendiga.', 'Tranquilo, mijo, otro día será.', 'Bueno, siga pues, que le vaya bien.'], 6, { pendingVoice: true });
+// Los muchachos de la plaza cuando el jugador se arrima a la esquina.
+spread('banda', [
+  '¿Qué más, parce? ¿Qué se le ofrece?',
+  'Siga derecho, mi llave, que por acá no se le perdió nada.',
+  'Pilas, que este parche tiene dueño.',
+  'Bien pueda, pero no se ponga a mirar mucho.',
+  '¿Usted de dónde es? Por acá no lo había visto.',
+  'Quieto ahí, parcero. ¿Busca algo?',
+  'Todo bien, todo bien, pero siga caminando.',
+], 6, { pendingVoice: true });
+// El campanero cuando ve una patrulla.
+spread('campanero', ['¡Agua, agua! ¡Llegó la tomba!', '¡Pilas, que viene la ley!', '¡Ojo, muchachos, patrulla en la esquina!'], 6, { pendingVoice: true });
+// Al empezar una balacera entre bandas.
+spread('balacera', ['¡Nos cayeron, muchachos!', '¡Esos manes se metieron al parche!', '¡A cubrirse, a cubrirse!', '¡Llegaron los de allá arriba!'], 6, { pendingVoice: true });
+
 export { LINES };
 
 /** Número de charlas distintas. */

@@ -340,6 +340,112 @@ function bagGeo(m, it) {
   return merge(parts);
 }
 
+/** Sombrero aguadeño: copa alta de paja, cinta oscura y ala ancha que cae un poco en el borde. */
+function hatGeo(m, it) {
+  const s = m.skull;
+  const base = m.eyeY + 0.05;
+  const rx = s.rx * 1.16 + 0.008;
+  const rz = s.rz * 1.1 + 0.008;
+  const h = 0.105;
+  const parts = [];
+  const crown = new THREE.CylinderGeometry(0.93, 1, h, 22, 1, false);
+  crown.scale(rx, 1, rz);
+  crown.translate(0, h / 2, 0);
+  // Copa con el "quiebre" de arriba: el centro un poco hundido.
+  const p = crown.attributes.position;
+  for (let i = 0; i < p.count; i++) if (p.getY(i) > h - 1e-4) p.setY(i, h - 0.012 * (1 - Math.hypot(p.getX(i) / rx, p.getZ(i) / rz)));
+  crown.computeVertexNormals();
+  parts.push(paint(crown, it.color));
+  const band = new THREE.CylinderGeometry(1.003, 1.003, 0.024, 22, 1, true);
+  band.scale(rx, 1, rz);
+  band.translate(0, 0.016, 0);
+  parts.push(paint(band, it.color2 ?? 0x111111));
+  // Ala: anillo plano (de la copa hacia afuera) con caída suave en el borde.
+  const W = 0.078;
+  const brim = new THREE.RingGeometry(1, 1 + W / Math.min(rx, rz), 28, 3);
+  brim.rotateX(-Math.PI / 2);
+  const q = brim.attributes.position;
+  for (let i = 0; i < q.count; i++) {
+    const x = q.getX(i);
+    const z = q.getZ(i);
+    const r = Math.hypot(x, z);
+    const k = Math.max(0, r - 1) / (W / Math.min(rx, rz));
+    q.setXYZ(i, (x / r) * (rx + (r - 1) * Math.min(rx, rz)), 0.002 - 0.018 * k * k, (z / r) * (rz + (r - 1) * Math.min(rx, rz)));
+  }
+  brim.computeVertexNormals();
+  // Doble cara (el ala se ve desde abajo): segunda copia volteada.
+  const under = brim.clone();
+  under.scale(1, 1, 1);
+  const idx = under.index.array;
+  for (let i = 0; i < idx.length; i += 3) [idx[i + 1], idx[i + 2]] = [idx[i + 2], idx[i + 1]];
+  under.translate(0, -0.003, 0);
+  under.computeVertexNormals();
+  parts.push(paint(brim, it.color), paint(under, it.color));
+  const g = merge(parts);
+  // Un poco echado para atrás, centrado en el cráneo.
+  g.rotateX(-0.08);
+  g.translate(s.cx, base, s.cz - 0.004);
+  return g;
+}
+
+/** Poncho doblado al hombro izquierdo: arco sobre el hombro y las dos puntas colgando, con rayitas. */
+function ponchoGeo(m, it) {
+  const n = m.neck;
+  const zc = (m.chest.front + m.chest.back) / 2;
+  const R = (m.chest.front - m.chest.back) / 2 + 0.03;
+  const x = n.x + 0.15; // el hombro izquierdo del personaje (mira hacia +Z)
+  const yTop = n.y - 0.035;
+  const parts = [];
+  const arch = new THREE.TorusGeometry(R, 0.017, 6, 14, Math.PI);
+  arch.rotateY(Math.PI / 2);
+  arch.scale(3.4, 1, 1); // doblado: ancho de lado a lado, delgado hacia arriba
+  arch.translate(x, yTop - R, zc);
+  parts.push(paint(arch, it.color));
+  // Puntas: la de adelante más corta, la de atrás cae más.
+  for (const [z, len] of [[zc + R, 0.27], [zc - R, 0.34]]) {
+    const end = new THREE.BoxGeometry(0.115, len, 0.034);
+    end.translate(x, yTop - R - len / 2, z);
+    parts.push(paint(end, it.color));
+    for (const dy of [0.035, 0.06]) {
+      const stripe = new THREE.BoxGeometry(0.117, 0.008, 0.036);
+      stripe.translate(x, yTop - R - len + dy, z);
+      parts.push(paint(stripe, it.color2 ?? 0x111111));
+    }
+  }
+  return merge(parts);
+}
+
+/** Carriel: bolso de cuero con tapa a la cadera derecha y correa terciada desde el hombro izquierdo. */
+function carrielGeo(m, it) {
+  const n = m.neck;
+  const strap = [];
+  for (const [z, len] of [[m.chest.front + 0.013, 0.6], [m.chest.back - 0.013, 0.64]]) {
+    const s = new THREE.BoxGeometry(0.028, len, 0.006);
+    s.rotateZ(-0.55);
+    s.translate(n.x - 0.01, n.y - 0.3, z);
+    strap.push(paint(s, 0x24170d));
+  }
+  const bag = [];
+  const zMid = (m.belly.front + m.belly.back) / 2;
+  const body = new THREE.BoxGeometry(0.2, 0.15, 0.05);
+  const bottom = new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14, 1, false, Math.PI / 2, Math.PI);
+  bottom.rotateX(Math.PI / 2);
+  bottom.scale(1, 0.45, 1);
+  bottom.translate(0, -0.075, 0);
+  bag.push(paint(body, it.color), paint(bottom, it.color));
+  const flap = new THREE.BoxGeometry(0.205, 0.085, 0.006);
+  flap.translate(0, 0.035, 0.028);
+  bag.push(paint(flap, it.color2 ?? 0x3a2312));
+  const buckle = new THREE.BoxGeometry(0.022, 0.016, 0.006);
+  buckle.translate(0, -0.006, 0.032);
+  bag.push(paint(buckle, 0xc9a24a));
+  const b = merge(bag);
+  // Colgado al lado derecho, mirando hacia afuera y adelante.
+  b.rotateY(-1.0);
+  b.translate(n.x - 0.19, n.y - 0.6, zMid + 0.03);
+  return { strap: merge(strap), bag: b };
+}
+
 /** Gafas: dos lentes, puente y patas hasta las orejas. */
 function glassesGeo(m, it) {
   const z = m.eyeZ + 0.03;
@@ -382,7 +488,14 @@ function accessory(scene, it) {
     geo.computeBoundingSphere();
     list.push({ geo, mat, bone: boneName });
   };
-  if (it.slot === 'cabeza') add(capGeo(m, it), cloth, 'Bip01_Head');
+  if (it.type === 'sombrero') add(hatGeo(m, it), cloth, 'Bip01_Head');
+  else if (it.slot === 'cabeza') add(capGeo(m, it), cloth, 'Bip01_Head');
+  else if (it.slot === 'hombro') add(ponchoGeo(m, it), cloth, 'Bip01_Spine2');
+  else if (it.type === 'carriel') {
+    const g = carrielGeo(m, it);
+    add(g.strap, cloth, 'Bip01_Spine2');
+    add(g.bag, cloth, scene.getObjectByName('Bip01_Pelvis') ? 'Bip01_Pelvis' : 'Bip01_Spine2');
+  }
   else if (it.type === 'buso') add(hoodGeo(m, it), cloth, 'Bip01_Spine2');
   else if (it.slot === 'cuello') add(chainGeo(m, it), metal, 'Bip01_Spine2');
   else if (it.slot === 'cintura') add(bagGeo(m, it), cloth, 'Bip01_Spine2');
@@ -433,7 +546,7 @@ export function applyOutfit(rig, outfit) {
   for (const mesh of st.meshes) mesh.removeFromParent();
   st.meshes = [];
   const scene = rig.tpl.scene;
-  for (const slot of ['cabeza', 'torso', 'cuello', 'cintura', 'ojos']) {
+  for (const slot of ['cabeza', 'torso', 'cuello', 'cintura', 'ojos', 'hombro']) {
     const it = get(slot);
     if (!it || (slot === 'torso' && it.type !== 'buso')) continue;
     for (const a of accessory(scene, it)) {
