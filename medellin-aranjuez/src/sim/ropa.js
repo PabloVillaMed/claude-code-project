@@ -107,6 +107,34 @@ export const ROPA = [
   { id: 'pantalon-viejo', slot: 'piernas', type: 'pantalon-viejo', name: 'Pantalón viejo', desc: '', price: 0, color: 0x3b342b, hidden: true },
   { id: 'chanclas-viejas', slot: 'pies', type: 'chanclas', name: 'Chanclas viejas', desc: '', price: 0, color: 0x2b2b2b, color2: 0x8b8577, hidden: true },
   { id: 'cobija', slot: 'hombro', type: 'cobija', name: 'Cobija', desc: '', price: 0, color: 0x6e6253, color2: 0x3d352c, hidden: true },
+  // ---- pinta de rumba de la gente de la 92 de noche (game/nightlife.js; no se vende: hidden)
+  // Camisas de colores llamativos (ellos), blusas y vestidos del mismo color
+  // (ellas: la falda es una malla pegada a la pelvis y `color2`, las medias),
+  // jeans oscuros; la camisa negra del portero.
+  { id: 'camisa-fiesta-fucsia', slot: 'torso', type: 'camiseta', name: 'Camisa fucsia', desc: '', price: 0, color: 0xd6247a, hidden: true },
+  { id: 'camisa-fiesta-turquesa', slot: 'torso', type: 'camiseta', name: 'Camisa turquesa', desc: '', price: 0, color: 0x10a5a8, hidden: true },
+  { id: 'camisa-fiesta-amarilla', slot: 'torso', type: 'camiseta', name: 'Camisa amarilla', desc: '', price: 0, color: 0xf3c614, hidden: true },
+  { id: 'camisa-fiesta-blanca', slot: 'torso', type: 'camisa', name: 'Camisa blanca de salir', desc: '', price: 0, color: 0xf7f7f2, long: true, hidden: true },
+  { id: 'camisa-fiesta-negra', slot: 'torso', type: 'camisa', name: 'Camisa negra de salir', desc: '', price: 0, color: 0x161618, long: true, hidden: true },
+  { id: 'camisa-fiesta-roja', slot: 'torso', type: 'camisa', name: 'Camisa roja de salir', desc: '', price: 0, color: 0xc0122c, long: true, hidden: true },
+  { id: 'camisa-fiesta-estampada', slot: 'torso', type: 'camiseta', name: 'Camisa estampada', desc: '', price: 0, color: 0x1d2f8f, color2: 0xf06a1d, pattern: 'rayas', hidden: true },
+  { id: 'blusa-roja', slot: 'torso', type: 'blusa', name: 'Blusa roja', desc: '', price: 0, color: 0xd0102a, hidden: true },
+  { id: 'blusa-negra', slot: 'torso', type: 'blusa', name: 'Blusa negra', desc: '', price: 0, color: 0x151416, hidden: true },
+  { id: 'blusa-dorada', slot: 'torso', type: 'blusa', name: 'Blusa dorada', desc: '', price: 0, color: 0xd8a93a, hidden: true },
+  { id: 'blusa-fucsia', slot: 'torso', type: 'blusa', name: 'Blusa fucsia', desc: '', price: 0, color: 0xe0247f, hidden: true },
+  { id: 'blusa-plateada', slot: 'torso', type: 'blusa', name: 'Blusa plateada', desc: '', price: 0, color: 0xc9ccd1, hidden: true },
+  { id: 'blusa-esmeralda', slot: 'torso', type: 'blusa', name: 'Blusa esmeralda', desc: '', price: 0, color: 0x0c8f5a, hidden: true },
+  { id: 'blusa-azul-rey', slot: 'torso', type: 'blusa', name: 'Blusa azul rey', desc: '', price: 0, color: 0x1f4fd8, hidden: true },
+  { id: 'blusa-blanca', slot: 'torso', type: 'blusa', name: 'Blusa blanca', desc: '', price: 0, color: 0xf4f2ee, hidden: true },
+  { id: 'vestido-rojo', slot: 'piernas', type: 'vestido', name: 'Vestido rojo', desc: '', price: 0, color: 0xd0102a, color2: 0x2a1c1c, hidden: true },
+  { id: 'vestido-negro', slot: 'piernas', type: 'vestido', name: 'Vestido negro', desc: '', price: 0, color: 0x151416, color2: 0x1d1719, hidden: true },
+  { id: 'vestido-dorado', slot: 'piernas', type: 'vestido', name: 'Vestido dorado', desc: '', price: 0, color: 0xd8a93a, color2: 0x3a2a22, hidden: true },
+  { id: 'vestido-fucsia', slot: 'piernas', type: 'vestido', name: 'Vestido fucsia', desc: '', price: 0, color: 0xe0247f, color2: 0x24181c, hidden: true },
+  { id: 'vestido-plateado', slot: 'piernas', type: 'vestido', name: 'Vestido plateado', desc: '', price: 0, color: 0xc9ccd1, color2: 0x1f1a1c, hidden: true },
+  { id: 'vestido-esmeralda', slot: 'piernas', type: 'vestido', name: 'Vestido esmeralda', desc: '', price: 0, color: 0x0c8f5a, color2: 0x1b1a1a, hidden: true },
+  { id: 'vestido-azul-rey', slot: 'piernas', type: 'vestido', name: 'Vestido azul rey', desc: '', price: 0, color: 0x1f4fd8, color2: 0x1c1a22, hidden: true },
+  { id: 'jean-oscuro', slot: 'piernas', type: 'jean', name: 'Jean oscuro', desc: '', price: 0, color: 0x1b2438, hidden: true },
+  { id: 'camisa-portero', slot: 'torso', type: 'camisa', name: 'Camisa negra de portero', desc: '', price: 0, color: 0x0e0e10, long: true, hidden: true },
 ];
 
 export const ROPA_BY_ID = Object.fromEntries(ROPA.map((r) => [r.id, r]));

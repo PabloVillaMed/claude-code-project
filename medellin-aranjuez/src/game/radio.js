@@ -3,7 +3,10 @@
 // recuerda entre partidas. Cada emisora va "en vivo": su programación corre
 // aunque no se escuche, así que al volver a ella no arranca de cero.
 // Además, algunas tiendas, billares y parches tienen un parlante con música
-// bajita que solo se oye de cerca (máximo dos a la vez).
+// bajita que solo se oye de cerca (máximo dos a la vez). Las discotecas, bares
+// y la fonda de la 92 (sim/nightlife.js) suenan más duro de noche, "desde
+// adentro" (pasabajos que se abre al pasar por la puerta y bajo reforzado);
+// entre todo no suenan más de TOPE_FUENTES locales a la vez.
 //
 // La música (public/sounds/musica, ver radioStations.js y ASSETS-CREDITS.md)
 // se reproduce en streaming con <audio> (nunca se decodifica el archivo
@@ -13,11 +16,16 @@
 import { EMISORAS, rutaPista } from './radioStations.js';
 import { APAGADA, MAX_PARLANTES, enVivo, gananciaParlante, mover, objetivoDuck, ordenPistas, parlantesCercanos, pasoDuck, semillaDe } from '../sim/radioDial.js';
 import { RadioHud } from '../ui/radioHud.js';
+import { RUMBA_FUENTES, discotecasDe, filtroRumba, fuentesRumba, gananciaRumba } from '../sim/nightlife.js';
 
 const CLAVE = 'aranjuez.radio.v1';
 const PAUSA_ENTRE_PISTAS = 1.2;
 const VOL_CARRO = 0.9;
 const VOL_PARLANTE = 0.5;
+// Música de los locales de rumba de la 92 (ver sim/nightlife.js: radio, filtro y hora).
+const VOL_RUMBA = 0.85; // volumen máximo de una discoteca en la puerta, de noche
+const RUMBA_BAJO_DB = 9; // refuerzo de bajos (dB) de esa música
+const TOPE_FUENTES = 3; // locales sonando a la vez entre discotecas y parlantes de tiendas
 
 const guardar = (fn) => {
   try {
@@ -29,12 +37,13 @@ const guardar = (fn) => {
 
 /** Un reproductor: <audio> → ganancia → paso bajo → paneo → bus de música. */
 class Canal {
-  constructor(radio, { filtro = 0 } = {}) {
+  constructor(radio, { filtro = 0, bajo = 0 } = {}) {
     this.radio = radio;
     this.el = new Audio();
     this.el.preload = 'auto';
     this.el.volume = 0; // hasta que esté conectado a WebAudio
     this.filtro = filtro;
+    this.bajo = bajo; // dB de refuerzo de bajos (las discotecas: el bajo se siente desde la calle)
     this.key = null;
     this.gain = null;
     this.lp = null;
@@ -58,6 +67,13 @@ class Canal {
       this.gain = ctx.createGain();
       this.gain.gain.value = 0;
       let n = src.connect(this.gain);
+      if (this.bajo) {
+        const ls = ctx.createBiquadFilter();
+        ls.type = 'lowshelf';
+        ls.frequency.value = 120;
+        ls.gain.value = this.bajo;
+        n = n.connect(ls);
+      }
       if (this.filtro) {
         this.lp = ctx.createBiquadFilter();
         this.lp.type = 'lowpass';
@@ -112,6 +128,11 @@ class Canal {
     } else this.el.volume = Math.max(0, Math.min(1, this.nivel));
   }
 
+  /** Mueve el corte del pasabajos (Hz), suave. */
+  filtrar(hz) {
+    if (this.lp) this.lp.frequency.setTargetAtTime(hz, this.radio.ctx.currentTime, 0.2);
+  }
+
   pausar() {
     if (!this.el.paused) this.el.pause();
   }
@@ -150,6 +171,9 @@ export class RadioSystem {
     this.carro = null;
     this.parlantes = null; // lugares con parlante (se arman al primer update)
     this.canalesParlante = [];
+    this.rumba = null; // locales de rumba de la 92 (se arman al primer update)
+    this.canalesRumba = [];
+    this.rumbaSonando = 0;
     this.estado = { encendida: false, emisora: null, pista: null };
     this._cargarManifest();
   }
@@ -177,6 +201,7 @@ export class RadioSystem {
     this.bus.connect(this.ctx.destination);
     this.carro = new Canal(this);
     for (let k = 0; k < MAX_PARLANTES; k++) this.canalesParlante.push(new Canal(this, { filtro: 1800 }));
+    for (let k = 0; k < RUMBA_FUENTES; k++) this.canalesRumba.push(new Canal(this, { filtro: 900, bajo: RUMBA_BAJO_DB }));
     return true;
   }
 
@@ -234,7 +259,8 @@ export class RadioSystem {
     // Unas cuantas tiendas más (una de cada seis), repartidas por el barrio.
     const tiendas = (g.city?.buildings ?? []).filter((b) => b.style === 'tienda');
     tiendas.forEach((b, i) => {
-      if (i % 6 === 0) out.push({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2, emisora: emisoraDe(i), id: `tienda${i}` });
+      // (Las discotecas y bares de la 92 tienen su propia música, más abajo.)
+      if (i % 6 === 0 && b.local?.kind !== 'discoteca') out.push({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2, emisora: emisoraDe(i), id: `tienda${i}` });
     });
     this.parlantes = out;
   }
@@ -261,9 +287,11 @@ export class RadioSystem {
       if (g.state === 'menu' || g.state === 'loading') {
         this.carro.detener();
         for (const c of this.canalesParlante) c.detener();
+        for (const c of this.canalesRumba) c.detener();
       } else {
         this.carro.pausar();
         for (const c of this.canalesParlante) c.pausar();
+        for (const c of this.canalesRumba) c.pausar();
       }
       this.estado.encendida = false;
       return;
@@ -297,9 +325,15 @@ export class RadioSystem {
       this.estado = { encendida: false, emisora: e?.id ?? null, pista: null };
     }
 
+    // ------------------------------------------------ discotecas y bares de la 92
+    const tapado = enCarro ? (this.estado.encendida ? 0.15 : 0.4) : 1;
+    this._rumba(dt, p, tapado);
+
     // ------------------------------------------------ parlantes de los locales
     if (!this.parlantes || (!this._conDominos && g.world?.activities?.spots)) this._armarParlantes();
-    const cerca = this.duracion ? parlantesCercanos(this.parlantes, p.x, p.z) : [];
+    // Entre discotecas y parlantes, como mucho TOPE_FUENTES a la vez.
+    const maxParlantes = Math.max(0, Math.min(MAX_PARLANTES, TOPE_FUENTES - this.rumbaSonando));
+    const cerca = this.duracion && maxParlantes ? parlantesCercanos(this.parlantes, p.x, p.z, maxParlantes) : [];
     // Canal libre para cada parlante nuevo; los que se alejan se apagan.
     const asignados = new Map();
     for (const c of this.canalesParlante) {
@@ -332,10 +366,56 @@ export class RadioSystem {
       const key = `${em.id}/${pr.pista.id}`;
       if (c.key !== key) c.cargar(key, rutaPista(em, pr.pista), pr.offset);
       else c.reanudar();
-      // Dentro del carro se oye poco (ventanas arriba) y menos con la radio prendida.
-      const tapado = enCarro ? (this.estado.encendida ? 0.15 : 0.4) : 1;
+      // Dentro del carro se oye poco (ventanas arriba) y menos con la radio prendida (`tapado`).
       c.mezclar(VOL_PARLANTE * this.volumenMusica * this.duck * tapado * gananciaParlante(o.d), dt, this._pan(o.p.x, o.p.z));
       if (c.nivel > 0.01) this.parlantesSonando++;
+    }
+  }
+
+  /**
+   * Música de los locales de rumba más cercanos (RUMBA_FUENTES canales): más
+   * duro de noche, apagada de día (los bares, bajito), con el pasabajos que se
+   * abre al acercarse a la puerta.
+   */
+  _rumba(dt, p, tapado) {
+    const g = this.game;
+    if (!this.rumba) this.rumba = discotecasDe(g.city);
+    const hora = g.env?.timeOfDay ?? 12;
+    const cerca = this.duracion && this.rumba.length ? fuentesRumba(this.rumba, p.x, p.z, hora) : [];
+    // Cada local sigue en su canal; uno nuevo toma un canal libre (ya apagado).
+    for (const o of cerca) {
+      if (this.canalesRumba.some((c) => c.lugar === o.p)) continue;
+      const libre = this.canalesRumba.find((c) => !cerca.some((q) => q.p === c.lugar) && c.nivel < 0.02);
+      if (libre) {
+        libre.lugar = o.p;
+        libre.key = null;
+      }
+    }
+    this.rumbaSonando = 0;
+    (this.rumbaLocales ??= []).length = 0;
+    for (const c of this.canalesRumba) {
+      const o = cerca.find((q) => q.p === c.lugar);
+      if (!o) {
+        c.mezclar(0, dt);
+        if (c.nivel < 0.005) {
+          c.pausar();
+          c.lugar = null;
+        }
+        if (c.nivel > 0.01) this.rumbaSonando++;
+        continue;
+      }
+      const em = EMISORAS.find((x) => x.id === o.p.musica) ?? EMISORAS[0];
+      const pr = this._programa(em, 777 + (semillaDe(o.p.id) % 600)); // cada local en otro punto de la emisora
+      if (!pr) continue;
+      const key = `${em.id}/${pr.pista.id}`;
+      if (c.key !== key) c.cargar(key, rutaPista(em, pr.pista), pr.offset);
+      else c.reanudar();
+      c.filtrar(filtroRumba(o.d));
+      c.mezclar(VOL_RUMBA * this.volumenMusica * this.duck * tapado * o.nivel * gananciaRumba(o.d), dt, this._pan(o.p.x, o.p.z));
+      if (c.nivel > 0.01) {
+        this.rumbaSonando++;
+        this.rumbaLocales.push(o.p.id);
+      }
     }
   }
 
@@ -351,6 +431,9 @@ export class RadioSystem {
       reproduciendo: !!this.carro && !this.carro.el.paused,
       ganancia: this.carro ? Math.round(this.carro.nivel * 100) / 100 : 0,
       parlantes: this.parlantesSonando ?? 0,
+      rumba: this.rumbaSonando ?? 0,
+      rumbaLocales: this.rumbaLocales ?? [],
+      rumbaGanancia: this.canalesRumba.map((c) => Math.round(c.nivel * 100) / 100),
       emisoras: EMISORAS.map((e) => e.id),
     };
   }

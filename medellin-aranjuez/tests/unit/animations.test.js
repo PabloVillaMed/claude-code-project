@@ -139,7 +139,8 @@ describe('subir y bajar de vehículos', () => {
 
   it('bajarse: se desliza al borde, se levanta y queda de pie afuera mirando hacia fuera', () => {
     const plan = carExitPlan(car, clips, -1);
-    expect(plan.events.map((e) => e.type)).toEqual(['seat', 'seat', 'play', 'commit']);
+    // El gesto de levantarse entra antes de soltar la postura del carro (sin saltos).
+    expect(plan.events.map((e) => e.type)).toEqual(['seat', 'play', 'seat', 'commit']);
     expect(plan.final.x).toBeLessThan(-car.width / 2);
     expect(plan.final.yaw).toBeCloseTo(Math.PI / 2);
     expect(plan.total).toBeLessThan(2.5);

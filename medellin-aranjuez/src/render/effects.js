@@ -8,10 +8,16 @@ import { groundHeight } from '../sim/terrain.js';
 const MAX_SKIDS = 900;
 
 const MAX_PARTICLES = 1500;
+/** Trazadoras recicladas: líneas con su propia geometría y material, creadas una vez (un tiro no crea nada en la GPU). */
+export const MAX_TRAZADORAS = 24;
+
+/** Golpe a un animal: cuántas motas oscuras y de qué tamaño (m); poquito a propósito. */
+export const ANIMAL_HIT = { drops: 2, size: 0.07 };
 
 export class Effects {
   constructor(scene) {
     this.scene = scene;
+    this._initSkids();
     // Partículas en un único Points con atributos dinámicos.
     this.pPos = new Float32Array(MAX_PARTICLES * 3);
     this.pCol = new Float32Array(MAX_PARTICLES * 3);
@@ -88,8 +94,19 @@ export class Effects {
     scene.add(this.smokePoints);
 
     // Trazadoras.
-    this.tracers = [];
+    this.tracers = []; // las que se están viendo
     this.tracerMat = new THREE.LineBasicMaterial({ color: 0xffe2a0, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    this.tracerPool = [];
+    for (let i = 0; i < MAX_TRAZADORAS; i++) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3).setUsage(THREE.DynamicDrawUsage));
+      const line = new THREE.Line(g, this.tracerMat.clone());
+      line.frustumCulled = false; // (la caja de la geometría cambia en cada tiro)
+      line.visible = false;
+      line.name = 'trazadora';
+      scene.add(line);
+      this.tracerPool.push({ line, life: 0 });
+    }
 
     // Luz de fogonazo / explosión reutilizable.
     this.flashLight = new THREE.PointLight(0xffb060, 0, 12, 2);
@@ -119,13 +136,28 @@ export class Effects {
   }
 
   tracer(from, to) {
-    const g = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
-    const line = new THREE.Line(g, this.tracerMat.clone());
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.07 });
+    // La libre, o la que más pronto se iba a apagar.
+    let t = null;
+    for (const c of this.tracerPool) if (!t || c.life < t.life) t = c;
+    const p = t.line.geometry.attributes.position;
+    p.setXYZ(0, from.x, from.y, from.z);
+    p.setXYZ(1, to.x, to.y, to.z);
+    p.needsUpdate = true;
+    if (t.life <= 0) this.tracers.push(t);
+    t.life = 0.07;
+    t.line.material.opacity = 0.9;
+    t.line.visible = true;
   }
 
   impact(pos, normal, kind = 'spark') {
+    if (kind === 'animal') {
+      // Animal: poquito y pequeño (sin exagerar): dos motas oscuras y un poco de pelo en el aire.
+      for (let i = 0; i < ANIMAL_HIT.drops; i++) {
+        this.puff({ x: pos.x + (Math.random() - 0.5) * 0.08, y: pos.y + (Math.random() - 0.5) * 0.08, z: pos.z + (Math.random() - 0.5) * 0.08 }, ANIMAL_HIT.size, [0.32, 0.03, 0.03], 0.85, (Math.random() - 0.2) * 0.8, 0.35);
+      }
+      this.puff(pos, ANIMAL_HIT.size * 1.4, [0.55, 0.47, 0.38], 0.35, 0.5, 0.6);
+      return;
+    }
     if (kind === 'blood') {
       // La sangre no puede ser aditiva: va en el sistema de humo (alfa normal).
       for (let i = 0; i < 7; i++) {
@@ -163,20 +195,7 @@ export class Effects {
    */
   skid(v, on, dt) {
     void dt;
-    if (!this.skids) {
-      const geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshBasicMaterial({ color: 0x0d0d0d, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
-      this.skids = new THREE.InstancedMesh(geo, mat, MAX_SKIDS);
-      this.skids.count = 0;
-      this.skids.frustumCulled = false;
-      this.skidNext = 0;
-      this.scene.add(this.skids);
-      this._sm = new THREE.Matrix4();
-      this._sq = new THREE.Quaternion();
-      this._sp = new THREE.Vector3();
-      this._ss = new THREE.Vector3();
-      this._up = new THREE.Vector3(0, 1, 0);
-    }
+    if (!this.skids) this._initSkids();
     if (!on) {
       v._skidPrev = null;
       return;
@@ -187,12 +206,20 @@ export class Effects {
     const rx = Math.cos(s.heading);
     const rz = -Math.sin(s.heading);
     const back = s.spec.length * 0.32;
-    const track = s.spec.twoWheels ? [0] : [-s.spec.width * 0.42, s.spec.width * 0.42];
-    const cur = track.map((t) => ({ x: s.x - fx * back + rx * t, z: s.z - fz * back + rz * t }));
+    // Puntos de las llantas en dos juegos reciclados por vehículo (el actual y el anterior se turnan).
+    const n = s.spec.twoWheels ? 1 : 2;
+    const bufs = (v._skidBufs ??= [[{ x: 0, z: 0 }, { x: 0, z: 0 }], [{ x: 0, z: 0 }, { x: 0, z: 0 }]]);
     const prev = v._skidPrev;
+    const cur = prev === bufs[0] ? bufs[1] : bufs[0];
+    for (let k = 0; k < n; k++) {
+      const t = n === 1 ? 0 : (k ? 0.42 : -0.42) * s.spec.width;
+      cur[k].x = s.x - fx * back + rx * t;
+      cur[k].z = s.z - fz * back + rz * t;
+    }
     if (prev && Math.hypot(cur[0].x - prev[0].x, cur[0].z - prev[0].z) < 0.3) return;
     if (prev) {
-      for (let k = 0; k < cur.length; k++) {
+      this.skids.visible = true;
+      for (let k = 0; k < n; k++) {
         const a = prev[k];
         const b = cur[k];
         const len = Math.hypot(b.x - a.x, b.z - a.z);
@@ -209,6 +236,27 @@ export class Effects {
       this.skids.instanceMatrix.needsUpdate = true;
     }
     v._skidPrev = cur;
+  }
+
+  /**
+   * Anillo de las marcas de llanta: se arma desde el principio (oculto hasta
+   * la primera marca) para que el calentamiento compile su programa; antes se
+   * armaba en el primer derrape, con un tirón en plena persecución.
+   */
+  _initSkids() {
+    const geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x0d0d0d, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    this.skids = new THREE.InstancedMesh(geo, mat, MAX_SKIDS);
+    this.skids.count = 0;
+    this.skids.frustumCulled = false;
+    this.skids.visible = false;
+    this.skidNext = 0;
+    this.scene.add(this.skids);
+    this._sm = new THREE.Matrix4();
+    this._sq = new THREE.Quaternion();
+    this._sp = new THREE.Vector3();
+    this._ss = new THREE.Vector3();
+    this._up = new THREE.Vector3(0, 1, 0);
   }
 
   puff(pos, size = 1, color = [0.2, 0.2, 0.2], alpha = 0.6, vy = 1.2, life = 2) {
@@ -371,9 +419,8 @@ export class Effects {
       t.life -= dt;
       t.line.material.opacity = Math.max(0, t.life / 0.07);
       if (t.life <= 0) {
-        t.line.removeFromParent();
-        t.line.geometry.dispose();
-        t.line.material.dispose();
+        t.life = 0;
+        t.line.visible = false;
         this.tracers.splice(i, 1);
       }
     }

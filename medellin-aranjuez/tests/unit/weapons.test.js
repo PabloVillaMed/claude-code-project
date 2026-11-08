@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Inventory, WEAPONS, WEAPON_BY_ID, computeDamage } from '../../src/sim/weapons.js';
+import { Inventory, WEAPONS, WEAPON_BY_ID, STARTING_KIT, computeDamage, giveStartingKit } from '../../src/sim/weapons.js';
 import { makeRng } from '../../src/sim/rng.js';
 
 const tick = (inv, seconds, dt = 1 / 60) => {
@@ -173,5 +173,16 @@ describe('armas e inventario', () => {
     expect(copy.currentId).toBe('smg');
     expect(copy.ammo.reserve).toBe(inv.ammo.reserve);
     expect(copy.has('fists')).toBe(true);
+  });
+
+  it('se empieza armado y a las partidas viejas no se les toca la munición', () => {
+    const nueva = giveStartingKit(new Inventory(['fists']));
+    for (const [id] of STARTING_KIT) expect(nueva.has(id)).toBe(true);
+    expect(nueva.owned.get('pistol').reserve).toBeGreaterThan(30);
+    const vieja = new Inventory(['fists']);
+    vieja.give('pistol', 5);
+    giveStartingKit(vieja);
+    expect(vieja.owned.get('pistol').reserve).toBe(5);
+    expect(vieja.has('smg')).toBe(true);
   });
 });

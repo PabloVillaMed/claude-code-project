@@ -4,22 +4,103 @@
 import * as THREE from 'three';
 import { traceShot, deviate } from '../sim/ballistics.js';
 import { computeDamage, WEAPON_BY_ID } from '../sim/weapons.js';
+import { ANIMAL_HITBOX } from '../sim/animals.js';
 import { groundHeight } from '../sim/terrain.js';
 import { dist2D, forwardX, forwardZ, yawFromDir } from '../sim/math.js';
 
 const v3 = new THREE.Vector3();
+
+/** Juegos de listas reciclados para lo que un tiro puede tocar (Combat._scene); se turnan. */
+const ESCENAS_TIRO = 4;
+
+/**
+ * Puntería de los NPC contra el jugador (ajustable). La dispersión del tiro
+ * (radianes) es base + dist·perMeter + moving·velocidad del jugador (hasta
+ * movingMax) + inVehicle si va en un vehículo, todo por el multiplicador de
+ * su bando. mounted: multiplicador extra si disparan desde una moto en marcha
+ * (el parrillero de la Policía). damage: fracción del daño del arma.
+ */
+export const NPC_AIM = {
+  base: 0.018,
+  perMeter: 0.0009,
+  moving: 0.006,
+  movingMax: 0.06,
+  inVehicle: 0.02,
+  mounted: 1.6,
+  faction: {
+    police: { spread: 1.9, damage: 0.45, extraWait: 0.35 }, // v3.5: fallan bastante más
+    gang: { spread: 1.3, damage: 0.5, extraWait: 0 },
+    banda: { spread: 1.3, damage: 0.5, extraWait: 0 },
+    default: { spread: 1.2, damage: 0.5, extraWait: 0 },
+  },
+};
 
 export class Combat {
   constructor(game) {
     this.game = game;
   }
 
+  /**
+   * Lo que un tiro puede tocar (personas, vehículos y animales) en listas y
+   * objetos reciclados: antes cada tiro armaba ~400 objetos (uno por peatón y
+   * por vehículo, con su caja). Hay ESCENAS_TIRO juegos que se turnan: un tiro
+   * puede causar otro (una explosión) mientras el primero se sigue usando.
+   */
   _scene(ignore) {
     const g = this.game;
-    const characters = g.world.peds.map((p) => ({ ref: p, x: p.x, y: p.y, z: p.z, dead: !p.alive }));
-    if (!g.player.inVehicle && !g.player.dead) characters.push({ ref: g.player, x: g.player.x, y: g.player.y, z: g.player.z });
-    const vehicles = g.world.vehicles.map((v) => ({ ref: v, obb: v.obb(), y: v.state.y, height: v.state.spec.height }));
-    return { collision: g.city.collision, groundHeight, characters, vehicles, ignore };
+    const ring = (this._scenes ??= []);
+    this._sceneIdx = ((this._sceneIdx ?? -1) + 1) % ESCENAS_TIRO;
+    const sc = (ring[this._sceneIdx] ??= { collision: null, groundHeight, characters: [], vehicles: [], animals: null, ignore: null, cPool: [], vPool: [] });
+    sc.collision = g.city.collision;
+    const characters = sc.characters;
+    characters.length = 0;
+    for (const p of g.world.peds) {
+      const c = (sc.cPool[characters.length] ??= { ref: null, x: 0, y: 0, z: 0, dead: false });
+      c.ref = p;
+      c.x = p.x;
+      c.y = p.y;
+      c.z = p.z;
+      c.dead = !p.alive;
+      characters.push(c);
+    }
+    if (!g.player.inVehicle && !g.player.dead) {
+      const c = (sc.cPool[characters.length] ??= { ref: null, x: 0, y: 0, z: 0, dead: false });
+      c.ref = g.player;
+      c.x = g.player.x;
+      c.y = g.player.y;
+      c.z = g.player.z;
+      c.dead = false;
+      characters.push(c);
+    }
+    const vehicles = sc.vehicles;
+    vehicles.length = 0;
+    for (const v of g.world.vehicles) {
+      const o = (sc.vPool[vehicles.length] ??= { ref: null, obb: null, y: 0, height: 0 });
+      o.ref = v;
+      o.obb = v.obbNow();
+      o.y = v.state.y;
+      o.height = v.state.spec.height;
+      vehicles.push(o);
+    }
+    // Los animales van tal cual (la lista de sim/animals.js, sin copiar nada).
+    sc.animals = g.animals?.list;
+    sc.ignore = ignore;
+    return sc;
+  }
+
+  /**
+   * Golpe a un animal (tiro, golpe o atropello): daño en sim/animals.js y un
+   * impacto chiquito (sin exagerar). Su chillido sale de los eventos de la
+   * simulación; si muere, la gente de cerca se asusta un poco.
+   */
+  hitAnimal(a, dmg, attacker, from, pos, normal, how = 'gun') {
+    const g = this.game;
+    if (!g.animals || !a) return null;
+    const res = g.animals.damage(a, dmg, from.x, from.z, how, attacker === 'player');
+    if (!res) return null;
+    g.effects.impact(pos, normal, 'animal');
+    if (res === 'dead') g.events?.emit('animalKilled', { animal: a, attacker, how });
+    return res;
   }
 
   lineOfSight(a, b) {
@@ -87,9 +168,11 @@ export class Combat {
     const pos = { x: hit.x, y: hit.y, z: hit.z };
     const dist = Math.hypot(hit.x - from.x, hit.y - from.y, hit.z - from.z);
     const dmg = computeDamage(w, dist, hit.headshot);
-    g.audio.bulletImpact(hit.kind, pos);
-    if (attacker === 'player' && (hit.kind === 'character' || hit.kind === 'vehicle')) g.hud.hitmarker();
-    if (hit.kind === 'character') {
+    g.audio.bulletImpact(hit.kind === 'animal' ? 'character' : hit.kind, pos);
+    if (attacker === 'player' && (hit.kind === 'character' || hit.kind === 'vehicle' || hit.kind === 'animal')) g.hud.hitmarker();
+    if (hit.kind === 'animal') {
+      this.hitAnimal(hit.ref, dmg, attacker, from, pos, hit.normal);
+    } else if (hit.kind === 'character') {
       if (hit.ref === g.player) this.damagePlayer(dmg, from);
       else this.damagePed(hit.ref, dmg, attacker, from, hit.headshot);
       g.effects.impact(pos, hit.normal, 'blood');
@@ -131,7 +214,13 @@ export class Combat {
           best = p;
         }
       }
-      if (best) {
+      // Un animal a la mano (patada o machetazo), si está más cerca que la persona.
+      const an = g.animals?.meleeTarget(ax, az, fx, fz, w.range);
+      if (an && (!best || an.d < bd)) {
+        const a = an.a;
+        this.hitAnimal(a, w.damage, 'player', { x: ax, z: az }, { x: a.x, y: a.y + ANIMAL_HITBOX[a.kind].h * 0.6 * a.scale, z: a.z }, { x: -fx, y: 0.3, z: -fz }, 'melee');
+        g.audio.hit({ x: a.x, y: a.y, z: a.z }, true);
+      } else if (best) {
         this.damagePed(best, w.damage, 'player', { x: ax, y: attacker.y + 1.2, z: az }, false, 'melee');
         g.effects.impact({ x: best.x, y: best.y + 1.3, z: best.z }, { x: fx, y: 0, z: fz }, 'blood');
         g.audio.hit({ x: best.x, y: best.y, z: best.z }, true);
@@ -156,8 +245,8 @@ export class Combat {
         else if (p.faction === 'civil') g.wanted.report(g.wanted.level >= 2 ? 'murderRepeat' : 'murder', g.player);
         g.stats.kills++;
         if (headshot) g.hud.toast('¡Tiro a la cabeza!', 1.2);
-        // Botín: plata y munición.
-        g.pickups.drop(p.x, p.z, p.faction);
+        // Botín: plata y munición (las damas de compañía no dejan nada: atacarlas no da bonificación).
+        if (!p.dama) g.pickups.drop(p.x, p.z, p.faction);
       }
       if (from) g.world.addThreat(p.x, p.z, 30);
       g.events?.emit('pedKilled', { ped: p, attacker, how });
@@ -212,7 +301,8 @@ export class Combat {
       ped.fireCooldown = 0.5;
       return;
     }
-    ped.fireCooldown = (w.auto ? w.interval * 3 : 0.55) + Math.random() * 0.7;
+    const aim = NPC_AIM.faction[ped.faction] ?? NPC_AIM.faction.default;
+    ped.fireCooldown = (w.auto ? w.interval * 3 : 0.55) + Math.random() * 0.7 + aim.extraWait;
     ped.sim.yaw = yawFromDir(tgt.x - eye.x, tgt.z - eye.z);
     const dx = tgt.x - eye.x;
     const dy = tgt.y - eye.y;
@@ -220,7 +310,7 @@ export class Combat {
     const dl = Math.hypot(dx, dy, dz);
     const base = { x: dx / dl, y: dy / dl, z: dz / dl };
     // Precisión: peor a distancia y si el jugador se mueve rápido.
-    const sigma = 0.018 + dist * 0.0009 + Math.min(0.06, player.speed * 0.006) + (player.inVehicle ? 0.02 : 0);
+    const sigma = (NPC_AIM.base + dist * NPC_AIM.perMeter + Math.min(NPC_AIM.movingMax, player.speed * NPC_AIM.moving) + (player.inVehicle ? NPC_AIM.inVehicle : 0)) * aim.spread * (ped.mounted ? NPC_AIM.mounted : 1);
     const d = deviate(base, (Math.random() - 0.5) * 2 * sigma, (Math.random() - 0.5) * 2 * sigma);
     const muzzle = ped.rig.muzzleWorld(v3).clone();
     const g = this.game;
@@ -228,7 +318,8 @@ export class Combat {
     if (player.inVehicle) {
       // Disparar al vehículo del jugador (y, a veces, al conductor).
       const v = player.vehicle;
-      scene.vehicles = scene.vehicles.filter((x) => x.ref !== v);
+      const i = scene.vehicles.findIndex((x) => x.ref === v);
+      if (i >= 0) scene.vehicles.splice(i, 1); // (la lista es reciclada: se quita en el sitio)
       scene.characters.push({ ref: player, x: player.x, y: player.y - 0.3, z: player.z });
     }
     const hit = traceShot(muzzle, d, w.range, scene);
@@ -237,7 +328,7 @@ export class Combat {
     g.audio.gunshot(w.id, muzzle);
     g.events?.emit('shot', { x: muzzle.x, z: muzzle.z, by: ped.faction, weapon: w.id });
     if (hit.kind === 'character' && hit.ref === player) {
-      this.damagePlayer(computeDamage(w, dist, false) * (ped.faction === 'police' ? 0.55 : 0.5), eye);
+      this.damagePlayer(computeDamage(w, dist, false) * aim.damage, eye);
       g.effects.impact({ x: hit.x, y: hit.y, z: hit.z }, hit.normal, 'blood');
       if (player.inVehicle) g.audio.hit(hit); else g.audio.bulletImpact('character', hit);
       if (player.inVehicle) player.vehicle.state.health -= 8;
@@ -293,6 +384,7 @@ export class Combat {
       const d = Math.hypot(p.x - pos.x, p.z - pos.z);
       if (d < R) this.damagePed(p, 180 * (1 - d / R), source?.lastHitBy ?? 'vehicle', pos);
     }
+    g.animals?.blast(pos.x, pos.z, R, 180, (source?.lastHitBy ?? 'vehicle') === 'player');
     const pd = Math.hypot(g.player.x - pos.x, g.player.z - pos.z);
     if (pd < R) this.damagePlayer(140 * (1 - pd / R), pos);
     for (const v of g.world.vehicles) {

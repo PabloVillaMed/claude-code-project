@@ -43,6 +43,8 @@ const ICONS = {
   exit: '<path d="M10.5 4H5v16h5.5"/><path d="M14 8l4 4-4 4M18 12H9"/>',
   radio: '<path d="M9 17.5V6.3l10-2.1v11.3"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>',
   back: '<path d="M9 13.5 5 9.5l4-4"/><path d="M5 9.5h9a5 5 0 0 1 0 10h-2.5"/>',
+  // Moto en caballito: llanta de atrás en el piso, la de adelante arriba.
+  wheelie: '<circle cx="6.5" cy="17" r="3"/><circle cx="16.5" cy="8.5" r="3"/><path d="M6.5 17 11 11.5l5.5-3M9 12.5h4.5"/><path d="M3 20.5h8"/>',
 };
 
 // ---------------------------------------------------------------- botones
@@ -69,6 +71,8 @@ export const BUTTONS = [
   { id: 'fireVeh', key: 'fire', kind: 'hold', look: true, label: 'Disparar', icon: 'fire', modes: ['veh'], size: 'm', at: [44, 134] },
   { id: 'exit', key: 'enterVehicle', kind: 'tap', label: 'Bajarse', icon: 'exit', modes: ['veh'], at: [118, 118] },
   { id: 'radio', key: 'radioNext', kind: 'tap', label: 'Radio', icon: 'radio', modes: ['veh'], at: [186, 104] },
+  // Solo en moto (data-moto en la capa): mantener y acelerar levanta la rueda.
+  { id: 'wheelie', key: 'wheelie', kind: 'hold', label: 'Caballito', icon: 'wheelie', modes: ['veh'], at: [118, 186], moto: true },
   // Fila de arriba, en el centro.
   { id: 'pause', key: 'pause', kind: 'tap', label: 'Pausa', icon: 'pause', modes: ['pie', 'veh'] },
   { id: 'map', key: 'map', kind: 'tap', label: 'Mapa', icon: 'map', modes: ['pie', 'veh'] },
@@ -85,10 +89,10 @@ export function touchMode(game, active) {
   return game.player?.inVehicle ? 'vehiculo' : 'pie';
 }
 
-/** Ids de los botones que se ven en un modo (`fullscreen`: si se puede pedir pantalla completa). */
-export function buttonsFor(mode, { fullscreen = false } = {}) {
+/** Ids de los botones que se ven en un modo (`fullscreen`: si se puede pedir pantalla completa; `moto`: en moto, con el caballito). */
+export function buttonsFor(mode, { fullscreen = false, moto = false } = {}) {
   const m = mode === 'vehiculo' ? 'veh' : mode;
-  return BUTTONS.filter((b) => b.modes.includes(m) && (b.kind !== 'fullscreen' || fullscreen)).map((b) => b.id);
+  return BUTTONS.filter((b) => b.modes.includes(m) && (b.kind !== 'fullscreen' || fullscreen) && (!b.moto || moto)).map((b) => b.id);
 }
 
 // Teclas que nombran los textos de ayuda del juego → el botón que hace lo mismo.
@@ -200,6 +204,7 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
   let sprintShown = false;
   let rotateShown = false;
   let wasDead = false;
+  let onMoto = false;
   // pointerId → { type: 'stick' | 'look' | 'btn', def?, el?, x, y, cx?, cy? }
   const bindings = new Map();
 
@@ -473,6 +478,12 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
       } else if (doc.fullscreenElement) lockLandscape();
     }
     if (!m || m === 'cine') return;
+    // En moto aparece el botón del caballito (touch.css: #touch[data-moto]).
+    const moto = m === 'vehiculo' && game.player?.vehicle?.state?.spec?.twoWheels === true;
+    if (moto !== onMoto) {
+      onMoto = moto;
+      layer.dataset.moto = moto ? '1' : '0';
+    }
     // Al morir se sueltan los botones y se apagan apuntar y agacharse (reaparece de pie).
     const dead = !!game.player?.dead;
     if (dead !== wasDead) {
@@ -551,7 +562,7 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
         forced,
         visible: !!mode,
         mode,
-        buttons: mode && mode !== 'cine' ? buttonsFor(mode, { fullscreen: !!fsShown }) : [],
+        buttons: mode && mode !== 'cine' ? buttonsFor(mode, { fullscreen: !!fsShown, moto: onMoto }) : [],
         stick: touch.stick ? { x: touch.stick.x, y: touch.stick.y, push: touch.stick.push } : null,
         radius: R,
         toggles: { ...touch.toggles },

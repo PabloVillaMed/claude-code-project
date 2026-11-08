@@ -193,7 +193,12 @@ export function doorAtlas() {
 
 // ------------------------------------------------------------------ avisos
 export const SIGN_COLS = 4;
-export const SIGN_ROWS = 15; // 60 casillas: genéricos + locales con nombre propio
+export const SIGN_ROWS = 17; // 68 casillas: genéricos + locales con nombre propio (66 hoy)
+
+// Avisos de neón de las discotecas y bares de la 92: fondo casi negro y letra
+// de tubo de color con su resplandor pintado. El material de avisos ya es
+// emisivo de noche (facadeBuilder: sign), así que de noche solo brilla el tubo.
+const NEON = ['#ff2bd6', '#22e6ff', '#ffb000', '#39ff6a', '#b46bff', '#ff4d4d'];
 
 const SIGN_STYLES = [
   ['#c1121f', '#ffffff'],
@@ -216,6 +221,7 @@ export function signAtlas() {
   SIGN_NAMES.forEach(([name, kind, own], i) => {
     const ox = (i % SIGN_COLS) * W;
     const oy = Math.floor(i / SIGN_COLS) * H;
+    if (kind === 'discoteca') return neonSign(ctx, ox, oy, W, H, name, own, NEON[i % NEON.length], NEON[(i + 2) % NEON.length]);
     const [bg, fg] = SIGN_STYLES[i % SIGN_STYLES.length];
     ctx.fillStyle = bg;
     ctx.fillRect(ox, oy, W, H);
@@ -243,6 +249,41 @@ export function signAtlas() {
     }
   });
   return atlasTexture(c);
+}
+
+/** Aviso de neón: caja negra con marco de tubo, nombre con resplandor y letrero chico de otro color. */
+function neonSign(ctx, ox, oy, W, H, name, sub, tube, tube2) {
+  ctx.save();
+  ctx.fillStyle = '#07040d';
+  ctx.fillRect(ox, oy, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Marco de tubo (dos pasadas: el halo ancho y el tubo fino casi blanco).
+  const glow = (color, blur, width, fn) => {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    fn();
+  };
+  glow(tube2, 14, 4, () => ctx.strokeRect(ox + 10, oy + 10, W - 20, H - 20));
+  glow('#ffffff', 4, 1.5, () => ctx.strokeRect(ox + 10, oy + 10, W - 20, H - 20));
+  let size = 58;
+  ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+  while (ctx.measureText(name).width > W - 48 && size > 22) {
+    size -= 2;
+    ctx.font = `bold ${size}px "Segoe UI", Arial, sans-serif`;
+  }
+  glow(tube, 22, 3, () => ctx.fillText(name, ox + W / 2, oy + H * 0.42));
+  glow(tube, 10, 3, () => ctx.fillText(name, ox + W / 2, oy + H * 0.42));
+  // Centro del tubo: más claro que el color (se ve "encendido").
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText(name, ox + W / 2, oy + H * 0.42 - 1);
+  ctx.font = 'bold 21px "Segoe UI", Arial, sans-serif';
+  glow(tube2, 8, 2, () => ctx.fillText(sub ?? 'Rumba · Bar', ox + W / 2, oy + H * 0.79));
+  ctx.restore();
 }
 
 // ------------------------------------------------------------------ toldos

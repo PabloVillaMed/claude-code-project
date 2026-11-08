@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { CameraRig, VEHICLE_VIEWS, footCamera, footViews, smoothingFactor, vehicleCamera } from '../../src/game/cameraRig.js';
+import { CameraRig, FP_NEAR, VEHICLE_VIEWS, footCamera, footViews, smoothingFactor, vehicleCamera } from '../../src/game/cameraRig.js';
 import { groundHeight } from '../../src/sim/terrain.js';
 
 describe('cámara de vehículo', () => {
@@ -118,6 +118,51 @@ describe('CameraRig', () => {
     expect(p.x).toBeGreaterThanOrEqual(1.85 - 1e-6);
     rig.setFirstPerson(false);
     expect(rig.footViewName).toBe('normal');
+  });
+
+  it('primera persona: plano cercano corto, el arma sube a la mira, cabecea, patea y se recoge contra la pared', () => {
+    const cam = new THREE.PerspectiveCamera(65, 1.6, 0.1, 500);
+    const rig = new CameraRig(cam, wall);
+    rig.setFirstPerson(true);
+    while (rig.footViewName !== 'primera') rig.cycleZoom();
+    rig.yaw = Math.PI / 2; // mirando a -X: la pared queda atrás
+    run(rig, ctx(), 30);
+    expect(cam.near).toBe(FP_NEAR);
+    expect(rig.fp.ads).toBeLessThan(0.01);
+    expect(rig.fp.retract).toBeLessThan(0.01);
+    // Apuntar: en medio segundo el arma ya está en la mira (y no de un salto).
+    rig.update(1 / 60, ctx({ aiming: true }));
+    expect(rig.fp.ads).toBeGreaterThan(0.05);
+    expect(rig.fp.ads).toBeLessThan(0.5);
+    run(rig, ctx({ aiming: true }), 30);
+    expect(rig.fp.ads).toBeGreaterThan(0.95);
+    // Disparo: retroceso que se apaga solo.
+    rig.kick(0.012);
+    rig.update(1 / 60, ctx({ aiming: true }));
+    expect(rig.fp.kickBack).toBeGreaterThan(0.02);
+    expect(rig.fp.kickPitch).toBeGreaterThan(0.03);
+    run(rig, ctx({ aiming: true }), 60);
+    expect(rig.fp.kickBack).toBeLessThan(0.002);
+    // Caminando: cabecea (menos apuntando); quieto, no.
+    const swing = (aiming) => {
+      const ys = [];
+      for (let i = 0; i < 90; i++) {
+        rig.update(1 / 60, ctx({ speed: 4, aiming }));
+        ys.push(rig.fp.bobY);
+      }
+      return Math.max(...ys.slice(30)) - Math.min(...ys.slice(30));
+    };
+    const hip = swing(false);
+    expect(hip).toBeGreaterThan(0.01);
+    expect(swing(true)).toBeLessThan(hip * 0.5);
+    // De frente a la pared (x = 2) a medio metro: el arma se recoge.
+    rig.yaw = -Math.PI / 2;
+    run(rig, ctx({ x: 1.4 }), 60);
+    expect(rig.fp.retract).toBeGreaterThan(0.5);
+    // De vuelta en tercera persona, el plano cercano de siempre.
+    rig.setFirstPerson(false);
+    run(rig, ctx(), 2);
+    expect(cam.near).toBe(0.1);
   });
 
   it('vista de vehículo por defecto desde la configuración', () => {

@@ -159,7 +159,38 @@ class LodChunk {
     this.srcMatrix = levels[0].matrix.array.slice();
     this.srcColor = levels[0].color ? levels[0].color.array.slice() : null;
     this.idx = levels.map(() => new Uint16Array(this.n));
+    // Dónde quedó cada instancia (nivel y casilla en su buffer): para cambiar
+    // la matriz de UNA sola (un poste tumbado) sin reescribir el trozo.
+    this.lvl = new Uint8Array(this.n);
+    this.slot = new Uint16Array(this.n);
     this.mode = -1; // nivel único (0, 1, 2) o 9 = mezclado
+  }
+
+  /** Cambia la matriz de la instancia i (en la copia fuente y en su casilla visible: solo esos 16 números). */
+  setMatrix(i, te) {
+    this.srcMatrix.set(te, i * 16);
+    const lv = this.levels[this.lvl[i]];
+    if (this.mode < 0 || !lv?.meshes.length || this.slot[i] >= lv.meshes[0].count) return;
+    lv.matrix.array.set(te, this.slot[i] * 16);
+    lv.matrix.addUpdateRange(this.slot[i] * 16, 16);
+    lv.matrix.needsUpdate = true;
+  }
+
+  /** Color por instancia (si el nivel lo tiene): mismo trato que setMatrix. */
+  setColor(i, r, g, b) {
+    if (!this.srcColor) return;
+    const o = i * 3;
+    this.srcColor[o] = r;
+    this.srcColor[o + 1] = g;
+    this.srcColor[o + 2] = b;
+    const lv = this.levels[this.lvl[i]];
+    if (this.mode < 0 || !lv?.color || !lv.meshes.length || this.slot[i] >= lv.meshes[0].count) return;
+    const s = this.slot[i] * 3;
+    lv.color.array[s] = r;
+    lv.color.array[s + 1] = g;
+    lv.color.array[s + 2] = b;
+    lv.color.addUpdateRange(s, 3);
+    lv.color.needsUpdate = true;
   }
 
   update(x, z) {
@@ -182,6 +213,8 @@ class LodChunk {
       const dz = this.pz[i] - z;
       const d2 = dx * dx + dz * dz;
       const l = d2 < near2 ? 0 : d2 < mid2 || this.levels.length < 3 ? 1 : 2;
+      this.lvl[i] = l;
+      this.slot[i] = k[l];
       this.idx[l][k[l]++] = i;
     }
     this.levels.forEach((lv, l) => this._write(lv, this.idx[l], k[l]));
@@ -192,7 +225,8 @@ class LodChunk {
     if (this.mode === level) return;
     this.mode = level;
     const all = this.idx[0];
-    for (let i = 0; i < this.n; i++) all[i] = i;
+    for (let i = 0; i < this.n; i++) all[i] = this.slot[i] = i;
+    this.lvl.fill(level);
     this.levels.forEach((lv, l) => this._write(lv, all, l === level ? this.n : 0));
   }
 
@@ -215,6 +249,47 @@ class LodChunk {
       im.visible = k > 0;
     }
   }
+}
+
+// ------------------------------------------------------------------ una instancia suelta
+// h = lo que ChunkedInstances deja en `refs` para un objeto: {lc, i} (trozo
+// con detalle por instancia) o {levels, i} (THREE.LOD por trozo). Las
+// matrices son relativas al centro del trozo.
+
+/** Matriz actual (16 números) de una instancia, escrita en `out`. */
+export function instanceMatrix(h, out) {
+  const a = h.lc ? h.lc.srcMatrix : h.levels[0].matrix.array;
+  for (let k = 0; k < 16; k++) out[k] = a[h.i * 16 + k];
+  return out;
+}
+
+/** Cambia la matriz de UNA instancia: solo sus 16 números se vuelven a subir, y solo en su trozo. */
+export function setInstanceMatrix(h, te) {
+  if (h.lc) return h.lc.setMatrix(h.i, te);
+  for (const lv of h.levels) {
+    lv.matrix.array.set(te, h.i * 16);
+    lv.matrix.addUpdateRange(h.i * 16, 16);
+    lv.matrix.needsUpdate = true;
+  }
+}
+
+/** Color de una instancia (solo en los niveles con color por instancia). */
+export function setInstanceColor(h, r, g, b) {
+  if (h.lc) return h.lc.setColor(h.i, r, g, b);
+  for (const lv of h.levels) {
+    if (!lv.color) continue;
+    lv.color.array[h.i * 3] = r;
+    lv.color.array[h.i * 3 + 1] = g;
+    lv.color.array[h.i * 3 + 2] = b;
+    lv.color.addUpdateRange(h.i * 3, 3);
+    lv.color.needsUpdate = true;
+  }
+}
+
+/** Mallas de una instancia (todos sus niveles). */
+export function instanceMeshes(h) {
+  const levels = h.lc ? h.lc.levels : h.levels;
+  return levels.flatMap((lv) => lv.meshes);
 }
 
 // Árbol lejano genérico: copa (icosaedro deformado) y tronco, ~100 triángulos.
@@ -256,18 +331,21 @@ export function blobParts(tpl) {
  * THREE.LOD que desaparece más allá de `far`.
  */
 export class ChunkedInstances {
-  constructor(tpl, { near = 140, far = 1500, mid = Infinity, blob = false, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK, perInstance = false } = {}) {
+  constructor(tpl, { near = 140, far = 1500, mid = Infinity, blob = false, castShadow = true, receiveShadow = true, tint = null, name = 'utileria', chunk = CHUNK, perInstance = false, refs = null } = {}) {
     this.tpl = tpl;
     this.items = [];
     // mid + blob: más allá de `mid` cada instancia pasa a un árbol genérico barato.
     // perInstance: aunque no haya versión lejana, la distancia de dibujo se mide
     // a cada instancia y no al centro del trozo (para utilería que se ve poco lejos).
     this.opts = { near, far, mid, blob, castShadow, receiveShadow, tint, name, chunk, perInstance };
+    // refs: Map donde queda, por cada objeto (`ref` de add), su instancia
+    // {lc | levels, i}: así se puede mover una sola (render/destructibles.js).
+    this.refs = refs;
   }
 
-  /** q: cuaternión opcional (ya incluye la rotación en Y). */
-  add(x, y, z, rotY, sx = 1, sy = sx, sz = sx, color = null, q = null) {
-    this.items.push({ x, y, z, rotY, sx, sy, sz, color: color ? color.clone() : null, q: q ? q.clone() : null });
+  /** q: cuaternión opcional (ya incluye la rotación en Y); ref: el objeto de la ciudad (ver refs). */
+  add(x, y, z, rotY, sx = 1, sy = sx, sz = sx, color = null, q = null, ref = null) {
+    this.items.push({ x, y, z, rotY, sx, sy, sz, color: color ? color.clone() : null, q: q ? q.clone() : null, ref });
   }
 
   /** lodChunks: lista donde se registran los trozos con detalle por instancia. */
@@ -304,14 +382,20 @@ export class ChunkedInstances {
         const lc = new LodChunk(g, c, radius, list, levels, this.tpl.lejos ? this.opts.near : this.opts.far, this.opts.far, this.opts.mid);
         lc._all(0);
         lodChunks.push(lc);
+        if (this.refs) list.forEach((it, i) => it.ref && this.refs.set(it.ref, { lc, levels: null, i, group: g, h: this.tpl.box.max.y * it.sy }));
         out.push(g);
         continue;
       }
       const lod = new THREE.LOD();
       lod.name = this.opts.name;
       lod.position.copy(c);
-      lod.addLevel(this._level(this.tpl.cerca, list, c, this.opts.castShadow).group, 0);
-      if (this.tpl.lejos) lod.addLevel(this._level(this.tpl.lejos, list, c, false).group, this.opts.near);
+      const lvs = [this._level(this.tpl.cerca, list, c, this.opts.castShadow)];
+      lod.addLevel(lvs[0].group, 0);
+      if (this.tpl.lejos) {
+        lvs.push(this._level(this.tpl.lejos, list, c, false));
+        lod.addLevel(lvs[1].group, this.opts.near);
+      }
+      if (this.refs) list.forEach((it, i) => it.ref && this.refs.set(it.ref, { lc: null, levels: lvs, i, group: lod, h: this.tpl.box.max.y * it.sy }));
       lod.addLevel(new THREE.Object3D(), this.opts.far);
       root.add(lod);
       out.push(lod);
@@ -389,9 +473,29 @@ function lampMaterials(tpl, night, max) {
       m.emissiveIntensity = 0;
       night.push({ m, max });
       out.push(m);
+      apagable(m);
     }
   }
   return out;
+}
+
+/**
+ * El bombillo de un farol tumbado se apaga: con color por instancia, el
+ * brillo se multiplica por (2·verde − 1): blanco = encendido, gris 0,5 =
+ * apagado (y el vidrio un poco más oscuro). Sin color por instancia, igual que antes.
+ */
+function apagable(m) {
+  if (m.userData.apagable || m.vertexColors) return;
+  m.userData.apagable = true;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = function (sh, renderer) {
+    prev.call(this, sh, renderer);
+    sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n\ttotalEmissiveRadiance *= clamp( vColor.g * 2.0 - 1.0, 0.0, 1.0 );\n#endif');
+  };
+  const key = m.customProgramCacheKey;
+  m.customProgramCacheKey = function () {
+    return key.call(this) + '|apagable';
+  };
 }
 
 // ------------------------------------------------------------------ constructores por tipo
@@ -412,14 +516,17 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
       box.computeBoundingSphere();
       tpl.lejos.push({ geometry: box, material: glass });
     }
-    const set = new ChunkedInstances(tpl, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'faroles' });
+    // Color por instancia solo en el vidrio: así un farol tumbado se apaga (apagable).
+    const set = new ChunkedInstances(tpl, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'faroles', tint: (m) => !!m.userData?.luz, refs: r.propInstances });
     r.lampHeads ??= [];
     for (const l of lamps) {
-      set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot);
+      set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot, 1, 1, 1, null, null, l);
       const dx = Math.sin(l.rot) * luz[2];
       const dz = Math.cos(l.rot) * luz[2];
       glows.push({ x: l.x + dx, z: l.z + dz, s: 1 });
-      r.lampHeads.push({ x: l.x + dx, y: groundY(l.x, l.z) + luz[1] - 0.3, z: l.z + dz });
+      const head = { x: l.x + dx, y: groundY(l.x, l.z) + luz[1] - 0.3, z: l.z + dz, off: false };
+      r.lampHeads.push(head);
+      r.propLights?.set(l, head);
     }
     set.build(r.root, r.lodChunks);
     handledStreet = true;
@@ -428,12 +535,14 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
     const t = ptpl ?? boxTemplate('farol_parque', 0.18, 4, 0.18, 0x1c1f22, { cylinder: true });
     if (ptpl) lampMaterials(ptpl, r.nightMaterials, 3);
     const k = ptpl ? 4.4 / ptpl.height : 1;
-    const set = new ChunkedInstances(t, { near: 400, far: 700, name: 'faroles-parque' });
+    const set = new ChunkedInstances(t, { near: 400, far: 700, name: 'faroles-parque', tint: (m) => !!m.userData?.luz, refs: r.propInstances });
     r.lampHeads ??= [];
     for (const l of parkLamps) {
-      set.add(l.x, groundY(l.x, l.z), l.z, l.rot ?? 0, k);
+      set.add(l.x, groundY(l.x, l.z), l.z, l.rot ?? 0, k, k, k, null, null, l);
       glows.push({ x: l.x, z: l.z, s: 0.6 });
-      r.lampHeads.push({ x: l.x, y: groundY(l.x, l.z) + 4.1, z: l.z, park: true });
+      const head = { x: l.x, y: groundY(l.x, l.z) + 4.1, z: l.z, park: true, off: false };
+      r.lampHeads.push(head);
+      r.propLights?.set(l, head);
     }
     set.build(r.root);
   }
@@ -448,15 +557,15 @@ function buildPoles(r, poles, cables) {
   const rng = makeRng(313);
   const H = 9;
   const variant = new Map();
-  const setA = new ChunkedInstances(ta, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes' });
-  const setB = tb ? new ChunkedInstances(tb, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes-transformador' }) : null;
+  const setA = new ChunkedInstances(ta, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes', refs: r.propInstances });
+  const setB = tb ? new ChunkedInstances(tb, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'postes-transformador', refs: r.propInstances }) : null;
   for (const p of poles) {
     const useB = setB && rng.chance(0.3);
     const tpl = useB ? tb : ta;
     const k = H / tpl.height;
     // Crucetas perpendiculares a la carrera (los cables corren en Z).
     const rot = rng.chance(0.5) ? 0 : Math.PI;
-    (useB ? setB : setA).add(p.x, groundY(p.x, p.z) - 0.1, p.z, rot, k);
+    (useB ? setB : setA).add(p.x, groundY(p.x, p.z) - 0.1, p.z, rot, k, k, k, null, null, p);
     variant.set(p, { tpl, k });
   }
   setA.build(r.root, r.lodChunks);
@@ -471,9 +580,20 @@ function buildPoles(r, poles, cables) {
     list.push([0.25, list[1][1] * 0.72]);
     return list;
   };
+  // Cada tramo recuerda dónde quedaron sus vértices: si se tumba un poste,
+  // sus cables bajan con él (render/destructibles.js los vuelve a tender).
+  const tramos = r.poleCables;
   for (const c of cables) {
     const A = anchorsOf(c.a);
     const B = anchorsOf(c.b);
+    if (tramos) {
+      const t = { a: c.a, b: c.b, start: pts.length / 3, A, B, n: 10 };
+      for (const p of [c.a, c.b]) {
+        const l = tramos.get(p);
+        if (l) l.push(t);
+        else tramos.set(p, [t]);
+      }
+    }
     const ya = groundY(c.a.x, c.a.z);
     const yb = groundY(c.b.x, c.b.z);
     for (let j = 0; j < A.length; j++) {
@@ -490,7 +610,12 @@ function buildPoles(r, poles, cables) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  r.root.add(wireLines(g, 0x1c1c1c));
+  const lines = wireLines(g, 0x1c1c1c);
+  lines.name = 'cables';
+  // Sus vértices se vuelven a escribir cuando se tumba un poste: no se sueltan.
+  lines.userData.keepGeometry = true;
+  r.cableLines = lines;
+  r.root.add(lines);
   return true;
 }
 
@@ -556,6 +681,11 @@ function buildSmallProps(r, byType) {
  * disponibles y devuelve lo que debe seguir siendo procedural.
  */
 export function buildModelProps(r, byType, { glowSprite }) {
+  // Instancias de la utilería que se puede tumbar (render/destructibles.js):
+  // objeto de la ciudad → instancia, cabeza de farol y tramos de cable.
+  r.propInstances ??= new Map();
+  r.propLights ??= new Map();
+  r.poleCables ??= new Map();
   // Vegetación (vegetation.js): árboles, matas en los jardines y los props
   // sueltos shrub / grass / climber. Devuelve los árboles sin modelo.
   const trees = buildVegetation(r, byType.tree ?? [], (byType.garden ?? []).filter((g) => g.poly), [...(byType.shrub ?? []), ...(byType.grass ?? []), ...(byType.climber ?? [])]);

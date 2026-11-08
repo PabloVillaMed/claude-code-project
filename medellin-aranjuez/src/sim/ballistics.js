@@ -1,16 +1,18 @@
 // Trazado de disparos contra la escena: edificios, suelo, personajes (cuerpo
-// y cabeza) y vehículos. Puro y testeable.
+// y cabeza), vehículos y animales de la calle. Puro y testeable.
 
 import { rayVsObb3D, rayVsSphere, rayVsVerticalCapsule } from './collision.js';
+import { ANIMAL_RAY, rayVsAnimal } from './animals.js';
 
 // Cápsula del cuerpo: los extremos esféricos llegan de 0,05 m a 1,5 m (hombros).
 export const BODY = { radius: 0.3, bottom: 0.35, top: 1.2, headY: 1.63, headR: 0.15 };
+const NONE = [];
 
 /**
  * @param o origen {x,y,z}; d dirección normalizada {x,y,z}
  * @param scene {collision, groundHeight, characters:[{ref,x,y,z,dead?}],
- *   vehicles:[{ref,obb,y,height}], ignore:Set}
- * @returns {t, x,y,z, kind:'building'|'ground'|'character'|'vehicle'|null, ref, headshot, normal}
+ *   vehicles:[{ref,obb,y,height}], animals?:[animal de sim/animals.js], ignore:Set}
+ * @returns {t, x,y,z, kind:'building'|'ground'|'character'|'vehicle'|'animal'|null, ref, headshot, normal}
  */
 export function traceShot(o, d, maxDist, scene) {
   let best = { t: maxDist, kind: null, ref: null, headshot: false, normal: null };
@@ -38,6 +40,20 @@ export function traceShot(o, d, maxDist, scene) {
     if (th !== null && th < best.t) best = { t: th, kind: 'character', ref: c.ref, headshot: true, normal: { x: -d.x, y: -d.y, z: -d.z } };
     const tb = rayVsVerticalCapsule(o.x, o.y, o.z, d.x, d.y, d.z, c.x, c.z, c.y + BODY.bottom, c.y + BODY.top, BODY.radius, best.t);
     if (tb !== null && tb < best.t) best = { t: tb, kind: 'character', ref: c.ref, headshot: false, normal: { x: -d.x, y: -d.y, z: -d.z } };
+  }
+
+  // Animales de la calle (la lista de AnimalSim tal cual: sin copiar nada); los muertos no estorban.
+  const animals = scene.animals ?? NONE;
+  for (let i = 0; i < animals.length; i++) {
+    const a = animals[i];
+    if (a.mode === 'dead') continue;
+    const lx = a.x - o.x;
+    const lz = a.z - o.z;
+    const along = lx * d.x + lz * d.z;
+    if (along < -1 || along > best.t + 1) continue;
+    if (Math.abs(lx * d.z - lz * d.x) / (Math.hypot(d.x, d.z) || 1) > 0.8) continue;
+    const t = rayVsAnimal(o.x, o.y, o.z, d.x, d.y, d.z, a, best.t);
+    if (t !== null && t < best.t) best = { t, kind: 'animal', ref: a, headshot: ANIMAL_RAY.head, normal: { x: -d.x, y: -d.y, z: -d.z } };
   }
 
   for (const v of scene.vehicles ?? []) {

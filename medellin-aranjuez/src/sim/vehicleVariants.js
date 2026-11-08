@@ -8,6 +8,13 @@
 // ciudad sin copiar logos ni modelos registrados.
 
 /**
+ * Moto de la Policía (ajustable): velocidad máxima (m/s; la patrulla 50, la
+ * moto civil 44), aceleración (m/s²; la patrulla 9,5) y salud (la patrulla
+ * 2200, la moto civil 900).
+ */
+export const POLICE_MOTO_SPEC = { maxSpeed: 46, accel: 11.5, health: 1100 };
+
+/**
  * id -> {type, model (GLB en public/models/vehiculos), name?, spec (se suma a
  * VEHICLE_TYPES[type]), engine (perfil de sonido), traffic y parked (pesos
  * relativos dentro del tipo)}.
@@ -132,7 +139,26 @@ export const VEHICLE_VARIANTS = {
   },
   // Moto de domicilios: la de siempre con la caja en la parrilla.
   domicilio: { type: 'moto', model: 'moto', name: 'Moto de domicilios', spec: { mass: 190, maxSpeed: 40 }, engine: 'moto4t', box: true, traffic: 3, parked: 2 },
+  // Moto de la Policía: doble propósito de 300 (como la Honda XRE 300 de la
+  // Policía Metropolitana), blanca y verde (render/vehicleMesh.js). Más ágil
+  // que la patrulla pero aguanta mucho menos. No sale en el tráfico ni
+  // parqueada: la pone la policía (game/world.js).
+  policia_moto: {
+    type: 'moto',
+    model: 'moto_tt',
+    name: 'Moto de la Policía',
+    police: true,
+    spec: { length: 2.15, width: 0.9, height: 1.3, mass: 175, maxSpeed: POLICE_MOTO_SPEC.maxSpeed, accel: POLICE_MOTO_SPEC.accel, health: POLICE_MOTO_SPEC.health },
+    engine: 'moto4t_grande',
+    traffic: 0,
+    parked: 0,
+  },
 };
+
+/** ¿Vehículo de la Policía? (la patrulla o una variante marcada `police`). */
+export function isPoliceVehicle(type, variant = null) {
+  return type === 'policia' || !!VEHICLE_VARIANTS[variant]?.police;
+}
 
 /** Variante por defecto de cada tipo (la del modelo original). */
 const DEFAULT = { taxi: 'taxi', sedan: 'sedan', camioneta: 'camioneta', policia: 'policia', buseta: 'buseta', moto: 'moto' };

@@ -14,6 +14,21 @@ import { vehicleSpec } from '../sim/vehiclePhysics.js';
 import { VEHICLE_VARIANTS, BOX_COLORS } from '../sim/vehicleVariants.js';
 import { groundHeight, terrainHeight } from '../sim/terrain.js';
 
+// ------------------------------------------- moto de la Policía (ajustables)
+// Como las Honda XRE 300 de la Policía Metropolitana del Valle de Aburrá:
+// blanca, con paneles verde fluorescente y verde oscuro, letrero POLICÍA en
+// las maletas y el baúl, y luces roja y azul que destellan con la sirena.
+/** Blanco de la carrocería (lo que en la moto civil es la pintura). */
+export const POLICE_MOTO_WHITE = 0xf4f4f4;
+/** Verde fluorescente (reflectivo) de los paneles. */
+export const POLICE_MOTO_LIME = 0xb6f000;
+/** Verde oscuro institucional (letras y franjas). */
+export const POLICE_MOTO_GREEN = 0x0b5a33;
+/** Lado (m) de cada luz de la sirena: un par junto a la farola y otro sobre el baúl. */
+export const POLICE_MOTO_LENS = 0.075;
+/** Brillo de una luz de la sirena encendida (la patrulla usa 6). */
+export const POLICE_MOTO_FLASH = 7;
+
 // Las vías se dibujan un poco por encima del terreno (cityRenderer: `lift` de
 // _roads) y los andenes justo a la altura del sardinel (groundHeight). Las
 // llantas se apoyan en lo que se ve: debe coincidir con ese `lift`.
@@ -120,9 +135,20 @@ const MODEL_CFG = {
   domicilio: { model: 'moto', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.2 }, headY: 0.9, headZ: 0.24, tailY: 0.72, tailZ: 0.08 },
   moto_2t: { model: 'moto_2t', uniform: true, seatAbs: { x: 0, y: 0.26, z: 0.16 }, headY: 0.92, headZ: 0.22, tailY: 0.74, tailZ: 0.1 },
   moto_enduro: { model: 'moto_enduro', uniform: true, seatAbs: { x: 0, y: 0.3, z: 0.12 }, headY: 1.0, headZ: 0.2, tailY: 0.8, tailZ: 0.1 },
-  moto_tt: { model: 'moto_tt', uniform: true, seatAbs: { x: 0, y: 0.3, z: 0.18 }, headY: 1.02, headZ: 0.24, tailY: 0.82, tailZ: 0.2 },
-  scooter: { model: 'scooter', uniform: true, seatAbs: { x: 0, y: 0.24, z: 0.2 }, headY: 0.9, headZ: 0.16, tailY: 0.72, tailZ: 0.06 },
+  // `flip`: el GLB quedó con el frente en +Z (parabrisas, manubrio y la rueda
+  // de 21" atrás; maletas adelante): scripts/assets/vehiculos.mjs convirtió
+  // 'akttt' sin rotY y nombró las ruedas por posición. La plantilla lo gira
+  // 180° y toma como delantera la rueda que queda en -Z. Si se regenera el GLB
+  // con rotY: Math.PI, quitar `flip` (la prueba veh-frente lo avisa).
+  moto_tt: { model: 'moto_tt', uniform: true, flip: true, seatAbs: { x: 0, y: 0.3, z: 0.1 }, headY: 0.98, headZ: 0.2, tailY: 0.82, tailZ: 0.04 },
+  // Scooter: también quedó al revés (escudo, manubrio y espejos en +Z, el
+  // sillín y la cola en -Z): `flip` como la TT. El puño está un poco más alto
+  // que el sillín (gripTop) y los pies van en el piso (feet), no en estriberas.
+  scooter: { model: 'scooter', uniform: true, flip: true, seatAbs: { x: 0, y: 0.24, z: 0.22 }, gripTop: 0.26, feet: { x: 0.14, y: 0.31, z: -0.1 }, headY: 0.7, headZ: 0.19, tailY: 0.74, tailZ: 0.06 },
 };
+// Moto de la Policía: la doble propósito (como la Honda XRE 300 de la
+// Policía Metropolitana) con la pintura y las luces institucionales.
+MODEL_CFG.policia_moto = { ...MODEL_CFG.moto_tt, police: true };
 
 /** Configuración del modelo de una variante (o la del tipo). */
 const cfgOf = (type, variant) => (variant && MODEL_CFG[variant]) || MODEL_CFG[type];
@@ -301,7 +327,7 @@ export function midPlaneProxy(root, margin = 1e-3) {
  * extremos del manubrio, por debajo de los espejos) y estriberas del piloto.
  * El personaje (characterRig) pone ahí cadera, manos y pies.
  */
-function motoRidePoints(body, seat, box) {
+function motoRidePoints(body, seat, box, cfg = {}) {
   const h = hit(body, _v.set(0, box.max.y + 1, seat.z), new THREE.Vector3(0, -1, 0));
   const seatY = h ? h.point.y : 0.93;
   const p = new THREE.Vector3();
@@ -315,7 +341,7 @@ function motoRidePoints(body, seat, box) {
       p.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
       const s = p.x < 0 ? 0 : 1;
       // Manubrio: delante del asiento, a la altura del tanque/tablero, sin los espejos (más altos).
-      if (p.z < seat.z - 0.3 && p.z > seat.z - 0.9 && p.y > seatY && p.y < seatY + 0.22 && (!grip[s] || Math.abs(p.x) > Math.abs(grip[s].x))) grip[s] = p.clone();
+      if (p.z < seat.z - 0.3 && p.z > seat.z - 0.9 && p.y > seatY && p.y < seatY + (cfg.gripTop ?? 0.22) && (!grip[s] || Math.abs(p.x) > Math.abs(grip[s].x))) grip[s] = p.clone();
       // Estriberas: lo más ancho a baja altura, cerca de la vertical del asiento.
       if (Math.abs(p.z - seat.z) < 0.3 && p.y > 0.2 && p.y < 0.42 && (!peg[s] || Math.abs(p.x) > Math.abs(peg[s].x))) peg[s] = p.clone();
     }
@@ -326,8 +352,63 @@ function motoRidePoints(body, seat, box) {
     seatZ: seat.z,
     // El puño ocupa los últimos ~12 cm del manubrio: la mano va en su centro.
     grips: [inset(grip[0], 0.07, { x: -0.34, y: 1.07, z: -0.32 }), inset(grip[1], 0.07, { x: 0.34, y: 1.07, z: -0.32 })],
-    pegs: [inset(peg[0], 0.05, { x: -0.19, y: 0.32, z: 0.1 }), inset(peg[1], 0.05, { x: 0.19, y: 0.32, z: 0.1 })],
+    // Scooter: los pies van en el piso (cfg.feet), no en estriberas.
+    pegs: cfg.feet ? [{ ...cfg.feet, x: -cfg.feet.x }, { ...cfg.feet }] : [inset(peg[0], 0.05, { x: -0.19, y: 0.32, z: 0.1 }), inset(peg[1], 0.05, { x: 0.19, y: 0.32, z: 0.1 })],
   };
+}
+
+/**
+ * Dónde van los paneles y las luces de la moto de la Policía, medido una vez
+ * en el modelo ya escalado: lo que queda detrás del puesto, más ancho que las
+ * estriberas y por debajo del sillín son las maletas; lo que queda detrás y por
+ * encima del sillín, el baúl. Devuelve sus cajas (x de las maletas en valor absoluto).
+ */
+function policeMotoLayout(body, tpl) {
+  const seatZ = tpl.seat.z;
+  const seatY = tpl.ride.seatY;
+  const side = new THREE.Box3();
+  const top = new THREE.Box3();
+  const p = new THREE.Vector3();
+  body.updateMatrixWorld(true);
+  body.traverse((o) => {
+    if (!o.isMesh) return;
+    const a = o.geometry.attributes.position;
+    for (let i = 0; i < a.count; i++) {
+      p.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
+      if (p.z < seatZ + 0.15) continue;
+      if (Math.abs(p.x) > 0.28 && p.y < seatY + 0.05) side.expandByPoint(p.set(Math.abs(p.x), p.y, p.z));
+      else if (p.y > seatY + 0.14) top.expandByPoint(p);
+    }
+  });
+  return { side: side.isEmpty() ? null : side, top: top.isEmpty() ? null : top };
+}
+
+/** Panel blanco con franjas verdes y letrero POLICÍA (canvas; sin DOM, solo color). */
+function policePanelMat(key, text, { w = 512, h = 256, font = 'bold 104px Arial, sans-serif' } = {}) {
+  return shared(key, () => {
+    if (typeof document === 'undefined') return new THREE.MeshStandardMaterial({ color: POLICE_MOTO_LIME, roughness: 0.4 });
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
+    ctx.fillStyle = hex(POLICE_MOTO_WHITE);
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = hex(POLICE_MOTO_LIME);
+    ctx.fillRect(0, 0, w, h * 0.3);
+    ctx.fillStyle = hex(POLICE_MOTO_GREEN);
+    ctx.fillRect(0, h * 0.3, w, h * 0.06);
+    ctx.fillRect(0, h * 0.88, w, h * 0.12);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = font;
+    ctx.fillText(text, w / 2, h * 0.63);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    // Reflectivo: un poco de brillo propio para que se lea de noche con los faros.
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.45, metalness: 0.05, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.08, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  });
 }
 
 const templates = new Map();
@@ -360,9 +441,17 @@ function modelTemplate(type, variant = null) {
   const sH = cfg.uniform ? sL : Math.exp((1 - cfg.hBlend) * Math.log((sL + sW) / 2) + cfg.hBlend * Math.log(spec.height / bodyBox.max.y));
   const ws = cfg.uniform ? sL : (sL + sH) / 2;
 
+  // Modelo con el frente en +Z: todo se gira 180° (x y z cambian de signo).
+  const flip = cfg.flip ? -1 : 1;
   const body = new THREE.Group();
   body.name = 'carroceria';
-  body.add(src.clone(true));
+  const bodySrc = src.clone(true);
+  if (cfg.flip) {
+    const turned = new THREE.Group();
+    turned.rotation.y = Math.PI;
+    turned.add(bodySrc);
+    body.add(turned);
+  } else body.add(bodySrc);
   body.scale.set(sW, sH, sL);
   body.traverse((o) => {
     if (!o.isMesh) return;
@@ -392,7 +481,8 @@ function modelTemplate(type, variant = null) {
       }
     });
     content.scale.set(cfg.uniform ? sL : sW, ws, ws);
-    const pos = new THREE.Vector3(w.position.x * sW, r * ws, w.position.z * sL);
+    if (cfg.flip) content.rotation.y = Math.PI;
+    const pos = new THREE.Vector3(flip * w.position.x * sW, r * ws, flip * w.position.z * sL);
     // Piezas que viran con esta rueda pero no giran (guardabarros y mordaza
     // de la moto): nodo "horquilla_*" con el origen en el mismo eje.
     const st = root.getObjectByName(w.name.replace('rueda_', 'horquilla_'));
@@ -408,10 +498,12 @@ function modelTemplate(type, variant = null) {
         o.receiveShadow = true;
       });
       steer.scale.set(sW, sH, sL);
+      if (cfg.flip) steer.rotation.y = Math.PI;
       // Mismo punto del modelo que el eje de la rueda (con la escala de la carrocería).
-      steer.position.set(st.position.x * sW - pos.x, st.position.y * sH - pos.y, st.position.z * sL - pos.z);
+      steer.position.set(flip * st.position.x * sW - pos.x, st.position.y * sH - pos.y, flip * st.position.z * sL - pos.z);
     }
-    return { content, steer, pos, front: w.name.startsWith('rueda_del') };
+    // Delantera: la que queda en -Z (en un modelo girado, la que se llamaba "tras").
+    return { content, steer, pos, front: w.name.startsWith(cfg.flip ? 'rueda_tras' : 'rueda_del') };
   });
 
   // Techo: barrido de rayos hacia abajo por el eje central (contra una copia
@@ -465,7 +557,8 @@ function modelTemplate(type, variant = null) {
   // Puesto del conductor (lado izquierdo).
   if (cfg.seat) tpl.seat = { x: cfg.seat.x * W, y: roofY - cfg.seat.drop, z: cfg.seat.z * L };
   else tpl.seat = { ...(cfg.seatAbs ?? { x: 0, y: 0.34, z: 0.12 }) };
-  if (type === 'moto') tpl.ride = motoRidePoints(body, tpl.seat, box);
+  if (type === 'moto') tpl.ride = motoRidePoints(body, tpl.seat, box, cfg);
+  if (cfg.police && tpl.ride) tpl.police = policeMotoLayout(body, tpl);
   templates.set(key, tpl);
   registerShared(root);
   registerShared(tpl);
@@ -534,6 +627,9 @@ export class VehicleView {
     this.color = opts.color ?? PAINTS[Math.floor(Math.random() * PAINTS.length)];
     this.lights.sign = null;
     this.variant = opts.variant ?? null;
+    // Inclinación (rad, + hunde el lado izquierdo) con el peso del que se sube o
+    // se baja (game/boarding.js): en moto se inclina toda; en carro, la carrocería.
+    this.boardTilt = 0;
     const tpl = opts.procedural ? null : modelTemplate(type, this.variant);
     this.fromModel = !!tpl;
     if (tpl) this._buildFromModel(tpl, opts);
@@ -608,6 +704,54 @@ export class VehicleView {
     this.chassis.add(g);
   }
 
+  /**
+   * Moto de la Policía: paneles con POLICÍA en las maletas y el baúl, y las
+   * luces de la sirena (roja a la izquierda, azul a la derecha) junto a la
+   * farola y sobre el baúl. Usan lights.bar como la barra de la patrulla: sync
+   * las hace destellar cuando el vehículo trae la sirena prendida.
+   */
+  _policeMoto(tpl) {
+    const L = tpl.police;
+    const plane = shared('poli-panel-geo', () => new THREE.PlaneGeometry(1, 1));
+    if (L.side) {
+      const s = L.side;
+      const mat = policePanelMat('poli-panel-maleta', 'POLICÍA');
+      for (const side of [-1, 1]) {
+        const m = new THREE.Mesh(plane, mat);
+        m.scale.set((s.max.z - s.min.z) * 0.86, (s.max.y - s.min.y) * 0.62, 1);
+        m.position.set(side * (s.max.x + 0.004), (s.min.y + s.max.y) / 2 + (s.max.y - s.min.y) * 0.05, (s.min.z + s.max.z) / 2);
+        m.rotation.y = (side * Math.PI) / 2;
+        this.chassis.add(m);
+      }
+    }
+    const red = new THREE.MeshStandardMaterial({ color: 0xff1010, emissive: 0xff0000, emissiveIntensity: 0.1, roughness: 0.2 });
+    const blue = new THREE.MeshStandardMaterial({ color: 0x1040ff, emissive: 0x0044ff, emissiveIntensity: 0.1, roughness: 0.2 });
+    this.lights.bar.push(red, blue);
+    this.barFlash = POLICE_MOTO_FLASH;
+    const S = POLICE_MOTO_LENS;
+    const lens = shared(`poli-lens-${S}`, () => new RoundedBoxGeometry(S, S * 0.7, S * 0.6, 2, S * 0.15));
+    const addLens = (mat, x, y, z) => {
+      const m = new THREE.Mesh(lens, mat);
+      m.position.set(x, y, z);
+      this.chassis.add(m);
+    };
+    // Adelante: a lado y lado de la farola.
+    const hy = (tpl.cfg.headY ?? 0.9) - 0.02;
+    const hz = tpl.box.min.z + (tpl.cfg.headZ ?? 0.3) + 0.02;
+    addLens(red, -0.11, hy, hz);
+    addLens(blue, 0.11, hy, hz);
+    if (L.top) {
+      const t = L.top;
+      // Atrás: sobre la tapa del baúl, y el letrero en su espalda.
+      addLens(red, -0.09, t.max.y + S * 0.3, (t.min.z + t.max.z) / 2 + 0.04);
+      addLens(blue, 0.09, t.max.y + S * 0.3, (t.min.z + t.max.z) / 2 + 0.04);
+      const back = new THREE.Mesh(plane, policePanelMat('poli-panel-baul', 'POLICÍA'));
+      back.scale.set((t.max.x - t.min.x) * 0.8, (t.max.y - t.min.y) * 0.55, 1);
+      back.position.set((t.min.x + t.max.x) / 2, (t.min.y + t.max.y) / 2, t.max.z + 0.004);
+      this.chassis.add(back);
+    }
+  }
+
   /** Vehículo a partir del modelo glTF normalizado (ver modelTemplate). */
   _buildFromModel(tpl, opts) {
     const type = this.type;
@@ -615,6 +759,7 @@ export class VehicleView {
     if (type === 'taxi') color = 0xf7c600;
     else if (type === 'policia') color = 0xf4f4f4;
     else if (type === 'buseta') color = 0xf2f2f2;
+    else if (tpl.police) color = POLICE_MOTO_WHITE;
     else if (type === 'moto') color = opts.color ?? [0xd62828, 0x111111, 0x1d3557, 0xf2f2f2, 0x2a9d8f][Math.floor(Math.random() * 5)];
     this.color = color;
     const head = headMat();
@@ -691,6 +836,7 @@ export class VehicleView {
       }
     }
     if (VEHICLE_VARIANTS[this.variant]?.box && tpl.ride) this._deliveryBox(tpl, opts);
+    if (tpl.police) this._policeMoto(tpl);
     this.seat = { ...tpl.seat };
     // Para el personaje que la maneja (characterRig lee group.userData.ride).
     if (tpl.ride) this.group.userData.ride = { ...tpl.ride, speed: 0 };
@@ -883,7 +1029,14 @@ export class VehicleView {
   sync(v, dt, night, siren = false) {
     this._fitGround(v, dt);
     for (const w of this.wheels) w.rotation.x = -v.wheelSpin;
-    if (this.group.userData.ride) this.group.userData.ride.speed = v.forwardSpeed;
+    const ride = this.group.userData.ride;
+    if (ride) {
+      // Para la postura del piloto (characterRig._rideMoto).
+      ride.speed = v.forwardSpeed;
+      ride.lean = v.lean ?? 0;
+      ride.steer = v.steer ?? 0;
+      ride.wheelie = v.wheelie ?? 0;
+    }
     if (this.lights.head) this.lights.head.emissiveIntensity = 0.2 + night * 4;
     if (this.lights.tail) {
       const braking = v.throttle === 0 && Math.abs(v.forwardSpeed) > 0.5;
@@ -893,8 +1046,9 @@ export class VehicleView {
     if (this.lights.bar.length) {
       this.sirenPhase += dt * 8;
       const on = siren ? Math.sin(this.sirenPhase) > 0 : false;
-      this.lights.bar[0].emissiveIntensity = siren ? (on ? 6 : 0.2) : 0.1;
-      this.lights.bar[1].emissiveIntensity = siren ? (on ? 0.2 : 6) : 0.1;
+      const f = this.barFlash ?? 6;
+      this.lights.bar[0].emissiveIntensity = siren ? (on ? f : 0.2) : 0.1;
+      this.lights.bar[1].emissiveIntensity = siren ? (on ? 0.2 : f) : 0.1;
     }
     if (v.destroyed && !this.burnt) this.burn();
   }
@@ -908,12 +1062,12 @@ export class VehicleView {
    * inclinación de la moto en las curvas sí incluye las ruedas.
    */
   _fitGround(v, dt) {
-    const piv = this.wheels.map((w) => w.parent);
+    const piv = (this._piv ??= this.wheels.map((w) => w.parent));
     const n = piv.length;
     const g = this.group;
     if (!n) {
       g.position.set(v.x, v.y, v.z);
-      g.rotation.set(v.pitch + (v.bodyPitch ?? 0), v.heading, v.roll + (v.lean ?? 0) + (v.bodyRoll ?? 0));
+      g.rotation.set(v.pitch + (v.bodyPitch ?? 0), v.heading, v.roll + (v.lean ?? 0) + (v.bodyRoll ?? 0) + this.boardTilt);
       return;
     }
     if (!this._fit) {
@@ -960,14 +1114,30 @@ export class VehicleView {
     const pitch = Math.atan(-bz); // frente en -Z: sube si el frente está más alto
     const roll = Math.atan(a);
     const y0 = mh - a * mx - bz * mz;
-    g.position.set(v.x, y0, v.z);
     // Suelo (+ inclinación de la moto) y, aparte, la suspensión.
-    const lean = v.lean ?? 0;
+    const moto = this.type === 'moto';
+    // Caballito (+) / stoppie (-): la moto entera gira sobre el punto de apoyo
+    // de la llanta que queda en el piso (la de atrás o la de adelante).
+    const wh = moto ? (v.wheelie ?? 0) : 0;
+    if (wh) {
+      if (F.zRear == null) {
+        F.zRear = -Infinity;
+        F.zFront = Infinity;
+        for (const b of F.base) {
+          F.zRear = Math.max(F.zRear, b.z);
+          F.zFront = Math.min(F.zFront, b.z);
+        }
+      }
+      const zp = wh > 0 ? F.zRear : F.zFront;
+      const oz = zp * (1 - Math.cos(wh));
+      g.position.set(v.x + oz * sn, y0 + zp * Math.sin(wh), v.z + oz * c);
+    } else g.position.set(v.x, y0, v.z);
+    const lean = (v.lean ?? 0) + (moto ? this.boardTilt : 0);
     const e = F.e;
-    F.qa.setFromEuler(e.set(pitch, v.heading, roll + lean));
+    F.qa.setFromEuler(e.set(pitch + wh, v.heading, roll + lean));
     const bp = v.bodyPitch ?? 0;
-    const br = v.bodyRoll ?? 0;
-    g.rotation.set(pitch + bp, v.heading, roll + lean + br);
+    const br = (v.bodyRoll ?? 0) + (moto ? 0 : this.boardTilt);
+    g.rotation.set(pitch + wh + bp, v.heading, roll + lean + br);
     // Corrección de las ruedas: C = full⁻¹ · suelo (deshace la suspensión).
     F.qb.copy(g.quaternion).invert().multiply(F.qa);
     for (let i = 0; i < n; i++) {

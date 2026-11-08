@@ -28,6 +28,11 @@ export class CollisionWorld {
     if (box.maxY === undefined) box.maxY = 1000;
     box.id = this.boxes.length;
     this.boxes.push(box);
+    this._insert(box);
+    return box;
+  }
+
+  _insert(box) {
     const cs = this.cellSize;
     for (let ix = Math.floor(box.minX / cs); ix <= Math.floor(box.maxX / cs); ix++) {
       for (let iz = Math.floor(box.minZ / cs); iz <= Math.floor(box.maxZ / cs); iz++) {
@@ -37,7 +42,36 @@ export class CollisionWorld {
         cell.push(box);
       }
     }
-    return box;
+  }
+
+  /**
+   * Saca una caja de la rejilla sin reconstruirla (un poste tumbado): deja de
+   * chocar y de atajar rayos, pero sigue en `boxes` con el mismo id para que
+   * `restore` la devuelva. Devuelve false si no estaba en la rejilla.
+   */
+  remove(box) {
+    const cs = this.cellSize;
+    let found = false;
+    for (let ix = Math.floor(box.minX / cs); ix <= Math.floor(box.maxX / cs); ix++) {
+      for (let iz = Math.floor(box.minZ / cs); iz <= Math.floor(box.maxZ / cs); iz++) {
+        const cell = this.cells.get(this._key(ix, iz));
+        const i = cell ? cell.indexOf(box) : -1;
+        if (i < 0) continue;
+        cell.splice(i, 1);
+        found = true;
+      }
+    }
+    return found;
+  }
+
+  /** Devuelve a la rejilla una caja quitada con `remove` (no la duplica si ya estaba). */
+  restore(box) {
+    if (this.boxes[box.id] !== box) return false;
+    const cs = this.cellSize;
+    const cell = this.cells.get(this._key(Math.floor(box.minX / cs), Math.floor(box.minZ / cs)));
+    if (cell && cell.includes(box)) return false;
+    this._insert(box);
+    return true;
   }
 
   /** Cajas cuyo rectángulo XZ toca el rectángulo dado. */

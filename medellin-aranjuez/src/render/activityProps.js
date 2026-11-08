@@ -21,13 +21,16 @@ const once = (k, make) => {
 /**
  * Saca de la escena un objeto de utilería de las actividades y libera lo que
  * sea solo suyo (cuerdas de tendedero, mesas armadas para ese lugar…); lo
- * compartido (prendas, balón, materiales) se queda.
+ * compartido (prendas, balón, materiales) se queda. keepMaterials: no libera
+ * ningún material (el muestrario del calentamiento: así sus programas siguen
+ * en la caché de three para los que aparezcan después).
  */
-export function releaseProp(obj) {
+export function releaseProp(obj, keepMaterials = false) {
   obj.removeFromParent();
   obj.traverse?.((o) => {
     if (o.isInstancedMesh) o.dispose();
     if (o.geometry && !cacheSet.has(o.geometry)) o.geometry.dispose();
+    if (keepMaterials) return;
     for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) if (!cacheSet.has(m)) m.dispose();
   });
 }
@@ -285,6 +288,13 @@ export function buildDominoTable(seats = 4) {
   }
   const tpl = propTemplate('silla_plastica');
   const parts = tpl?.cerca ?? [{ geometry: once('chairBox', () => new THREE.BoxGeometry(0.46, 0.85, 0.46).translate(0, 0.425, 0)), material: mat('chair', { color: 0xf2f2ee }) }];
+  // Las piezas de la plantilla son las mismas de las sillas de la ciudad: al
+  // levantar la mesa (releaseProp) no se liberan (antes se liberaban y todas
+  // las sillas del barrio volvían a compilar su programa: un tirón).
+  for (const part of parts) {
+    cacheSet.add(part.geometry);
+    cacheSet.add(part.material);
+  }
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const one = new THREE.Vector3(1, 1, 1);

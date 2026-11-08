@@ -94,6 +94,15 @@ export const LOCALES = [
   ['Almacén El Arriero', 'ropa', 'Sombreros · Ponchos · Alpargatas'],
   ['Talabartería Jericó', 'ropa', 'Carrieles de cuero · Correas'],
   ['Artesanías La Silletera', 'ropa', 'Artesanías paisas · Recuerdos'],
+  // La rumba de la 92 (inventados): avisos de neón (render/facadeTextures.js).
+  ['Discoteca Flow 92', 'discoteca', 'Reguetón · Crossover · Viernes y sábado'],
+  ['Bar Los Compadres', 'discoteca', 'Cerveza fría · Salsa vieja'],
+  ['Salsoteca La Clave', 'discoteca', 'Salsa brava · Son · Pista de baile'],
+  ['Discoteca Neón', 'discoteca', 'Reguetón · Dembow · Luces'],
+  ['Fonda La Ruana', 'discoteca', 'Fonda paisa · Guaro · Música de cantina'],
+  ['Bar El Guaro', 'discoteca', 'Guaracha · Aguardiente · Cerveza'],
+  ['Salsoteca Sabor y Son', 'discoteca', 'Salsa · Son · Timba'],
+  ['Discoteca Bajo Cero', 'discoteca', 'Reguetón · Dembow · Hasta las 3'],
 ];
 
 /** Todos los avisos pintados, en el orden del atlas de letreros. */
@@ -283,6 +292,8 @@ export function facadeLayout(b, idx) {
     const pickShop = SHOPS[rng.int(0, SHOPS.length - 1)];
     const [name, kind] = b.local ? [b.local.name, b.local.kind] : pickShop;
     ground.push({ kind: 'shop', w: sw, h: FACADE.shopH, name, interior: kind, awning: rng.chance(0.55) ? rng.int(0, 3) : -1, shutter: rng.range(0.08, 0.3), shutterColor: rng.int(0, 4), counter: rng.chance(0.7) });
+    // Las discotecas no llevan toldo (tapaba el aviso de neón); el azar se gasta igual.
+    if (kind === 'discoteca') ground[ground.length - 1].awning = -1;
     if (upstairsDoor) ground.push({ kind: 'door', w: FACADE.door[0], h: FACADE.door[1] });
   } else if (tower) {
     ground.push({ kind: 'door', w: 1.8, h: 2.4, glass: true });

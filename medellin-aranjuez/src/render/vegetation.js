@@ -173,7 +173,7 @@ export function buildTrees(r, trees) {
     }
     if (!sets.has(sp.model)) {
       const isLeaf = prepareLeaves(tpl);
-      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: treeFar(r), mid: Math.max(near * 2, r.quality?.treeMid ?? 200), blob: true, tint: isLeaf, name: `arboles-${sp.model}` }));
+      sets.set(sp.model, new ChunkedInstances(tpl, { near, far: treeFar(r), mid: Math.max(near * 2, r.quality?.treeMid ?? 200), blob: true, tint: isLeaf, name: `arboles-${sp.model}`, refs: r.propInstances ?? null }));
     }
     const sc = t.scale ?? 1;
     const k = (sp.h * sc) / tpl.height;
@@ -182,7 +182,8 @@ export function buildTrees(r, trees) {
     const w = sp.w * (street ? 0.78 : 1) * rng.range(0.92, 1.08);
     const y = terrainHeight(t.x, t.z) + (t.onBlock === false ? 0 : GRID.curb) - 0.08;
     col.set(sp.color).offsetHSL(rng.range(-0.015, 0.015), rng.range(-sp.jitter, sp.jitter) * 0.5, rng.range(-sp.jitter, sp.jitter));
-    sets.get(sp.model).add(t.x, y, t.z, rng.next() * Math.PI * 2, k * w, k, k * w, col);
+    // Los que tienen colisión se pueden tumbar con un carro (render/destructibles.js).
+    sets.get(sp.model).add(t.x, y, t.z, rng.next() * Math.PI * 2, k * w, k, k * w, col, null, t.collider ? t : null);
   }
   for (const s of sets.values()) s.build(r.root, r.lodChunks);
   return leftovers;

@@ -1534,6 +1534,17 @@ export const LOCAL_SPOTS = [
   { id: 'arriero', name: 'Almacén El Arriero', at: [445, -250], street: 'Calle 92', store: 'arriero', desc: 'Sombreros aguadeños, ponchos, camisas de arriero y alpargatas.' },
   { id: 'talabarteria', name: 'Talabartería Jericó', at: [-115, 60], street: 'Carrera 52', store: 'talabarteria', desc: 'Carrieles de cuero hechos a mano, como los de Jericó.' },
   { id: 'silletera', name: 'Artesanías La Silletera', near: ['parque', 18, 22], store: 'silletera', desc: 'Lo paisa a buen precio: sombreros, ponchos, carrieles y alpargatas.' },
+  // La rumba de la 92 (inventados): discotecas, salsotecas, bares y una fonda
+  // a lo largo de la calle, de la Cra. 50C hacia el oriente. `musica`: la
+  // emisora que suena adentro (radio.js); de noche se llenan (game/nightlife.js).
+  { id: 'flow92', name: 'Discoteca Flow 92', kind: 'discoteca', at: [333, -254], street: 'Calle 92', musica: 'perreo', desc: 'Reguetón hasta que salga el sol. Viernes y sábado, fila en la puerta.' },
+  { id: 'compadres', name: 'Bar Los Compadres', kind: 'discoteca', at: [393, -252], street: 'Calle 92', musica: 'sabrosa', desc: 'Cerveza fría, mesas en la acera y salsa vieja pa los de siempre.' },
+  { id: 'laclave', name: 'Salsoteca La Clave', kind: 'discoteca', at: [457, -249], street: 'Calle 92', musica: 'sabrosa', desc: 'Salsa brava y de la buena; aquí se baila pegadito.' },
+  { id: 'neon92', name: 'Discoteca Neón', kind: 'discoteca', at: [572, -242], street: 'Calle 92', musica: 'perreo', desc: 'Luces, humo y perreo: la más llena de la 92.' },
+  { id: 'laruana', name: 'Fonda La Ruana', kind: 'discoteca', at: [629, -241], street: 'Calle 92', musica: 'sabrosa', desc: 'Fonda paisa: guaro, música de cantina y carriel colgado en la pared.' },
+  { id: 'elguaro', name: 'Bar El Guaro', kind: 'discoteca', at: [674, -238], street: 'Calle 92', musica: 'parce', desc: 'Guaracha, aguardiente y mesas que se corren pa bailar.' },
+  { id: 'saborson', name: 'Salsoteca Sabor y Son', kind: 'discoteca', at: [769, -223], street: 'Calle 92', musica: 'sabrosa', desc: 'Son, salsa y timba; los jueves, clases para los que no saben.' },
+  { id: 'bajocero', name: 'Discoteca Bajo Cero', kind: 'discoteca', at: [859, -218], street: 'Calle 92', musica: 'perreo', desc: 'Reguetón y dembow con el bajo a todo lo que da.' },
 ];
 
 /** Corredores comerciales reales: en ellos casi toda casa tiene negocio abajo. */
@@ -1582,6 +1593,11 @@ function placeLocales(ctx) {
     const f = best.frame;
     if (L.store) {
       city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'ropa', store: L.store, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
+      continue;
+    }
+    if (L.musica) {
+      // Discotecas y bares: sin tienda (no se entra); el lugar marca la puerta.
+      city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'discoteca', musica: L.musica, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
       continue;
     }
     if (!L.menu) continue;

@@ -288,6 +288,9 @@ describe('interfaz táctil (lógica pura)', () => {
     const veh = buttonsFor('vehiculo', { fullscreen: true });
     for (const id of ['handbrake', 'horn', 'exit', 'radio', 'fireVeh', 'camera', 'lookBehind', 'use', 'map', 'pause', 'fullscreen']) expect(veh).toContain(id);
     expect(veh).not.toContain('jump');
+    // El caballito solo en moto.
+    expect(veh).not.toContain('wheelie');
+    expect(buttonsFor('vehiculo', { moto: true })).toContain('wheelie');
     const px = { s: 56, m: 64, l: 80 };
     for (const b of BUTTONS) expect(px[b.size ?? 's']).toBeGreaterThanOrEqual(56);
   });

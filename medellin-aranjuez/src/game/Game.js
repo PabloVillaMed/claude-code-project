@@ -7,9 +7,9 @@ import { groundHeight } from '../sim/terrain.js';
 import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
-import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES } from '../sim/vehiclePhysics.js';
-import { VEHICLE_VARIANTS, defaultVariant } from '../sim/vehicleVariants.js';
-import { Inventory, WEAPONS, WEAPON_BY_ID } from '../sim/weapons.js';
+import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES, CRASH, crashOtherDamage, crashOnDriver } from '../sim/vehiclePhysics.js';
+import { VEHICLE_VARIANTS, defaultVariant, isPoliceVehicle } from '../sim/vehicleVariants.js';
+import { Inventory, WEAPONS, WEAPON_BY_ID, giveStartingKit } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
 import { MissionSystem, createMissionDefs } from '../sim/missions.js';
 import { createTextureLibrary } from '../render/textures.js';
@@ -25,7 +25,7 @@ import { BirdRenderer } from '../render/birds.js';
 import { BirdSim, pigeonHomes } from '../sim/birds.js';
 import { playBirdEvents } from './birdSounds.js';
 import { AnimalRenderer } from '../render/animals.js';
-import { AnimalSim, animalBudget, sidewalkPoints } from '../sim/animals.js';
+import { AnimalSim, animalBudget } from '../sim/animals.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
@@ -40,11 +40,15 @@ import { CameraRig } from './cameraRig.js';
 import { Pickups } from './pickups.js';
 import { Dialogue } from './dialogue.js';
 import { StreetLife } from './streetLife.js';
+import { Nightlife } from './nightlife.js';
+import { Companions } from './companions.js';
+import { Tumbables } from './destructibles.js';
 import { StoryDirector } from './storyDirector.js';
-import { Boarding } from './boarding.js';
+import { Boarding, BOARD_SETTLE, BOARD_SETTLE_MAX } from './boarding.js';
 import { playerStyle, purchaseGestures, EMOTES, nextEmote } from '../sim/animSelect.js';
 import { Hud } from '../ui/hud.js';
 import { WeaponWheel } from '../ui/weaponWheel.js';
+import { buildWarmupSamples, pinPrograms, revealHidden } from '../render/warmupSamples.js';
 import { defaultQuality } from '../web/platform.js';
 
 // Tomas del menú principal (relativas al punto de interés, en metros; y sobre el suelo).
@@ -57,6 +61,7 @@ const MENU_SHOTS = [
 ];
 
 const SETTINGS_KEY = 'aranjuez.settings.v1';
+const UP = { x: 0, y: 1, z: 0 };
 const SAVE_KEY = 'aranjuez.save.v1';
 
 export const DEFAULT_SETTINGS = { quality: 'alta', sensitivity: 1, volume: 0.7, musicVolume: 0.8, fov: 65, invertY: false, showFps: false, dynamicRes: true, brightness: 1, fullscreen: false, subtitles: true, vehicleView: 'cerca', camSmoothing: 0.5, firstPerson: false };
@@ -266,6 +271,12 @@ export class Game {
     this.pickups = new Pickups(this);
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
     this.street = new StreetLife(this); // plazas con sus bandas, habitantes de calle y balaceras
+    this.nightlife = new Nightlife(this); // la rumba de la 92: porteros, filas, grupos, parejas y murmullo
+    this.companions = new Companions(this); // damas de compañía de noche (esquinas de avenida y la 92)
+    // Postes, faroles, placas y árboles que se tumban con un vehículo (la
+    // física de los vehículos consulta `breakables` al chocar).
+    this.tumbables = new Tumbables(this);
+    this.breakables = this.tumbables.sim;
     this._initBirds();
     this._initAnimals();
     this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
@@ -316,6 +327,7 @@ export class Game {
    * para que el primer minuto de juego no tenga tirones.
    */
   async _warmUp(sp) {
+    performance.mark?.('calentamiento');
     const r = this.renderer;
     const env = this.env;
     // Las luces de faroles y el foco nunca se ocultan (render/nightLights.js):
@@ -329,25 +341,43 @@ export class Game {
     // los programas no sirven y se vuelven a compilar en pleno juego.
     const target = this.postfx.composer?.readBuffer ?? null;
     const hour = env.timeOfDay;
+    const cam = this.camera;
+    const y = groundHeight(sp.x, sp.z) + 2;
+    const view = (i) => {
+      cam.position.set(sp.x, y, sp.z);
+      cam.rotation.set(-0.1, (i / 4) * Math.PI * 2, 0, 'YXZ');
+      cam.updateMatrixWorld();
+    };
+    // Lo que aparece después de arrancar (policía, armas, ropa de balcón,
+    // utilería) en un muestrario delante de la primera vista; lo oculto se
+    // compila también (render/warmupSamples.js).
+    view(0);
+    const samples = buildWarmupSamples(cam, groundHeight);
+    this.scene.add(samples.group);
     const compile = async () => {
       // compileAsync arma los programas de una vez (con el destino actual) y
       // después solo espera a que el controlador los termine.
       r.setRenderTarget(target);
+      const hide = revealHidden(this.scene);
       let ready = null;
       try {
         ready = r.compileAsync(this.scene, this.camera);
       } catch {
         r.compile(this.scene, this.camera);
       } finally {
+        hide();
         r.setRenderTarget(null);
       }
       await ready;
     };
     await compile();
+    performance.mark?.('calentamiento-compilado');
     if (env.dayEnv) {
       // La otra variante de entorno: de noche si ahora está el HDRI, si no de
       // día. compile() arma los programas antes de su primer await; no se
-      // espera a que el controlador los termine.
+      // espera a que el controlador los termine. (Con D3D11 el proceso de la
+      // GPU sí los termina antes de las subidas de texturas de abajo: aquí,
+      // con la pantalla de carga, y no en el primer cuadro del menú.)
       env.setTime(this.scene.environment === env.dayEnv ? 20 : 12);
       env.update(0, this.camera.position);
       this._envWarm = compile().catch(() => {});
@@ -363,19 +393,23 @@ export class Game {
         }
       }
     });
-    const cam = this.camera;
-    const y = groundHeight(sp.x, sp.z) + 2;
+    performance.mark?.('calentamiento-texturas');
     const views = this.opts.autotest ? 1 : 4;
     for (let i = 0; i < views; i++) {
-      cam.position.set(sp.x, y, sp.z);
-      cam.rotation.set(-0.1, (i / 4) * Math.PI * 2, 0, 'YXZ');
-      cam.updateMatrixWorld();
+      view(i);
       this.env.update(0, cam.position);
+      // (De noche el mapa del sol no se actualiza solo: se dibuja igual una
+      // vez para compilar los programas de sombra del muestrario.)
+      if (env.sun?.castShadow) env.sun.shadow.needsUpdate = true;
       this.horizon.update(0, cam, this.env, 1);
       this.cityRenderer.updateLod(cam.position);
       this.postfx.render(this.scene, cam);
       await new Promise((res) => setTimeout(res, 0));
     }
+    performance.mark?.('calentamiento-vistas');
+    pinPrograms(r); // (antes de liberar el muestrario: sus materiales propios, como la barra de la patrulla, se liberan)
+    samples.release();
+    performance.mark?.('calentamiento-fin');
   }
 
   /**
@@ -441,6 +475,7 @@ export class Game {
     const p = this.player;
     const sp = this.city.spawn;
     if (p.vehicle) this.exitVehicle(true);
+    this.companions?.reset();
     p.state = createPlayerState(sp.x, sp.z, groundHeight, sp.yaw);
     p.health = 100;
     p.armor = 0;
@@ -467,10 +502,10 @@ export class Game {
       if (save.pos && !this.city.collision.pointBlocked(save.pos.x, save.pos.z)) {
         p.state = createPlayerState(save.pos.x, save.pos.z, groundHeight, 0);
       }
-    } else {
-      // Un regalo para empezar: una pistola con algo de munición.
-      p.inventory.give('pistol', 30);
     }
+    // Se empieza armado (machete, pistola y subametralladora: STARTING_KIT en
+    // sim/weapons.js); a las partidas viejas se les dan las que les falten.
+    giveStartingKit(p.inventory);
     this.wanted.clear();
     this.world.clearPolice();
     this.world.populate(p.x, p.z);
@@ -578,6 +613,7 @@ export class Game {
     this.horizon.update(running ? dt : 0, this.camera, this.env, this.renderer.getPixelRatio());
     this.cityRenderer.update(running ? dt : 0, this.env.night);
     this.cityRenderer.updateLod(this.camera.position);
+    this.tumbables?.update(running ? dt : 0);
     this.nightLights.update(running ? dt : 0, this.camera.position, this.env.night, this.world.vehicles, this.player.vehicle);
     if (running) this.effects.update(dt);
     this._updateBirds(running ? dt : 0);
@@ -691,6 +727,8 @@ export class Game {
       document.querySelector('#pause [data-action="controls"]').click();
       return;
     }
+    // Con la dama de compañía subiendo, bajándose o en el fundido, el carro se queda quieto.
+    if (this.companions.locked) a = this.companions.mask(a);
     if (a.camera) {
       this.camRig.cycleZoom();
       if (this.player.inVehicle) this.hud.toast(`Cámara: ${{ cerca: 'cerca', lejos: 'lejos', capo: this.player.vehicle.type === 'moto' ? 'sobre el hombro' : 'capó' }[this.camRig.vehicleViewName]}`, 1.2);
@@ -741,6 +779,8 @@ export class Game {
       vehicleHeading: v ? this._driveCamHeading(v.state) : 0,
       vehicleSpeed: v?.state.forwardSpeed ?? 0,
       vehicleSize: v ? v.state.spec.length : 0,
+      vehicleLean: v?.state.lean ?? 0,
+      speed: v ? 0 : p.state.speed,
       moto: !!v && (v.type === 'moto' || v.state.spec.wheels === 2 || v.state.type === 'moto'),
       aiming: p.aiming,
       sprinting: p.state.sprinting,
@@ -748,7 +788,14 @@ export class Game {
       lookBehind: a.lookBehind,
       lookX,
       lookY,
+      // Subiendo / bajando con animación: transición suave de la cámara.
+      board: p.boarding && !p.dead ? p.boarding.cameraBlend((this._camBoard ??= {})) : null,
     });
+    // Primera persona: cabeza oculta y el arma (o los puños) en las manos
+    // frente a la cámara ya movida (sin un cuadro de atraso al girar).
+    const fpNow = this.camRig.firstPerson && !p.dead && !v && !p.boarding && !this._aerial;
+    p.rig.setFirstPerson?.(fpNow);
+    if (fpNow) p.rig.fpArms?.(this.camera, this.camRig.fp);
     if (this.intro) this._updateIntro(realDt);
     // Cámara libre de depuración (__game.aerial).
     if (this._aerial) {
@@ -762,6 +809,8 @@ export class Game {
     // Mundo vivo.
     this.world.update(dt, p);
     this.street.update(dt);
+    this.nightlife.update(dt);
+    this.companions.update(dt);
     this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
@@ -795,20 +844,60 @@ export class Game {
     this.events?.on('explosion', (e) => this.birds.alarm(e.x, e.z, 70));
   }
 
+  /** El jugador para las palomas y los animales (un objeto reciclado; sin jugador, el foco y "muerto"). */
+  _quienFauna(playing, focus) {
+    const p = this.player;
+    const w = (this._quien ??= { x: 0, y: 0, z: 0, speed: 0, inVehicle: false, dead: false });
+    if (playing) {
+      w.x = p.x;
+      w.y = p.y;
+      w.z = p.z;
+      w.speed = p.inVehicle ? Math.abs(p.vehicle.state.forwardSpeed ?? 0) : (p.state.speed ?? 0);
+      w.inVehicle = p.inVehicle;
+      w.dead = p.dead;
+    } else {
+      w.x = focus.x;
+      w.y = focus.y;
+      w.z = focus.z;
+      w.speed = 0;
+      w.inVehicle = false;
+      w.dead = true;
+    }
+    return w;
+  }
+
   _updateBirds(dt) {
     if (!this.birds) return;
     const p = this.player;
     const playing = this.state === 'playing' || this.state === 'paused';
     const focus = playing ? p : this.camera.position;
     if (dt > 0) {
+      // Vehículos cercanos (para palomas y animales: se asustan y los atropellan), en objetos reciclados.
       const near = this._nearVehicles;
+      const pool = (this._nearPool ??= []);
       near.length = 0;
       for (const v of this.world.vehicles) {
         const s = v.state;
-        if (Math.abs(s.x - focus.x) < 120 && Math.abs(s.z - focus.z) < 120) near.push({ x: s.x, z: s.z, speed: Math.abs(s.forwardSpeed ?? 0) });
+        if (Math.abs(s.x - focus.x) >= 120 || Math.abs(s.z - focus.z) >= 120) continue;
+        const o = (pool[near.length] ??= { x: 0, z: 0, speed: 0, hx: 0, hz: 0, angle: 0, player: false });
+        o.x = s.x;
+        o.z = s.z;
+        o.speed = Math.abs(s.forwardSpeed ?? 0);
+        o.hx = s.spec.width / 2;
+        o.hz = s.spec.length / 2;
+        o.angle = s.heading;
+        o.player = v.driver === 'player';
+        near.push(o);
       }
-      const who = playing ? { x: p.x, y: p.y, z: p.z, speed: p.inVehicle ? Math.abs(p.vehicle.state.forwardSpeed ?? 0) : p.state.speed ?? 0, inVehicle: p.inVehicle, dead: p.dead } : { x: focus.x, y: focus.y, z: focus.z, speed: 0, inVehicle: false, dead: true };
-      this.birds.update(dt, { player: who, vehicles: near, hour: this.env.timeOfDay, focus: { x: focus.x, z: focus.z } });
+      // Jugador, foco y contexto también reciclados (las simulaciones los leen y no los guardan).
+      const who = this._quienFauna(playing, focus);
+      const ctx = (this._ctxAves ??= { player: null, vehicles: null, hour: 0, focus: { x: 0, z: 0 } });
+      ctx.player = who;
+      ctx.vehicles = near;
+      ctx.hour = this.env.timeOfDay;
+      ctx.focus.x = focus.x;
+      ctx.focus.z = focus.z;
+      this.birds.update(dt, ctx);
       playBirdEvents(this.audio, this.birds.events);
     }
     this.birdView.update(dt, this.birds.list, this.camera.position);
@@ -818,7 +907,8 @@ export class Game {
   _initAnimals() {
     const col = this.city.collision;
     const trash = this.city.props.filter((q) => q.type === 'trashbag').map((q) => ({ x: q.x, z: q.z }));
-    this.animals = new AnimalSim({ sidewalk: sidewalkPoints(this.city), trash, groundHeight, blocked: (x, z) => col.pointBlocked(x, z, groundHeight(x, z) + 0.25) });
+    // El andén de los animales es el anillo del grafo peatonal de world.js (un solo grafo).
+    this.animals = new AnimalSim({ graph: this.world.pedGraph, trash, groundHeight, blocked: (x, z) => col.pointBlocked(x, z, groundHeight(x, z) + 0.25) });
     this.animalBudget = animalBudget(this.quality.peds);
     this.animalView = new AnimalRenderer(this.scene, this.animalBudget, { shadows: this.quality.shadows > 0 });
     this.events?.on('shot', (e) => this.animals.alarm(e.x, e.z));
@@ -832,9 +922,24 @@ export class Game {
     const focus = playing ? p : this.camera.position;
     if (dt > 0) {
       // (Los vehículos cercanos ya los juntó _updateBirds en este cuadro.)
-      const who = playing ? { x: p.x, z: p.z, speed: p.inVehicle ? Math.abs(p.vehicle.state.forwardSpeed ?? 0) : p.state.speed ?? 0, inVehicle: p.inVehicle, dead: p.dead } : null;
-      this.animals.update(dt, { focus: { x: focus.x, z: focus.z }, player: who, hour: this.env.timeOfDay, vehicles: this._nearVehicles, budget: this.animalBudget });
-      for (const e of this.animals.events) this.audio.animal(e.kind, e);
+      const ctx = (this._ctxAnimales ??= { focus: { x: 0, z: 0 }, player: null, hour: 0, vehicles: null, budget: 0, camera: null });
+      ctx.focus.x = focus.x;
+      ctx.focus.z = focus.z;
+      ctx.player = playing ? this._quienFauna(true, focus) : null;
+      ctx.hour = this.env.timeOfDay;
+      ctx.vehicles = this._nearVehicles;
+      ctx.budget = this.animalBudget;
+      ctx.camera = this.camera;
+      this.animals.update(dt, ctx);
+      for (const e of this.animals.events) {
+        if (e.kind !== 'atropello') this.audio.animal(e.kind, e);
+        else {
+          // Atropellado: un golpe seco y el impacto chiquito (el chillido viene en otro evento).
+          const y = groundHeight(e.x, e.z) + 0.15;
+          this.effects.impact({ x: e.x, y, z: e.z }, UP, 'animal');
+          this.audio.hit({ x: e.x, y, z: e.z });
+        }
+      }
     }
     this.animalView.update(dt, this.animals.list, this.camera.position, this.quality.pedDraw ?? 80);
   }
@@ -880,6 +985,13 @@ export class Game {
   }
 
   // ================================================================ a pie
+  /** Entorno de la física del jugador a pie (reciclado: nada nuevo por cuadro). */
+  _envPie(obstacles) {
+    const env = (this._envPieObj ??= { groundHeight, collision: this.city.collision, obstacles: null });
+    env.obstacles = obstacles;
+    return env;
+  }
+
   updateOnFoot(dt, a) {
     const p = this.player;
     // Bajándose de un vehículo: termina de levantarse antes de moverse.
@@ -889,10 +1001,8 @@ export class Game {
     const w = inv.current;
     p.aiming = a.aim && !this.wheel.open;
     const moving = Math.hypot(a.moveX, a.moveY) > 0.1;
-    const obstacles = [];
-    for (const v of this.world.vehicles) {
-      if (Math.abs(v.state.x - p.state.pos.x) < 8 && Math.abs(v.state.z - p.state.pos.z) < 8) obstacles.push(v.obb());
-    }
+    // Vehículos cercanos como cajas recicladas (world.obstaclesNear: nada nuevo por cuadro).
+    const obstacles = this.world.obstaclesNear(p.state.pos.x, p.state.pos.z, 8);
     stepPlayer(
       p.state,
       {
@@ -906,7 +1016,7 @@ export class Game {
         camYaw: this.camRig.yaw,
       },
       dt,
-      { groundHeight, collision: this.city.collision, obstacles },
+      this._envPie(obstacles),
     );
     // Primera persona: el cuerpo mira hacia donde mira la cámara.
     if (this.camRig.firstPerson && !p.dead) p.state.yaw = this.camRig.yaw;
@@ -930,11 +1040,26 @@ export class Game {
     p.rig.setWeapon(w.id);
     p.rig.root.position.set(p.state.pos.x, p.state.pos.y, p.state.pos.z);
     p.rig.root.rotation.y = p.state.yaw;
+    if (p.settle) {
+      // Recién bajado: lo dibujado alcanza a la lógica sin saltar (_endBoarding).
+      const S = p.settle;
+      S.t += dt;
+      const u = Math.min(1, S.t / BOARD_SETTLE);
+      const k = 1 - u * u * (3 - 2 * u);
+      if (k <= 0) p.settle = null;
+      else {
+        p.rig.root.position.x += S.x * k;
+        p.rig.root.position.y += S.y * k;
+        p.rig.root.position.z += S.z * k;
+        p.rig.root.rotation.y += S.yaw * k;
+      }
+    }
     this._playerGestures(a);
     p.rig.animate(dt, {
       speed: p.state.speed,
       onGround: p.state.onGround,
-      aiming: (p.aiming || inv.cooldown > 0.05) && w.kind === 'gun',
+      // En primera persona los brazos los pone fpArms (con el torso derecho).
+      aiming: (p.aiming || inv.cooldown > 0.05) && w.kind === 'gun' && !this.camRig.firstPerson,
       crouching: p.state.crouching,
       aimPitch: this.camRig.pitch,
       style: playerStyle(p.health), // herido: cojea
@@ -994,6 +1119,13 @@ export class Game {
     b.cancel();
     if (p.vehicle) this._seatPlayer(p.vehicle);
     else {
+      // Donde quedó dibujado (en el marco del vehículo) frente a la lógica: la
+      // diferencia se desvanece en BOARD_SETTLE s (updateOnFoot) en vez de saltar.
+      const w = p.rig.root.getWorldPosition((this._settleV ??= new THREE.Vector3()));
+      const dx = w.x - p.state.pos.x;
+      const dz = w.z - p.state.pos.z;
+      const yawW = b.vehicle.view.group.rotation.y + p.rig.root.rotation.y;
+      p.settle = Math.hypot(dx, dz) < BOARD_SETTLE_MAX ? { x: dx, y: w.y - p.state.pos.y, z: dz, yaw: Math.atan2(Math.sin(yawW - p.state.yaw), Math.cos(yawW - p.state.yaw)), t: 0 } : null;
       this.scene.add(p.rig.root);
       p.rig.root.position.set(p.state.pos.x, p.state.pos.y, p.state.pos.z);
       p.rig.root.rotation.set(0, p.state.yaw, 0);
@@ -1044,14 +1176,14 @@ export class Game {
       this.audio.drive(s, { throttle: 0, brake: 0 }, dt);
       return;
     }
-    const input = { throttle: a.throttle, brake: a.brake, steer: a.steer, handbrake: a.handbrake };
-    const obstacles = [];
-    for (const o of this.world.vehicles) {
-      if (o === v) continue;
-      if (Math.abs(o.state.x - s.x) < 14 && Math.abs(o.state.z - s.z) < 14) obstacles.push(o.obb());
-    }
+    const input = { throttle: a.throttle, brake: a.brake, steer: a.steer, handbrake: a.handbrake, wheelie: !!a.wheelie && !!s.spec.twoWheels };
+    const obstacles = this.world.obstaclesNear(s.x, s.z, 14, v);
     const prevSpeed = Math.hypot(s.vx, s.vz);
-    const impact = stepVehicle(s, input, dt, { groundHeight, collision: this.city.collision, obstacles });
+    const env = (this._envManejo ??= { groundHeight, collision: this.city.collision, obstacles: null, breakables: null, isPlayer: true });
+    env.obstacles = obstacles;
+    env.breakables = this.breakables;
+    const impact = stepVehicle(s, input, dt, env);
+    if (impact > 0) this.companions.onImpact(impact); // (un choque fuerte asusta a la dama de compañía)
     // Empujar a los otros vehículos con los que chocamos.
     if (impact > 0) {
       for (const o of this.world.vehicles) {
@@ -1062,22 +1194,33 @@ export class Game {
           const l = d || 1;
           o.state.vx += ((o.state.x - s.x) / l) * k;
           o.state.vz += ((o.state.z - s.z) / l) * k;
-          o.state.health -= impact * 12;
+          o.state.health -= crashOtherDamage(impact);
           o.lastHitBy = 'player';
           if (o.driver === 'npc') o.panic = 10;
         }
       }
     }
-    if (impact > 3) {
+    // Choques (sim/vehiclePhysics.js CRASH): en carro solo suena y tiembla la
+    // cámara; en moto se pierde poca vida y solo un golpe muy fuerte te tumba.
+    const crash = crashOnDriver(!!s.spec.twoWheels, impact, (this._crash ??= {}));
+    if (crash.fx) {
       this.audio.crash({ x: s.x, y: s.y, z: s.z }, impact);
-      this.camRig.shake(Math.min(0.5, impact * 0.03));
-      if (impact > 14 && s.type === 'moto') {
-        // En moto, un choque fuerte te tumba.
-        this.exitVehicle(true);
-        this.combat.damagePlayer(impact * 2.5, null);
-        return;
-      }
-      if (impact > 16) this.combat.damagePlayer((impact - 16) * 2, null);
+      this.camRig.shake(crash.shake);
+    }
+    if (crash.knockOff) {
+      this.exitVehicle(true);
+      this.combat.damagePlayer(crash.damage, null);
+      return;
+    }
+    if (crash.damage > 0) this.combat.damagePlayer(crash.damage, null);
+    // Caballito pasado de vueltas: la moto se va de espaldas y el piloto cae (poca vida).
+    if (s.wheelieFall) {
+      s.wheelieFall = false;
+      this.audio.crash({ x: s.x, y: s.y, z: s.z }, 8);
+      this.camRig.shake(0.25);
+      this.exitVehicle(true);
+      this.combat.damagePlayer(CRASH.wheelieFallDamage, null);
+      return;
     }
     this.stats.distance += Math.abs(s.forwardSpeed) * dt;
     // Motor: caja de cambios simulada y explosiones grabadas (audio.drive).
@@ -1096,7 +1239,7 @@ export class Game {
       const shot = inv.tryFire(a.fire, Math.random, true, true);
       if (shot) this.combat.playerFire(shot, this.camRig.aimRay());
     }
-    p.rig.animate(dt, { speed: 0, onGround: true, driving: s.type === 'moto' ? 'moto' : 'car', aiming: p.aiming });
+    p.rig.animate(dt, { speed: 0, onGround: true, driving: s.type === 'moto' ? 'moto' : 'car', aiming: p.aiming, steer: s.steer, sway: s.bodyRoll });
 
     if (s.health <= 0 && !v.exploded && v.burnTimer > 0 && v.burnTimer < 3.5) {
       this.hud.toast('¡El vehículo se está incendiando! Bájate (F)');
@@ -1122,10 +1265,10 @@ export class Game {
       // Robo del vehículo: el conductor sale corriendo.
       this.world.ejectDriver(v, { x: p.x, z: p.z });
       const policeNear = this.world.policeUnits.some((u) => dist2D(u.vehicle.state.x, u.vehicle.state.z, p.x, p.z) < 60) || this.world.peds.some((q) => q.faction === 'police' && q.alive && dist2D(q.x, q.z, p.x, p.z) < 40);
-      if (policeNear || v.type === 'policia') this.wanted.report('carjack', p);
+      if (policeNear || isPoliceVehicle(v.type, v.state.variant)) this.wanted.report('carjack', p);
       this.hud.toast(`Robaste: ${v.state.spec.name}`);
     }
-    if (v.type === 'policia' && this.wanted.level < 1) this.wanted.report('carjack', p);
+    if (isPoliceVehicle(v.type, v.state.variant) && this.wanted.level < 1) this.wanted.report('carjack', p);
     v.driver = 'player';
     v.kind = 'player';
     v.agent = null;
@@ -1139,11 +1282,11 @@ export class Game {
     if (opts.animate ?? this._animBoarding()) {
       v.view.group.updateMatrixWorld(true);
       const from = v.view.group.worldToLocal(new THREE.Vector3(p.state.pos.x, p.state.pos.y, p.state.pos.z));
-      p.boarding = Boarding.create(p.rig, v, 'enter', { from: { x: from.x, z: from.z, yaw: p.state.yaw - v.state.heading }, hurry: this.wanted.level > 0 });
+      p.boarding = Boarding.create(p.rig, v, 'enter', { from: { x: from.x, y: from.y, z: from.z, yaw: p.state.yaw - v.state.heading }, hurry: this.wanted.level > 0 });
     }
     if (!p.boarding) this._seatPlayer(v);
-    // Cámara detrás del vehículo.
-    this.camRig.yaw = v.state.heading;
+    // Cámara detrás del vehículo (con animación llega allá suave: cameraRig ctx.board).
+    if (!p.boarding) this.camRig.yaw = v.state.heading;
     this.audio.init();
   }
 
@@ -1340,6 +1483,9 @@ export class Game {
       const prompt = near ? this._interactPrompt(near) : null;
       if (prompt) this.hud.help(prompt, 4);
     }
+    // E con el carro detenido junto a una dama de compañía: la invita (va antes
+    // que los locales; solo atiende la tecla cuando ofrece "E para invitarla").
+    if (a.interact && !p.dead && this.companions.interact()) return;
     if (near && a.interact && !p.dead) this.interact(near);
     // Sin local cerca: E le da los cien pesitos al habitante de calle que acaba de pedir.
     else if (a.interact && !p.dead) this.street?.give();
@@ -1646,6 +1792,42 @@ export class Game {
       get frames() {
         return g.frameCount ?? 0;
       },
+      /** Utilería que se tumba (game/destructibles.js): resumen del registro. */
+      destructibles() {
+        return g.tumbables.stats();
+      },
+      /** La entrada tumbable de pie más cercana a (x, z) de un tipo ('pole', 'lamp', 'tree'...), o null. */
+      destructibleNear(x, z, tipo = null, r = 40) {
+        let best = null;
+        let bd = r * r;
+        g.breakables.entries.forEach((e, i) => {
+          if ((tipo && e.tipo !== tipo) || e.estado !== 0 || !Number.isFinite(e.minCarro)) return;
+          const d = (e.prop.x - x) ** 2 + (e.prop.z - z) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = i;
+          }
+        });
+        return best === null ? null : this.destructible(best);
+      },
+      /** Estado de la entrada i: pose, si su caja sigue en la rejilla de choques, umbrales. */
+      destructible(i) {
+        const e = g.breakables.entries[i];
+        if (!e) return null;
+        const b = e.box;
+        const enRejilla = g.city.collision.query(b.minX, b.minZ, b.maxX, b.maxZ).includes(b);
+        return { i, tipo: e.tipo, kind: e.prop.kind ?? null, x: e.prop.x, z: e.prop.z, h: e.h, estado: e.estado, ang: e.ang, reposo: e.reposo, rebotes: e.rebotes, t: e.t, minCarro: e.minCarro, minMoto: e.minMoto, enRejilla, luzApagada: !!e.inst?.head?.off };
+      },
+      /** Tumba la entrada i hacia (dx, dz) como si la golpearan a `vel` m/s (pruebas). */
+      tumbar(i, dx = 1, dz = 0, vel = 10) {
+        const e = g.breakables.entries[i];
+        const l = Math.hypot(dx, dz) || 1;
+        return e ? g.breakables.tumbar(e, dx / l, dz / l, vel) : false;
+      },
+      /** Pone de pie todo lo tumbado (pruebas). */
+      reponerTumbados() {
+        for (const e of g.breakables.entries) g.breakables.reponer(e);
+      },
       /** Historia: paso actual, y la cinemática de entrada a pedido (pruebas/capturas). */
       story() {
         const d = g.storyDir;
@@ -1825,10 +2007,17 @@ export class Game {
         const s = g.world.activities.nearest(kind, g.player.x, g.player.z, (q) => street == null || !!q.street === street);
         return s ? { ...JSON.parse(JSON.stringify(s)), gy: groundHeight(s.x, s.z) } : null;
       },
-      /** Gesto que está haciendo el jugador (o null). */
       /** Vida de la calle: plazas, habitantes de calle y balacera en curso. */
       street() {
         return g.street.state();
+      },
+      /** La rumba de la 92: locales, nivel por hora, cupo, gente en escena y murmullo. */
+      nightlife() {
+        return g.nightlife.state();
+      },
+      /** Damas de compañía: puestos, cuántas hay, oferta (E) y la cita en curso (estado, aviso, fundido). */
+      companions() {
+        return g.companions.state();
       },
       /** Arma ya una balacera en la plaza más cercana al jugador (pruebas). */
       startGangWar() {
@@ -1850,6 +2039,47 @@ export class Game {
       /** Animales cerca del jugador: cuántos de cada especie y cuántos se dibujan. */
       animals() {
         return { ...g.animals.counts(), drawn: Object.values(g.animalView.meshes).reduce((n, m) => n + m.count, 0), modes: g.animals.list.map((a) => `${a.kind}:${a.mode}:${a.pose.toFixed(1)}`) };
+      },
+      /** Pone un animal en el andén más cercano a (x, z) (sondas): {id, x, z, ...} o null. */
+      spawnAnimal(kind, x, z, opts = {}) {
+        const a = g.animals.spawnAt(kind, x, z, opts);
+        return a ? this.animal(a.id) : null;
+      },
+      /** Estado de un animal por id (sondas): posición, modo, salud, muerto (0..1), cojera; null si ya no está. */
+      animal(id) {
+        const a = g.animals.list.find((q) => q.id === id);
+        if (!a) return null;
+        return { id: a.id, kind: a.kind, x: a.x, y: a.y, z: a.z, yaw: a.yaw, scale: a.scale, mode: a.mode, health: a.health, dead: a.dead, side: a.side, limpT: a.limpT, lastHit: a.lastHit ?? null, corpseT: a.corpseT, unseenT: a.unseenT };
+      },
+      /** Rutas a pie (sim/pedNav.js): lo que costó armar el grafo y las búsquedas hasta ahora. */
+      nav() {
+        const n = g.world.nav;
+        return { graph: g.world.pedGraph.stats, ...n.stats, budget: n.budget };
+      },
+      /** Pone un peatón en (x, z) (sondas): opts de world.spawnPedAt más `mode`; devuelve su id. */
+      spawnNpc(x, z, opts = {}) {
+        const p = g.world.spawnPedAt(x, z, { outfit: opts.outfit ?? 'civil', faction: opts.faction ?? 'civil', weapon: opts.weapon, health: opts.health ?? 100, sim: opts.sim, police: opts.police });
+        if (opts.mode) p.sim.mode = opts.mode;
+        if (opts.timer != null) p.sim.timer = opts.timer;
+        if (opts.waypoints) p.sim.waypoints = opts.waypoints;
+        if (opts.moveSpeed) p.sim.moveSpeed = opts.moveSpeed;
+        if (opts.fleeFrom) p.sim.fleeFrom = opts.fleeFrom;
+        if (opts.persist) p.missionGang = true; // no se recicla aunque quede lejos
+        return p.id;
+      },
+      /** Estado de un peatón por id (sondas): posición, modo, ruta (puntos que quedan); null si ya no está. */
+      npc(id) {
+        const p = g.world.peds.find((q) => q.id === id);
+        if (!p) return null;
+        const s = p.sim;
+        const r = s.route;
+        const pts = [];
+        if (r) for (let k = r.i; k < r.n; k++) pts.push([+r.xs[k].toFixed(2), +r.zs[k].toFixed(2)]);
+        return { x: s.x, z: s.z, yaw: s.yaw, mode: s.mode, speed: s.speed, faction: p.faction, alive: p.alive, route: r ? { status: r.status, purpose: r.purpose ?? null, pts, partial: r.partial } : null, waypoints: s.waypoints?.length ?? 0 };
+      },
+      /** Un tiro (o lo que asuste) en (x, z): los peatones a menos de `radius` huyen. */
+      threat(x, z, radius = 30) {
+        g.world.addThreat(x, z, radius);
       },
       playerGesture() {
         return g.player.rig.gesture ?? null;
@@ -1898,6 +2128,7 @@ export class Game {
           const p = g.player;
           g.env.update(step, new THREE.Vector3(p.x, p.y, p.z));
           g.cityRenderer.update(step, g.env.night);
+          g.tumbables.update(step);
           g.effects.update(step);
           g.input.endFrame();
         }

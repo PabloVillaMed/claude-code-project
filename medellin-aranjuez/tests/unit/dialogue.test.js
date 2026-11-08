@@ -27,7 +27,8 @@ describe('líneas de diálogo', () => {
       for (const v of l.voices) expect(VOICES[v]).toBeDefined();
     }
     expect(LINES.length).toBeGreaterThanOrEqual(120);
-    expect(LINES.length).toBeLessThanOrEqual(200);
+    // (270: con las 26 de la rumba de la 92 y las 31 de las damas de compañía, que esperan su voz.)
+    expect(LINES.length).toBeLessThanOrEqual(270);
   });
 
   it('cada ventero tiene pregones y cada voz del barrio tiene de todo', () => {

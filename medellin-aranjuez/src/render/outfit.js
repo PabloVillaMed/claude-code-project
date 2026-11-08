@@ -33,7 +33,7 @@ function outfitMaterial(src) {
     uLong: { value: 0 },
     uPants: { value: new THREE.Color(1, 1, 1) },
     uPants2: { value: new THREE.Color(1, 1, 1) },
-    uPantsMode: { value: 0 }, // 0 original, 1 jean teñido, 2 sudadera
+    uPantsMode: { value: 0 }, // 0 original, 1 jean teñido, 2 sudadera, 3 medias (vestido)
     uShoe: { value: new THREE.Color(1, 1, 1) },
     uShoe2: { value: new THREE.Color(1, 1, 1) },
     uShoeMode: { value: 0 }, // 0 original, 1 tenis de color, 2 chanclas con medias
@@ -76,7 +76,10 @@ bool pintaPiel( vec3 c ) { return c.r > c.g * 1.12 && c.g > c.b * 1.05 && c.r > 
     if ( uPantsMode > 0.5 && q.y < 0.435 && ( q.x < 0.28 || q.x > 0.72 ) ) {
       float k = clamp( lum / 0.2, 0.45, 1.5 );
       vec3 p = uPants * k;
-      if ( uPantsMode > 1.5 ) {
+      if ( uPantsMode > 2.5 ) {
+        // Vestido: debajo de la falda, medias lisas (casi sin la tela del jean).
+        p = uPants * mix( 0.85, 1.12, clamp( lum * 2.5, 0.0, 1.0 ) );
+      } else if ( uPantsMode > 1.5 ) {
         // Sudadera: tela lisa con franja a los lados de la pierna.
         float e = min( abs( q.x - 0.012 ), abs( q.x - 0.988 ) );
         p = mix( uPants * mix( 1.0, k, 0.35 ), uPants2, step( e, 0.012 ) );
@@ -172,7 +175,23 @@ function measure(scene) {
     collar: slab(neck.y - 0.08, neck.y - 0.03, 0.06),
     belly: slab(neck.y - 0.5, neck.y - 0.42),
     shoulderX: 0.17,
+    hip: null,
   };
+  // Cadera (para la falda del vestido): ancho y fondo del cuerpo a la altura de la pelvis.
+  const pelvis = wp('Bip01_Pelvis');
+  if (pelvis) {
+    const h = { y: pelvis.y, minX: Infinity, maxX: -Infinity, front: -Infinity, back: Infinity };
+    for (let i = 0; i < pts.body.length; i += 3) {
+      const [x, y, z] = [pts.body[i], pts.body[i + 1], pts.body[i + 2]];
+      if (y < pelvis.y - 0.03 || y > pelvis.y + 0.07 || Math.abs(x - pelvis.x) > 0.3) continue;
+      h.minX = Math.min(h.minX, x);
+      h.maxX = Math.max(h.maxX, x);
+      h.front = Math.max(h.front, z);
+      h.back = Math.min(h.back, z);
+    }
+    if (Number.isFinite(h.minX) && h.maxX - h.minX > 0.15 && h.front - h.back > 0.1) m.hip = h;
+    else m.hip = { y: pelvis.y, minX: pelvis.x - 0.17, maxX: pelvis.x + 0.17, front: pelvis.z + 0.11, back: pelvis.z - 0.12 };
+  }
   measures.set(scene, m);
   return m;
 }
@@ -472,6 +491,63 @@ function glassesGeo(m, it) {
   return { lens: merge(lensParts), frame: merge(frame) };
 }
 
+/** La misma malla vista por dentro (caras al revés), pa que no se vea hueca desde abajo. */
+function inside(g) {
+  const n = g.index ? g.toNonIndexed() : g.clone();
+  const p = n.attributes.position.array;
+  const q = n.attributes.normal.array;
+  for (let i = 0; i < p.length; i += 9) {
+    for (let k = 0; k < 3; k++) {
+      [p[i + 3 + k], p[i + 6 + k]] = [p[i + 6 + k], p[i + 3 + k]];
+      [q[i + 3 + k], q[i + 6 + k]] = [q[i + 6 + k], q[i + 3 + k]];
+    }
+  }
+  for (let i = 0; i < q.length; i++) q[i] = -q[i];
+  return n;
+}
+
+/**
+ * Falda del vestido: cono abierto de la cintura a medio muslo, ovalado como
+ * la cadera y abierto abajo (sobre todo adelante y atrás, por donde salen las
+ * piernas al caminar), con pretina y ruedo un poco más oscuros.
+ */
+function skirtGeo(m, it) {
+  const h = m.hip;
+  const cx = (h.minX + h.maxX) / 2;
+  const cz = (h.front + h.back) / 2;
+  const rx = (h.maxX - h.minX) / 2 + 0.018;
+  const rz = (h.front - h.back) / 2 + 0.022;
+  const top = h.y + 0.1;
+  const len = 0.44;
+  const parts = [];
+  const body = new THREE.CylinderGeometry(1, 1, len, 22, 4, true);
+  // Abre hacia abajo: 1.32 de lado a lado y 1.55 adelante y atrás.
+  const pos = body.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const t = 0.5 - pos.getY(i) / len; // 0 arriba, 1 abajo
+    pos.setX(i, pos.getX(i) * rx * (1 + 0.32 * t));
+    pos.setZ(i, pos.getZ(i) * rz * (1 + 0.55 * t));
+  }
+  body.computeVertexNormals();
+  body.translate(cx, top - len / 2, cz);
+  parts.push(paint(body, it.color), paint(inside(body), it.color));
+  const dark = (c, k) => {
+    const r = ((c >> 16) & 255) * k;
+    const g = ((c >> 8) & 255) * k;
+    const b = (c & 255) * k;
+    return (r << 16) | (g << 8) | b;
+  };
+  const band = new THREE.CylinderGeometry(1, 1, 0.035, 22, 1, true);
+  band.scale(rx + 0.004, 1, rz + 0.004);
+  band.translate(cx, top - 0.02, cz);
+  parts.push(paint(band, dark(it.color, 0.7)));
+  const hem = new THREE.CylinderGeometry(1, 1, 0.025, 22, 1, true);
+  hem.scale(rx * 1.32 + 0.003, 1, rz * 1.55 + 0.003);
+  hem.translate(cx, top - len + 0.012, cz);
+  parts.push(paint(hem, dark(it.color, 0.75)));
+  return merge(parts);
+}
+
 // ------------------------------------------------------------------ montaje
 const geoCache = new WeakMap(); // escena de la plantilla -> Map(id -> [{geo, mat, bone}])
 
@@ -497,6 +573,9 @@ function accessory(scene, it) {
     add(g.bag, cloth, scene.getObjectByName('Bip01_Pelvis') ? 'Bip01_Pelvis' : 'Bip01_Spine2');
   }
   else if (it.type === 'buso') add(hoodGeo(m, it), cloth, 'Bip01_Spine2');
+  else if (it.type === 'vestido') {
+    if (m.hip) add(skirtGeo(m, it), cloth, 'Bip01_Pelvis');
+  }
   else if (it.slot === 'cuello') add(chainGeo(m, it), metal, 'Bip01_Spine2');
   else if (it.slot === 'cintura') add(bagGeo(m, it), cloth, 'Bip01_Spine2');
   else if (it.slot === 'ojos') {
@@ -535,8 +614,10 @@ export function applyOutfit(rig, outfit) {
     if (top?.color != null) u.uShirt.value.setHex(top.color);
     u.uShirt2.value.setHex(top?.color2 ?? 0xffffff);
     u.uLong.value = top?.long ? 1 : 0;
-    u.uPantsMode.value = legs?.color == null ? 0 : legs.type === 'sudadera' ? 2 : 1;
-    if (legs?.color != null) u.uPants.value.setHex(legs.color);
+    const vestido = legs?.type === 'vestido';
+    u.uPantsMode.value = legs?.color == null ? 0 : legs.type === 'sudadera' ? 2 : vestido ? 3 : 1;
+    // Vestido: la falda es malla; debajo, las piernas van con medias (color2).
+    if (legs?.color != null) u.uPants.value.setHex(vestido ? (legs.color2 ?? 0x221c1e) : legs.color);
     u.uPants2.value.setHex(legs?.color2 ?? 0xffffff);
     u.uShoeMode.value = !feet || (feet.type === 'tenis' && feet.color == null) ? 0 : feet.type === 'chanclas' ? 2 : 1;
     if (feet?.color != null) u.uShoe.value.setHex(feet.color);
@@ -546,14 +627,15 @@ export function applyOutfit(rig, outfit) {
   for (const mesh of st.meshes) mesh.removeFromParent();
   st.meshes = [];
   const scene = rig.tpl.scene;
-  for (const slot of ['cabeza', 'torso', 'cuello', 'cintura', 'ojos', 'hombro']) {
+  for (const slot of ['cabeza', 'torso', 'piernas', 'cuello', 'cintura', 'ojos', 'hombro']) {
     const it = get(slot);
-    if (!it || (slot === 'torso' && it.type !== 'buso')) continue;
+    if (!it || (slot === 'torso' && it.type !== 'buso') || (slot === 'piernas' && it.type !== 'vestido')) continue;
     for (const a of accessory(scene, it)) {
       const bone = rig.bones[a.bone];
       if (!bone) continue;
       const mesh = new THREE.Mesh(a.geo, a.mat);
       mesh.name = `ropa-${it.id}`;
+      mesh.userData.slot = slot; // (el LOD de la gente lejana esconde los accesorios chicos: game/nightlife.js)
       mesh.castShadow = true;
       bone.add(mesh);
       st.meshes.push(mesh);
@@ -562,5 +644,6 @@ export function applyOutfit(rig, outfit) {
   // La lista de mallas con sombra cambió (ver setRigShadow).
   rig._shadowMeshes = null;
   rig._shadowOn = undefined;
+  rig._poseDirty = true; // (personaje congelado: lo nuevo necesita sus matrices)
   return true;
 }

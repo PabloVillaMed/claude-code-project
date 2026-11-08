@@ -37,10 +37,96 @@ import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_PLAYER, buildWeaponMesh } from './proceduralRig.js';
 import { weaponModel } from './weaponModels.js';
+import { skipWhenStill } from './staticScene.js';
 
 export { ProceduralRig, buildWeaponMesh };
 // Utilidades de pose para las actividades (render/activityPoses.js).
 export { ik2, pointBone, setWorldQuat };
+
+// ------------------------------------------- primera persona (ajustables)
+/**
+ * Dónde van las manos frente a la cámara (m: x a la derecha, y arriba, z
+ * adelante), a la cadera (`hip`) y apuntando (`ads`). Con arma es el punto de
+ * la empuñadura (origen del modelo); con `ads.y` null el arma sube hasta que
+ * el alza queda en la línea de los ojos (la mira del centro de la pantalla).
+ * Puños y machete: la mano derecha (la izquierda va en espejo, `left`).
+ */
+export const FP_POSES = {
+  pistol: { hip: [0.13, -0.15, 0.42], ads: [0, null, 0.46] },
+  smg: { hip: [0.14, -0.16, 0.36], ads: [0, null, 0.3] },
+  shotgun: { hip: [0.15, -0.17, 0.34], ads: [0, null, 0.28] },
+  rifle: { hip: [0.15, -0.17, 0.34], ads: [0, null, 0.28] },
+  machete: { hip: [0.22, -0.17, 0.36], ads: [0.15, -0.11, 0.38], left: [-0.19, -0.17, 0.34] },
+  fists: { hip: [0.16, -0.15, 0.34], ads: [0.11, -0.08, 0.32], left: [-0.16, -0.13, 0.38] },
+};
+/** Pared delante: cuánto se recoge el arma (m) y cuánto sube la punta (rad) con la retracción completa. */
+export const FP_RETRACT_BACK = 0.16;
+export const FP_RETRACT_TILT = 0.95;
+/** Puños: cuánto se cierran los dedos (rad por falange) en primera persona. */
+export const FP_FIST_CURL = 1.25;
+// Temporales de fpArms (sin asignar memoria por cuadro).
+const FPT = Object.fromEntries(['r', 'u', 'f', 'g', 'd', 'w', 'p', 'h', 't', 'l'].map((k) => [k, new THREE.Vector3()]));
+for (const k of ['q1', 'q2', 'wq', 'hq', 'qi']) FPT[k] = new THREE.Quaternion();
+
+// ------------------------------------- nivel de detalle de la animación (ajustables)
+/**
+ * Cada cuántos cuadros se recalcula la pose según la distancia a la cámara:
+ * [hasta estos metros, cada N cuadros], el primero que aplique. `mueve` para
+ * quien camina, corre o va en un vehículo; `quieto` para quien está de pie o
+ * sentado (la respiración y los gestos se notan menos de lejos). `oculto`:
+ * fuera de la vista solo se lleva el reloj. Entre cuadros la pose se queda
+ * quieta (y si la raíz tampoco se movió, three no le recalcula las matrices
+ * ni vuelve a subir la textura de huesos: ver CONGELAR_QUIETOS).
+ */
+export const ANIM_LOD = {
+  mueve: [[35, 1], [70, 2], [Infinity, 3]],
+  quieto: [[16, 1], [32, 2], [60, 3], [Infinity, 4]],
+  // Conductores de carro y moto (las manos al timón y el cuerpo con la moto
+  // llevan IK: cuestan más que caminar; el vehículo los mueve igual cada cuadro).
+  conduce: [[18, 1], [45, 2], [Infinity, 3]],
+  oculto: 8,
+};
+/** Por debajo de esta rapidez (m/s) cuenta como quieto para ANIM_LOD. */
+export const ANIM_LOD_QUIETO = 0.1;
+/**
+ * Personajes de a pie que no cambiaron de pose ni de lugar desde el último
+ * cuadro: three no recorre sus ~90 nodos ni recalcula su esqueleto (la gente
+ * de la 92, los de las mesas, los que esperan). false = como antes.
+ */
+export const CONGELAR_QUIETOS = true;
+
+// --------------------------------------------- manejando (ajustables)
+// Moto (_rideMoto): la moto ya se inclina en las curvas (sim/vehiclePhysics.js
+// MOTO) y el piloto va con ella; además mete el cuerpo hacia adentro, mira
+// hacia la salida de la curva y se agacha a alta velocidad.
+export const RIDE = {
+  /** Torso hacia adentro de la curva: fracción de la inclinación de la moto. */
+  bodyLean: 0.35,
+  /** Cadera corrida hacia adentro (m por rad de inclinación, con tope 5 cm). */
+  hipShift: 0.09,
+  /** La cabeza gira hacia la curva (rad por rad de inclinación, tope headLookMax) y se endereza contra la inclinación (fracción). */
+  headLook: 0.9,
+  headLookMax: 0.45,
+  headLevel: 0.45,
+  /** Agachado (tuck): empieza a tuckFrom m/s, completo en tuckFull; el torso baja tuckBend rad y la cabeza sube tuckHead rad. */
+  tuckFrom: 16,
+  tuckFull: 30,
+  tuckBend: 0.42,
+  tuckHead: 0.32,
+  /** En caballito el torso se va hacia el manubrio (rad por rad de caballito) para no quedar acostado. */
+  wheelieBend: 0.45,
+  /** Por debajo de esta rapidez (m/s) el pie izquierdo baja al piso. */
+  footDownSpeed: 1.2,
+};
+// Carro (_driveArms): las manos giran con el volante y el cuerpo se va con la curva.
+export const DRIVE = {
+  /** Vueltas del volante: rad del timón por rad de giro de las ruedas (0,6 rad en las ruedas → ~100°). */
+  wheelTurn: 2.9,
+  /** El conductor se mece hacia afuera de la curva (rad por rad de balanceo de la carrocería, tope 0,08). */
+  sway: 1.4,
+};
+const _rv = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+const _rq = [new THREE.Quaternion(), new THREE.Quaternion()];
 
 // ------------------------------------------------------------------ catálogo
 // Ver scripts/assets/rocketbox.mjs (fuente de cada avatar y conversión).
@@ -391,16 +477,36 @@ export class SkinnedRig {
     this.body.add(this.model);
     this.bones = {};
     this.model.traverse((o) => {
-      if (o.isBone) this.bones[o.name] = o;
+      // Bip01 (la raíz del esqueleto, que lleva la cadera) no es articulación
+      // de la piel en los GLB optimizados: three lo carga como Object3D. Sin
+      // él, los gestos con desplazamiento (sentarse, levantarse, abrir la
+      // puerta) no bajaban ni giraban la cadera y el cuerpo saltaba al final.
+      if (o.isBone || o.name === 'Bip01') {
+        this.bones[o.name] = o;
+        // Los huesos solo se mueven con cuaterniones (mezclador, capas, IK):
+        // sin esto cada escritura recalculaba también los ángulos de Euler
+        // (onQuaternionChange -> setFromRotationMatrix), ~80 por personaje.
+        o.quaternion._onChange(sinEuler);
+      }
       if (o.isSkinnedMesh) {
         o.castShadow = true;
         // Solo se anima lo que se dibuja (y más lento lo lejano).
         o.onBeforeRender = (r, sc, cam) => {
+          // Una vez por cámara y cuadro (cuerpo, cabeza y pelo llaman cada uno).
+          if (this._vdFrame === this.frame && this._vdCam === cam) return;
+          this._vdFrame = this.frame;
+          this._vdCam = cam;
           this.rendered = this.frame;
           this.viewDist = cam.position.distanceTo(this.root.getWorldPosition(_v3));
         };
       }
     });
+    // Un solo esqueleto por personaje: SkeletonUtils.clone le da uno propio a
+    // cada malla (cuerpo, cabeza, pelo) aunque usan los mismos huesos con las
+    // mismas inversas; three recalculaba y subía la textura de huesos 2-3
+    // veces por personaje y cuadro.
+    shareSkeleton(this.model);
+    if (CONGELAR_QUIETOS) freezeWhenStill(this);
     this.mixer = new THREE.AnimationMixer(this.model);
     this.actions = {}; // acciones del mezclador, creadas al primer uso
     this.w = { idle: 1 }; // peso actual de cada clip de la base
@@ -459,6 +565,7 @@ export class SkinnedRig {
   setWeapon(id) {
     if (id === this.weaponId) return;
     this.weaponId = id;
+    this._poseDirty = true; // (personaje congelado: el arma nueva necesita sus matrices)
     if (this.weaponMesh) this.weaponMount.remove(this.weaponMesh);
     // Modelo real (o procedural de respaldo) con el cañón en -Z y la
     // empuñadura en el origen: el mismo marco del soporte de la mano.
@@ -720,7 +827,10 @@ export class SkinnedRig {
   /**
    * st = {speed, onGround, aiming, crouching, driving ('car'|'moto'|'chair'|null),
    *       dead, aimPitch, style, upper, fidget, handsFree, mountLift,
-   *       idle, seat, lookAt: {x, y, z} | null}
+   *       mountSide, seatW, idle, seat, lookAt: {x, y, z} | null}
+   * seatW (0..1, al subir / bajar: game/boarding.js): peso de la postura
+   * sentada que lleva el plan en vez de mezclarla sola (en moto también el
+   * paso de reposo a sentado); mountSide: lado (-1 / 1) por el que se monta.
    */
   animate(dt, st) {
     this.frame++;
@@ -731,8 +841,10 @@ export class SkinnedRig {
     const air = !st.onGround && !driving && !dead;
     const moving = realSpeed > 0.3;
 
-    // Velocidad de giro (rad/s, + = a la izquierda) medida en la raíz.
-    const yaw = this.root.rotation.y;
+    // Velocidad de giro (rad/s, + = a la izquierda) medida en la raíz, en el
+    // mundo (al subir / bajar la raíz pasa del grupo del vehículo a la escena:
+    // su yaw local salta en el rumbo del vehículo y parecía un giro brusco).
+    const yaw = this.root.rotation.y + (this.root.parent?.rotation.y ?? 0);
     const turn = this.yawPrev == null || dt <= 0 ? 0 : angleDiff(this.yawPrev, yaw) / dt;
     this.yawPrev = yaw;
     this.yawRate = damp(this.yawRate, clamp(turn, -8, 8), 12, dt);
@@ -742,12 +854,14 @@ export class SkinnedRig {
     const turnStep = onFoot && realSpeed < 0.6 ? clamp((Math.abs(this.yawRate) - 0.7) * 0.4, 0, 0.75) : 0;
     const speed = Math.max(realSpeed, turnStep);
     // Inclinación hacia adentro de la curva (más al correr).
-    const bankT = onFoot && realSpeed > 1 ? clamp(this.yawRate * realSpeed * 0.018, -0.16, 0.16) : 0;
+    // En carro: el cuerpo se mece hacia afuera con el balanceo de la carrocería (st.sway).
+    const bankT = onFoot && realSpeed > 1 ? clamp(this.yawRate * realSpeed * 0.018, -0.16, 0.16) : driving === 'car' && st.sway ? clamp(st.sway * DRIVE.sway, -0.08, 0.08) : 0;
     this.bank = damp(this.bank, bankT, 6, dt);
 
     this.aimBlend = damp(this.aimBlend, st.aiming ? 1 : 0, 14, dt);
     this.deadBlend = damp(this.deadBlend, dead ? 1 : 0, 6, dt);
-    this.driveBlend = damp(this.driveBlend, driving ? 1 : 0, 10, dt);
+    const seatW = st.seatW;
+    this.driveBlend = seatW ?? damp(this.driveBlend, driving ? 1 : 0, 10, dt);
     this.lean = damp(this.lean, speed > 5.5 ? 0.12 : 0, 5, dt);
     if (this.punchTimer > 0) this.punchTimer -= dt;
     this._updateLayers(dt, st, moving, dead || air || !!st.aiming || crouch, dead);
@@ -767,8 +881,13 @@ export class SkinnedRig {
     const add = (slot, x) => {
       if (x > 0) tw[S[slot]] = (tw[S[slot]] ?? 0) + x;
     };
-    if (driving) add('sit', 1);
-    else if (air) {
+    if (driving) {
+      // Montándose en la moto: de pie a sentado a la par del plan (en el carro
+      // el gesto de sentarse ya tapa la base).
+      const sw = driving === 'moto' && seatW != null ? seatW : 1;
+      add('sit', sw);
+      add('idle', 1 - sw);
+    } else if (air) {
       // Solo airW (cuadro congelado del sprint, abajo).
     } else if (crouch) add('crouch', 1);
     else if (speed < 0.12) add('idle', 1);
@@ -790,7 +909,8 @@ export class SkinnedRig {
     const rate = driving || dead ? 8 : 10;
     for (const k in tw) if (!(k in this.w)) this.w[k] = 0;
     for (const k in this.w) {
-      this.w[k] = damp(this.w[k], tw[k] ?? 0, rate, dt);
+      // (Con seatW los pesos los lleva el plan: sin el atraso de la mezcla.)
+      this.w[k] = seatW != null ? (tw[k] ?? 0) : damp(this.w[k], tw[k] ?? 0, rate, dt);
       if (this.w[k] < 1e-4 && !tw[k]) this.w[k] = 0;
     }
     this.airW = damp(this.airW, air ? 1 : 0, rate, dt);
@@ -798,11 +918,13 @@ export class SkinnedRig {
     // Lo que no se dibuja no se anima (y lo lejano, a menor frecuencia).
     this.accum += dt;
     const visible = this.frame - this.rendered <= 2 || this.frame < 3;
-    const every = !visible ? 8 : this.viewDist > 70 ? 3 : this.viewDist > 35 ? 2 : 1;
+    const tabla = driving === 'car' || driving === 'moto' ? ANIM_LOD.conduce : speed < ANIM_LOD_QUIETO && !driving ? ANIM_LOD.quieto : ANIM_LOD.mueve;
+    const every = !visible ? ANIM_LOD.oculto : lodEvery(tabla, this.viewDist);
     if (this.frame % every !== 0 && this.punchTimer <= 0 && this.deadBlend < 0.01) return;
     const step = this.accum;
     this.accum = 0;
     if (!visible) return;
+    this._poseDirty = true; // la pose cambia: three debe recalcular sus matrices (freezeWhenStill)
 
     // Fase compartida de locomoción (los ciclos quedan sincronizados).
     let cyc = 0;
@@ -886,14 +1008,18 @@ export class SkinnedRig {
     // ---------------------------------------------- capas por código
     const a = this.aimBlend;
     const wheel = db > 0.01 && driving !== 'chair' && !st.handsFree;
-    const needArms = a > 0.01 || this.punchTimer > 0 || wheel || (db > 0.01 && driving === 'moto') || d > 0.01;
+    const needArms = a > 0.01 || this.punchTimer > 0 || wheel || (driving === 'moto' && (db > 0.01 || st.mountSide != null)) || d > 0.01;
     // Moto: puntos del modelo (asiento, puños, estriberas) y velocidad (vehicleMesh).
     const ride = driving === 'moto' ? this.root.parent?.userData.ride : null;
-    this.footDown = damp(this.footDown, ride && Math.abs(ride.speed) < 0.8 ? 1 : 0, 5, step);
+    this.footDown = damp(this.footDown, ride && Math.abs(ride.speed) < RIDE.footDownSpeed ? 1 : 0, 5, step);
+    // Agachado sobre el tanque a alta velocidad (no en caballito).
+    const tuckT = ride && !(ride.wheelie > 0.05) ? smoothstep(clamp((Math.abs(ride.speed) - RIDE.tuckFrom) / (RIDE.tuckFull - RIDE.tuckFrom), 0, 1)) : 0;
+    this.tuck = damp(this.tuck ?? 0, tuckT, 3, step);
     if (needArms) {
       this.root.updateMatrixWorld(true);
-      if (ride && db > 0.01) this._rideMoto(ride, db, a, st.mountLift ?? 0);
-      else if (wheel) this._driveArms(driving === 'moto', db * (1 - a));
+      if (ride && db > 0.01) this._rideMoto(ride, db, a, st.mountLift ?? 0, st.mountSide ?? null, st.mountPlant);
+      else if (ride && st.mountSide != null && (st.mountLift ?? 0) > 0.01) this._rideMoto(ride, 0, a, st.mountLift, st.mountSide, st.mountPlant);
+      else if (wheel) this._driveArms(driving === 'moto', db * (1 - a), driving === 'car' ? (st.steer ?? 0) : 0);
       if (a > 0.01 && d < 0.5) this._aimArms(st.aimPitch ?? 0, a);
       if (this.punchTimer > 0) this._punchArm();
       if (d > 0.01) this._limp(d);
@@ -1078,7 +1204,8 @@ export class SkinnedRig {
     ik2(B.Bip01_R_UpperArm, B.Bip01_R_Forearm, B.Bip01_R_Hand, target, right.clone().add(new THREE.Vector3(0, -1, 0)), hit);
   }
 
-  _driveArms(moto, w) {
+  /** Manos al volante (o al manubrio de la moto sin puntos del modelo); `steer` (rad en las ruedas) gira el volante con las manos. */
+  _driveArms(moto, w, steer = 0) {
     const B = this.bones;
     if (!B.Bip01_R_UpperArm) return;
     const { flat, right } = this._frame();
@@ -1097,8 +1224,15 @@ export class SkinnedRig {
     const height = moto ? 0.42 : 0.32;
     const spread = moto ? 0.36 : 0.19;
     const c = hips.clone().addScaledVector(flat, reach).addScaledVector(up, height);
-    ik2(B.Bip01_R_UpperArm, B.Bip01_R_Forearm, B.Bip01_R_Hand, c.clone().addScaledVector(right, spread), right.clone().addScaledVector(up, -1), w);
-    ik2(B.Bip01_L_UpperArm, B.Bip01_L_Forearm, B.Bip01_L_Hand, c.clone().addScaledVector(right, -spread), right.clone().negate().addScaledVector(up, -1), w);
+    // Volante: girar a la derecha sube la mano izquierda y baja la derecha
+    // (en el plano del timón, casi vertical frente al pecho).
+    const ang = moto ? 0 : clamp(steer * DRIVE.wheelTurn, -1.9, 1.9);
+    const cs = Math.cos(ang) * spread;
+    const sn = Math.sin(ang) * spread;
+    const hr = _rv[0].copy(c).addScaledVector(right, cs).addScaledVector(up, -sn);
+    const hl = _rv[1].copy(c).addScaledVector(right, -cs).addScaledVector(up, sn);
+    ik2(B.Bip01_R_UpperArm, B.Bip01_R_Forearm, B.Bip01_R_Hand, hr, right.clone().addScaledVector(up, -1), w);
+    ik2(B.Bip01_L_UpperArm, B.Bip01_L_Forearm, B.Bip01_L_Hand, hl, right.clone().negate().addScaledVector(up, -1), w);
     if (moto) {
       // Piernas abiertas a los lados del tanque.
       for (const [name, s] of [
@@ -1121,9 +1255,12 @@ export class SkinnedRig {
    * `ride` (espacio del vehículo, frente en -Z): seatY, seatZ, grips[izq, der],
    * pegs[izq, der], speed. `w`: peso de la postura; `aim`: el brazo derecho
    * lo lleva la mira (disparo desde la moto); `lift` (0..1): al montarse o
-   * bajarse, la pierna derecha pasa por encima del asiento.
+   * bajarse, la pierna de afuera pasa por encima del asiento (arriba en 0,5).
+   * `mside` (-1 / 1, solo montándose o bajándose): lado del que está el
+   * personaje; el pie de ese lado queda apoyado en el piso y las manos toman
+   * los puños antes de que la cadera pase al asiento; `plantX`: x de ese pie.
    */
-  _rideMoto(ride, w, aim, lift = 0) {
+  _rideMoto(ride, w, aim, lift = 0, mside = null, plantX = null) {
     const B = this.bones;
     if (!B.Bip01_Pelvis || !B.Bip01_L_Thigh) return;
     const veh = this.root.parent;
@@ -1132,30 +1269,42 @@ export class SkinnedRig {
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
 
     // 1. Cadera sobre el asiento (la articulación queda ~9 cm sobre el cojín).
+    // En las curvas la cadera se corre un poco hacia adentro (RIDE.hipShift).
+    const lean = (ride.lean ?? 0) * (1 - aim * 0.5);
     const pel = veh.worldToLocal(B.Bip01_Pelvis.getWorldPosition(new THREE.Vector3()));
-    const tgt = new THREE.Vector3(0, ride.seatY + 0.09 * (this.scale / 0.97), ride.seatZ - 0.02);
+    const tgt = new THREE.Vector3(clamp(-lean * RIDE.hipShift, -0.05, 0.05), ride.seatY + 0.09 * (this.scale / 0.97), ride.seatZ - 0.02);
     this.model.position.add(tgt.sub(pel).multiplyScalar(w));
     this.model.updateMatrixWorld(true);
 
-    // 2. Torso inclinado hacia el manubrio (~20° de la cadera al cuello); la cabeza mira al frente.
+    // 2. Torso inclinado hacia el manubrio (~29° de la cadera al cuello; más
+    // agachado a alta velocidad y en caballito) y metido hacia adentro de la
+    // curva; la cabeza mira al frente, hacia la salida de la curva, y se
+    // endereza un poco contra la inclinación de la moto.
     const spine = B.Bip01_Spine ?? B.Bip01_Spine1;
     const neck = B.Bip01_Neck ?? B.Bip01_Head;
     if (spine && neck) {
+      const tuck = this.tuck ?? 0;
+      const bend = 0.5 + RIDE.tuckBend * tuck + RIDE.wheelieBend * Math.max(0, ride.wheelie ?? 0);
       const s0 = spine.getWorldPosition(new THREE.Vector3());
       const cur = neck.getWorldPosition(new THREE.Vector3()).sub(s0).normalize();
-      const want = up.clone().multiplyScalar(Math.cos(0.5)).addScaledVector(fwd, Math.sin(0.5));
+      const want = up.clone().multiplyScalar(Math.cos(bend)).addScaledVector(fwd, Math.sin(bend)).addScaledVector(right, -lean * RIDE.bodyLean).normalize();
       spine.getWorldQuaternion(_q2);
       setWorldQuat(spine, _q.setFromUnitVectors(cur, want).multiply(_q2), w);
       if (B.Bip01_Head) {
         B.Bip01_Head.getWorldQuaternion(_q2);
-        setWorldQuat(B.Bip01_Head, _q.setFromAxisAngle(right, 0.3 * w).multiply(_q2), 1);
+        const look = clamp(lean * RIDE.headLook, -RIDE.headLookMax, RIDE.headLookMax) * w;
+        _q.setFromAxisAngle(up, look).multiply(_rq[0].setFromAxisAngle(fwd, lean * RIDE.headLevel * w)).multiply(_rq[1].setFromAxisAngle(right, (0.3 + RIDE.tuckHead * tuck) * w));
+        setWorldQuat(B.Bip01_Head, _q.multiply(_q2), 1);
       }
     }
 
     // 3. Manos en los puños: la muñeca un poco detrás y encima del centro del puño.
+    // Montándose, las manos toman los puños primero (en el primer 40 %).
+    const mounting = mside != null;
+    const hw = mounting ? Math.max(w, Math.min(1, lift * 2.5)) : w;
     for (const [side, s, wt] of [
-      ['L', -1, w],
-      ['R', 1, w * (1 - aim)],
+      ['L', -1, hw],
+      ['R', 1, hw * (1 - aim)],
     ]) {
       if (wt < 0.01) continue;
       const g = ride.grips[s < 0 ? 0 : 1];
@@ -1180,19 +1329,34 @@ export class SkinnedRig {
       // Tobillo sobre la estribera (el metatarso apoya en ella).
       const ankle = toW(peg).addScaledVector(up, 0.07).addScaledVector(fwd, -0.06);
       let pole = fwd.clone().addScaledVector(right, -s * 0.12).addScaledVector(up, 0.2);
-      const down = s < 0 ? Math.max(this.footDown, lift > 0 ? 1 : 0) : 0;
+      const down = s < 0 ? this.footDown : 0;
       if (down > 0.01) {
         const ground = toW({ x: peg.x - 0.2, y: 0.08, z: peg.z - 0.12 });
         ankle.lerp(ground, down);
         pole = pole.lerp(right.clone().multiplyScalar(s * 0.6).add(fwd), down);
       }
-      if (s > 0 && lift > 0.01) {
-        // Pierna derecha por encima de la parte de atrás del asiento.
-        const over = toW({ x: 0.1, y: ride.seatY + 0.45, z: ride.seatZ + 0.35 });
-        ankle.lerp(over, Math.sin(Math.min(1, lift) * Math.PI));
+      let lw = w;
+      let planted = down > 0.5;
+      if (mounting && s === mside) {
+        // Pie de apoyo (del lado del personaje): en el piso junto a la moto
+        // hasta que el peso pasa al asiento.
+        const plant = toW({ x: plantX ?? mside * 0.72, y: 0.08, z: ride.seatZ + 0.05 });
+        ankle.copy(plant.lerp(ankle, w));
+        pole = pole.lerp(fwd.clone().addScaledVector(right, s * 0.3), 1 - w);
+        lw = Math.max(w, Math.min(1, lift * 4));
+        planted = true;
+      } else if (mounting) {
+        // Pierna de afuera por encima de la parte de atrás del asiento: sube
+        // por detrás hasta arriba (lift 0,5) y de ahí baja a la estribera.
+        const over = toW({ x: s * 0.1, y: ride.seatY + 0.45, z: ride.seatZ + 0.35 });
+        const L = Math.min(1, lift);
+        if (L < 0.5) ankle.copy(over);
+        else ankle.copy(over.lerp(ankle, smoothstep((L - 0.5) * 2)));
+        lw = Math.max(w, Math.sin(L * Math.PI));
       }
-      ik2(thigh, calf, foot, ankle, pole, w);
-      pointBone(foot, fwd.clone().addScaledVector(up, down > 0.5 ? -0.15 : -0.35).normalize(), w);
+      if (lw < 0.01) continue;
+      ik2(thigh, calf, foot, ankle, pole, lw);
+      pointBone(foot, fwd.clone().addScaledVector(up, planted ? -0.15 : -0.35).normalize(), lw);
     }
   }
 
@@ -1220,6 +1384,132 @@ export class SkinnedRig {
   }
 
   /** Sombra solo de cerca: cada personaje con sombra repite su malla con esqueleto en el mapa de sombras. */
+  // ------------------------------------------------------ primera persona
+  /**
+   * Primera persona: oculta la cabeza (con el pelo) y lo que lleva puesto en
+   * ella (gorra, gafas) para que no tape la cámara. Solo actúa al alternar.
+   */
+  setFirstPerson(on) {
+    on = !!on;
+    if (!!this.fpOn === on) return;
+    this.fpOn = on;
+    if (on) {
+      const hide = [];
+      this.model.traverse((o) => o.isSkinnedMesh && o.visible && /head|hair/i.test(o.material?.name ?? '') && hide.push(o));
+      this.bones.Bip01_Head?.traverse((o) => o.isMesh && o.visible && hide.push(o));
+      for (const o of hide) o.visible = false;
+      this._fpHidden = hide;
+    } else {
+      for (const o of this._fpHidden ?? []) o.visible = true;
+      this._fpHidden = null;
+    }
+    // La esfera de la piel (de la pose de reposo) no alcanza a los brazos
+    // estirados frente a la cámara: sin esto, mirando al frente se descartaba
+    // el cuerpo entero y no se veían las manos.
+    this.model.traverse((o) => o.isSkinnedMesh && (o.frustumCulled = !on));
+  }
+
+  /**
+   * Primera persona: los brazos sostienen el arma (o los puños) frente a la
+   * cámara, encima de lo que dejó animate (se llama después de mover la
+   * cámara). `fp` es cameraRig.fp: ads 0…1, bobX/bobY y swayX/swayY (m),
+   * kickBack (m), kickPitch (rad) y retract 0…1. Va en el marco de la cámara:
+   * el arma no tiembla con el paso del cuerpo y, apuntando, el alza queda en
+   * la línea de los ojos (la mira del centro de la pantalla).
+   */
+  fpArms(camera, fp) {
+    const B = this.bones;
+    const hand = B.Bip01_R_Hand;
+    if (!B.Bip01_R_UpperArm || !B.Bip01_L_UpperArm || !hand) return;
+    // Es la cámara: siempre "se ve" (animate no se salta cuadros y repone la pose base).
+    this.rendered = this.frame;
+    this.root.updateMatrixWorld(true);
+    const armed = this.weaponMesh && this.tpl.grip;
+    const id = armed ? this.weaponId : 'fists';
+    const P = FP_POSES[id] ?? FP_POSES.pistol;
+    const q = camera.quaternion;
+    const right = FPT.r.set(1, 0, 0).applyQuaternion(q);
+    const up = FPT.u.set(0, 1, 0).applyQuaternion(q);
+    const fwd = FPT.f.set(0, 0, -1).applyQuaternion(q);
+    const r = fp.retract;
+    // Suave al salir y al llegar; contra una pared no se puede apuntar.
+    const a = fp.ads * fp.ads * (3 - 2 * fp.ads) * (1 - r);
+    // Golpe (puño adelante) o machetazo (de arriba a abajo, cruzando).
+    const t = this.punchTimer > 0 ? 1 - this.punchTimer / 0.35 : 0;
+    const hit = t > 0 ? Math.sin(t * Math.PI) : 0;
+    const sightY = this.weaponMesh?.userData.sightY ?? 0.1;
+    let x = lerp(P.hip[0], P.ads[0], a) + fp.bobX + fp.swayX;
+    let y = lerp(P.hip[1], P.ads[1] ?? -sightY, a) + fp.bobY + fp.swayY - r * 0.05;
+    let z = lerp(P.hip[2], P.ads[2], a) - fp.kickBack - r * FP_RETRACT_BACK;
+    // El retroceso y la pared levantan la punta; el vaivén la gira un poco.
+    let tilt = fp.kickPitch + r * FP_RETRACT_TILT;
+    const turn = -fp.swayX * 2.5;
+    if (id === 'machete') {
+      tilt += t > 0 ? lerp(1.3, -0.8, t) : 0.3 * (1 - a) + 0.6 * a;
+      x += t > 0 ? lerp(0.06, -0.16, t) : 0;
+      y += t > 0 ? lerp(0.1, -0.08, t) : 0;
+      z += hit * 0.12;
+    } else if (id === 'fists') {
+      x -= hit * 0.12;
+      y += hit * 0.05;
+      z += hit * 0.3;
+      tilt += 0.25;
+    }
+    const cam = camera.position;
+    const G = FPT.g.copy(cam).addScaledVector(right, x).addScaledVector(up, y).addScaledVector(fwd, z);
+    FPT.q1.setFromAxisAngle(right, tilt);
+    FPT.q2.setFromAxisAngle(up, turn).multiply(FPT.q1);
+    const dir = FPT.d.copy(fwd).applyQuaternion(FPT.q2);
+    const wup = FPT.w.copy(up).applyQuaternion(FPT.q2);
+    const poleR = FPT.p.copy(right).multiplyScalar(0.7).addScaledVector(up, -1);
+    // Mano derecha como si empuñara (con los puños también: puño vertical, nudillos adelante).
+    const wq = weaponQuat(dir, wup, FPT.wq);
+    const hq = FPT.hq.copy(wq).multiply(FPT.qi.copy(this.tpl.grip?.q ?? FPT.qi.identity()).invert());
+    const H = FPT.h.copy(G);
+    if (armed) H.sub(FPT.t.copy(this.tpl.grip.p).applyQuaternion(hq));
+    // Dos pasadas: la segunda corrige lo que falte (escala del hueso, alcance del brazo).
+    for (let i = 0; i < 2; i++) {
+      ik2(B.Bip01_R_UpperArm, B.Bip01_R_Forearm, hand, H, poleR, 1);
+      setWorldQuat(hand, hq, 1);
+      if (i === 0) H.add(G).sub(armed ? this.weaponMount.getWorldPosition(FPT.t) : hand.getWorldPosition(FPT.t));
+    }
+    // Mano izquierda: en el guardamanos, apoyando la pistola o en guardia.
+    const L = FPT.l;
+    const lh = this.weaponMesh?.userData.leftHand;
+    if (armed && id !== 'machete' && id !== 'pistol') {
+      if (lh) L.copy(this.weaponMount.getWorldPosition(FPT.t)).add(FPT.t.copy(lh).applyQuaternion(wq));
+      else L.copy(G).addScaledVector(dir, id === 'smg' ? 0.2 : 0.32);
+      L.addScaledVector(wup, -0.03).addScaledVector(right, -0.03);
+    } else if (id === 'pistol') {
+      L.copy(hand.getWorldPosition(FPT.t)).addScaledVector(right, -0.05).addScaledVector(wup, -0.03).addScaledVector(dir, -0.02);
+    } else {
+      const lx = lerp(P.left[0], -P.ads[0], a) + fp.bobX + fp.swayX;
+      const ly = lerp(P.left[1], P.ads[1], a) - fp.bobY + fp.swayY;
+      const lz = lerp(P.left[2], P.ads[2] + 0.04, a) - r * FP_RETRACT_BACK;
+      L.copy(cam).addScaledVector(right, lx).addScaledVector(up, ly).addScaledVector(fwd, lz);
+    }
+    const poleL = FPT.p.copy(right).multiplyScalar(-0.7).addScaledVector(up, -1);
+    ik2(B.Bip01_L_UpperArm, B.Bip01_L_Forearm, B.Bip01_L_Hand, L, poleL, 1);
+    if (!armed || id === 'machete') pointBone(B.Bip01_L_Hand, FPT.t.copy(dir).addScaledVector(right, 0.25).normalize(), 1);
+    // Dedos cerrados: puños, empuñadura y guardamanos.
+    this._curl('R', armed ? 0.85 : FP_FIST_CURL);
+    this._curl('L', !armed || id === 'machete' ? FP_FIST_CURL : 0.7);
+  }
+
+  /** Cierra los dedos de una mano (`side` 'R' o 'L') `amt` rad por falange. */
+  _curl(side, amt) {
+    const B = this.bones;
+    for (let f = 1; f <= 4; f++) {
+      for (const k of ['', '1', '2']) {
+        const b = B[`Bip01_${side}_Finger${f}${k}`];
+        if (b) b.rotateZ(amt * (k === '' ? 0.8 : 1));
+      }
+    }
+    const th = B[`Bip01_${side}_Finger01`];
+    if (th) th.rotateZ(amt * 0.3);
+    this.bones[`Bip01_${side}_Hand`]?.updateMatrixWorld(true);
+  }
+
   setShadow(on) {
     setRigShadow(this, on);
   }
@@ -1233,6 +1523,89 @@ export class SkinnedRig {
     const skeletons = new Set();
     this.model.traverse((o) => o.isSkinnedMesh && o.skeleton && skeletons.add(o.skeleton));
     for (const s of skeletons) s.dispose();
+  }
+}
+
+// ------------------------------------------------------------------ costo por personaje
+/** Callback vacío de los cuaterniones de los huesos (sin sincronizar Euler). */
+function sinEuler() {}
+
+/** Cada cuántos cuadros se anima a `dist` metros según una tabla de ANIM_LOD. */
+function lodEvery(tabla, dist) {
+  for (let i = 0; i < tabla.length; i++) if (dist <= tabla[i][0]) return tabla[i][1];
+  return tabla[tabla.length - 1][1];
+}
+
+/** ¿Mismos huesos y mismas inversas? (entonces dos mallas pueden compartir esqueleto). */
+function sameSkeleton(a, b) {
+  if (a.bones.length !== b.bones.length) return false;
+  for (let i = 0; i < a.bones.length; i++) if (a.bones[i] !== b.bones[i] || !a.boneInverses[i].equals(b.boneInverses[i])) return false;
+  return true;
+}
+
+/** Las mallas con piel de `model` que usan los mismos huesos quedan con un solo esqueleto. */
+export function shareSkeleton(model) {
+  const kept = [];
+  model.traverse((o) => {
+    if (!o.isSkinnedMesh || !o.skeleton) return;
+    const same = kept.find((s) => s === o.skeleton || sameSkeleton(s, o.skeleton));
+    if (!same) kept.push(o.skeleton);
+    else if (same !== o.skeleton) {
+      o.skeleton.dispose(); // (aún sin textura en la GPU: no se ha dibujado)
+      o.skeleton = same;
+    }
+  });
+  return kept.length;
+}
+
+/** Nodos cuyo hijo nuevo obliga a recalcular las matrices del personaje congelado. */
+function markOnChild(rig, node) {
+  node.addEventListener('childadded', rig._onChild);
+}
+
+/**
+ * Personaje quieto: si desde el último cuadro no cambió la pose (animate no
+ * la recalculó, ver ANIM_LOD) ni se movió la raíz (de a pie, en la escena),
+ * three no recorre su subárbol al dibujar (render/staticScene.js
+ * skipWhenStill) y su esqueleto no recalcula ni sube la textura de huesos:
+ * las matrices del cuadro anterior siguen siendo las correctas. Un hijo nuevo
+ * (accesorio, arma, escoba) o un cambio de pose lo descongelan.
+ */
+function freezeWhenStill(rig) {
+  const root = rig.root;
+  const last = { x: NaN, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 0, s: 0, parent: null };
+  rig._poseDirty = true;
+  rig._frozen = false;
+  rig._onChild = () => (rig._poseDirty = true);
+  markOnChild(rig, root);
+  markOnChild(rig, rig.body);
+  rig.model.traverse((o) => markOnChild(rig, o));
+  skipWhenStill(root, () => {
+    const p = root.position;
+    const q = root.quaternion;
+    const still = !rig._poseDirty && root.parent !== null && root.parent.isScene === true && root.parent === last.parent && p.x === last.x && p.y === last.y && p.z === last.z && q.x === last.qx && q.y === last.qy && q.z === last.qz && q.w === last.qw && root.scale.x === last.s;
+    if (!still) {
+      rig._poseDirty = false;
+      last.x = p.x;
+      last.y = p.y;
+      last.z = p.z;
+      last.qx = q.x;
+      last.qy = q.y;
+      last.qz = q.z;
+      last.qw = q.w;
+      last.s = root.scale.x;
+      last.parent = root.parent;
+    }
+    rig._frozen = still;
+    return still;
+  });
+  const skeletons = new Set();
+  rig.model.traverse((o) => o.isSkinnedMesh && o.skeleton && skeletons.add(o.skeleton));
+  for (const s of skeletons) {
+    const base = s.update;
+    s.update = function () {
+      if (!rig._frozen) base.call(this);
+    };
   }
 }
 

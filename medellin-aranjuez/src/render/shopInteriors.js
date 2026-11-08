@@ -22,7 +22,9 @@ import { ROPA } from '../sim/ropa.js';
 import { canvas, toTexture } from './textures.js';
 
 /** Tipos de interior (el de cada local sale de sim/facades.js). */
-export const INTERIOR_KINDS = ['tienda', 'panaderia', 'drogueria', 'carniceria', 'fruteria', 'peluqueria', 'ferreteria', 'papeleria', 'heladeria', 'cafeteria', 'billares', 'ropa'];
+export const INTERIOR_KINDS = ['tienda', 'panaderia', 'drogueria', 'carniceria', 'fruteria', 'peluqueria', 'ferreteria', 'papeleria', 'heladeria', 'cafeteria', 'billares', 'ropa', 'discoteca'];
+// (La discoteca, la 13.ª: fondo en la fila 3 del atlas y lado en la fila 5,
+// casillas que estaban libres.)
 
 // ------------------------------------------------------------------ atlas
 const CS = 256; // píxeles por casilla
@@ -646,6 +648,51 @@ const KIND_PAINT = {
     }
     P.ao(w, h, 0.18);
   },
+  discoteca(P, w, h, side) {
+    // Cuarto oscuro con franjas de neón, manchas de luz de colores, la barra
+    // de botellas iluminada por detrás (al fondo) y bafles (a los lados). El
+    // material del interior es emisivo: lo claro de aquí "alumbra" de noche.
+    const { rng, ctx } = P;
+    P.wall('#140b20', w, h, 0.04);
+    const neon = ['#ff2bd6', '#22e6ff', '#b46bff', '#ffb000'];
+    // Manchas de luz de los reflectores en la pared.
+    for (let k = 0; k < (side ? 3 : 6); k++) {
+      const x = rng.range(0.1, 0.9) * w;
+      const y = rng.range(0.15, 0.6) * h;
+      const r = rng.range(18, 34);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      const c = rng.pick(neon);
+      g.addColorStop(0, `${c}aa`);
+      g.addColorStop(1, `${c}00`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // Franjas de neón a lo largo (arriba y a la altura del pecho).
+    P.fill(neon[0], 0, 0.22 * M, w, 3);
+    P.fill(neon[1], 0, h - 1.15 * M, w, 2);
+    if (!side) {
+      // Barra con la estantería de botellas iluminada por detrás.
+      P.fill('#ffd9a0', 22, 0.5 * M, w - 44, 0.95 * M);
+      P.shelves(22, 0.5 * M, w - 44, 0.95 * M, 2, (px, base, maxH, room) => (room < 6 ? 0 : P.bottle(px, base, maxH * 0.9, rng.pick(BOTTLES))), '#2a1a12', 'rgba(255,190,120,0.35)');
+      P.fill('#1d1020', 10, h - 0.95 * M, w - 20, 0.95 * M);
+      P.fill(neon[2], 10, h - 0.95 * M, w - 20, 2);
+      P.sign(w / 2 - 60, 6, 120, 22, '#07040d', neon[0], ['RUMBA'], 13);
+    } else {
+      // Torre de bafles: cajas negras con sus parlantes.
+      const bx = w * 0.35;
+      for (let k = 0; k < 3; k++) {
+        const y = h - (k + 1) * 0.62 * M;
+        P.fill('#0a0a0c', bx, y, 0.75 * M, 0.6 * M);
+        for (const [dy, r] of [[0.2, 0.14], [0.44, 0.07]]) {
+          ctx.fillStyle = '#26262b';
+          ctx.beginPath();
+          ctx.arc(bx + 0.375 * M, y + dy * M, r * M, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    P.ao(w, h, 0.4);
+  },
 };
 
 // ------------------------------------------------------------------ casillas sueltas
@@ -876,8 +923,9 @@ const hex = (n) => [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) /
 export function shopProps(api, kind, w, depth, rng) {
   const back = depth - 0.05;
   const B = api.box;
-  // Tubos fluorescentes del cielo raso (luz propia).
-  const nT = w > 3.6 ? 2 : 1;
+  // Tubos fluorescentes del cielo raso (luz propia); la discoteca va a oscuras
+  // con sus luces de colores (ver su receta).
+  const nT = kind === 'discoteca' ? 0 : w > 3.6 ? 2 : 1;
   for (let k = 0; k < nT; k++) {
     const d = depth * (nT === 1 ? 0.55 : 0.35 + k * 0.4);
     B(w * 0.2, w * 0.8, 2.56, 2.6, d - 0.05, d + 0.05, [0.85, 0.85, 0.85]);
@@ -1158,5 +1206,36 @@ const RECIPES = {
     for (let k = 0; k < 5; k++) api.box(mu - 0.45 + k * 0.19, mu - 0.3 + k * 0.19, 0.8, 0.8 + rng.range(0.08, 0.2), 1.9, 2.25, hex(rng.pick(ROPA.filter((r) => r.color != null)).color));
     backShelf(api, 0.3, w - 0.3, back, rng.chance(0.5) ? 'gorras' : 'ropa-doblada', 2.3, 0.3, [0.85, 0.85, 0.83]);
     api.side('espejo', w - 0.03, 0.3, 2.0, back - 0.8, back - 0.2, -1);
+  },
+  discoteca(api, w, depth, back, rng) {
+    // Barra al fondo con banquitos, bafles a lado y lado de la pista, bola de
+    // espejos y reflectores de colores en el techo (color > 1: luz propia).
+    const B = api.box;
+    const bar = back - 1.1;
+    B(0.4, w - 0.4, 0, 1.05, bar, bar + 0.5, [0.08, 0.05, 0.1]);
+    B(0.35, w - 0.35, 1.05, 1.1, bar - 0.05, bar + 0.55, [0.35, 0.22, 0.12]);
+    B(0.4, w - 0.4, 0.06, 0.1, bar - 0.01, bar + 0.01, [2.4, 0.35, 1.9]); // tira de neón al pie de la barra
+    for (let u = 0.8; u < w - 0.6; u += 0.75) {
+      B(u - 0.15, u + 0.15, 0.68, 0.74, bar - 0.45, bar - 0.15, [0.6, 0.08, 0.12]);
+      B(u - 0.03, u + 0.03, 0, 0.68, bar - 0.33, bar - 0.27, STEEL);
+    }
+    for (const u of [0.12, w - 0.72]) {
+      B(u, u + 0.6, 0, 1.25, 0.9, 1.45, BLACK);
+      B(u + 0.08, u + 0.52, 0.25, 0.75, 0.88, 0.9, [0.16, 0.16, 0.18]);
+      B(u + 0.16, u + 0.44, 0.9, 1.15, 0.88, 0.9, [0.16, 0.16, 0.18]);
+    }
+    // Bola de espejos y reflectores (rosado, cian, violeta, ámbar).
+    const mu = w / 2;
+    const md = depth * 0.45;
+    B(mu - 0.01, mu + 0.01, 2.3, 2.6, md - 0.01, md + 0.01, BLACK);
+    B(mu - 0.14, mu + 0.14, 2.02, 2.3, md - 0.14, md + 0.14, [2.2, 2.2, 2.3]);
+    const lights = [[2.6, 0.3, 2.0], [0.3, 2.0, 2.6], [1.5, 0.5, 2.6], [2.6, 1.6, 0.3]];
+    for (let k = 0; k < 4; k++) {
+      const u = w * (0.15 + k * 0.23);
+      B(u - 0.12, u + 0.12, 2.42, 2.58, 0.5 + (k % 2) * 0.6, 0.72 + (k % 2) * 0.6, BLACK);
+      B(u - 0.09, u + 0.09, 2.39, 2.42, 0.53 + (k % 2) * 0.6, 0.69 + (k % 2) * 0.6, lights[(k + rng.int(0, 3)) % 4]);
+    }
+    // Franja de luz a lo largo del cielo raso.
+    B(0.2, w - 0.2, 2.55, 2.58, back - 0.25, back - 0.2, [0.4, 1.8, 2.6]);
   },
 };

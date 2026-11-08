@@ -12,6 +12,23 @@ export const WEAPONS = [
 
 export const WEAPON_BY_ID = Object.fromEntries(WEAPONS.map((w) => [w.id, w]));
 
+/**
+ * Armas con las que se empieza (ajustable): [id, balas de reserva]. Las
+ * partidas guardadas que no las tengan las reciben al cargar (sin tocar la
+ * munición de las que ya tienen).
+ */
+export const STARTING_KIT = [
+  ['machete', 0],
+  ['pistol', 90],
+  ['smg', 120],
+];
+
+/** Le da al inventario las armas de STARTING_KIT que le falten. */
+export function giveStartingKit(inv) {
+  for (const [id, reserve] of STARTING_KIT) if (!inv.has(id)) inv.give(id, reserve);
+  return inv;
+}
+
 const SWITCH_TIME = 0.35;
 
 export class Inventory {

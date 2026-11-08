@@ -172,6 +172,7 @@ export const groundLights = {
       _order.length = 0;
       for (let i = 0; i < lampHeads.length; i++) {
         const h = lampHeads[i];
+        if (h.off) continue; // farol tumbado (render/destructibles.js)
         const d = (h.x - camPos.x) ** 2 + (h.z - camPos.z) ** 2;
         if (_order.length < MAX_LAMPS || d < _order[_order.length - 1][0]) {
           let j = _order.length < MAX_LAMPS ? _order.length : MAX_LAMPS - 1;
@@ -187,7 +188,8 @@ export const groundLights = {
     const far = _order.length ? Math.sqrt(_order[_order.length - 1][0]) : 1;
     for (let k = 0; k < MAX_LAMPS; k++) {
       const e = on ? _order[k] : null;
-      if (!e) {
+      // (Un farol que se tumba entre dos reordenamientos se apaga de una.)
+      if (!e || lampHeads[e[1]].off) {
         L[k].w = 0;
         continue;
       }

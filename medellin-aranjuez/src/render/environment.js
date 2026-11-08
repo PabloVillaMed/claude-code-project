@@ -8,6 +8,26 @@ import { sunDirection, moonDirection, cloudCover, sunMoved } from '../sim/sky.js
 import { dayEnvironment } from './photoMaterials.js';
 import { SkyDome } from './sky.js';
 
+// ------------------------------------------------------------------ configurables
+/**
+ * Pase de sombras del sol: de noche el sol queda en intensidad 0 pero el mapa
+ * de sombras (4096² en Alta) se seguía dibujando cada cuadro sin aportar nada
+ * (en la 92 de noche era ~30 % del cuadro). Con la intensidad por debajo de
+ * SOMBRA_SOL_APAGA el mapa deja de actualizarse (shadow.autoUpdate = false) y
+ * vuelve por encima de SOMBRA_SOL_PRENDE (la diferencia es la histéresis: no
+ * titila al amanecer). No se toca castShadow: el número de luces con sombra
+ * es parte de la clave de los programas y cambiarlo los recompilaría todos.
+ */
+export const SOMBRA_SOL_APAGA = 0.02;
+export const SOMBRA_SOL_PRENDE = 0.05;
+
+// Colores de la niebla (fijos) y temporales reciclados: nada se crea por cuadro.
+const FOG_DIA = new THREE.Color(0xbfcfda);
+const FOG_TARDE = new THREE.Color(0xe0a878);
+const FOG_NOCHE = new THREE.Color(0x232833); // bruma gris azulada con algo del naranja de la ciudad
+const _fog = new THREE.Color();
+const LUNA_OFFSET = new THREE.Vector3(-100, 220, 60);
+
 export class Environment {
   constructor(renderer, scene, quality) {
     this.renderer = renderer;
@@ -119,9 +139,17 @@ export class Environment {
     this.night = 1 - smoothstep(-0.18, 0.08, this.sunDir.y);
     const golden = 1 - smoothstep(0.05, 0.45, this.sunDir.y);
 
-    const sunColor = new THREE.Color().setRGB(1, 0.93 - golden * 0.3, 0.85 - golden * 0.5);
-    this.sun.color.copy(sunColor);
+    this.sun.color.setRGB(1, 0.93 - golden * 0.3, 0.85 - golden * 0.5);
     this.sun.intensity = 2.7 * dayF;
+    // Sin sol no se dibuja su mapa de sombras (ver SOMBRA_SOL_APAGA).
+    if (this.sun.castShadow) {
+      const sh = this.sun.shadow;
+      if (sh.autoUpdate && this.sun.intensity < SOMBRA_SOL_APAGA) sh.autoUpdate = false;
+      else if (!sh.autoUpdate && this.sun.intensity > SOMBRA_SOL_PRENDE) {
+        sh.autoUpdate = true;
+        sh.needsUpdate = true;
+      }
+    }
     this.sun.position.copy(focus).addScaledVector(this.sunDir, 300);
     this.sun.target.position.copy(focus);
     // Estabiliza las sombras moviendo el objetivo en pasos de texel.
@@ -132,7 +160,7 @@ export class Environment {
     this.sun.target.updateMatrixWorld();
 
     this.moon.intensity = 0.55 * this.night;
-    this.moon.position.copy(focus).add(new THREE.Vector3(-100, 220, 60));
+    this.moon.position.copy(focus).add(LUNA_OFFSET);
     this.moon.target.position.copy(focus);
     this.moon.target.updateMatrixWorld();
 
@@ -145,11 +173,7 @@ export class Environment {
 
     // Niebla: bruma dorada al atardecer, azul noche, neblina clara de día.
     const fog = this.scene.fog;
-    const dayFog = new THREE.Color(0xbfcfda);
-    const duskFog = new THREE.Color(0xe0a878);
-    // Noche: bruma gris azulada con algo del naranja de la ciudad.
-    const nightFog = new THREE.Color(0x232833);
-    const c = dayFog.clone().lerp(duskFog, golden * dayF).lerp(nightFog, this.night);
+    const c = _fog.copy(FOG_DIA).lerp(FOG_TARDE, golden * dayF).lerp(FOG_NOCHE, this.night);
     fog.color.copy(c);
     // Aire del valle: la misma bruma que usa el horizonte lejano (render/horizon.js),
     // así las laderas cercanas y las montañas se ven con la misma distancia.
@@ -158,7 +182,12 @@ export class Environment {
     this.cover = cloudCover(this.timeOfDay, this.day);
     const h = this.timeOfDay;
     const cirrus = 0.35 + 0.45 * (1 - smoothstep(9, 13, h)) * smoothstep(5, 7, h);
-    this.skyDome.update({ sunDir: this.sunDir, moonDir: this.moonDir, night: this.night, cover: this.cover, cirrus, fog: c, dt });
+    const sky = (this._skyArgs ??= { sunDir: this.sunDir, moonDir: this.moonDir, night: 0, cover: 0, cirrus: 0, fog: c, dt: 0 });
+    sky.night = this.night;
+    sky.cover = this.cover;
+    sky.cirrus = cirrus;
+    sky.dt = dt;
+    this.skyDome.update(sky);
     this.renderer.toneMappingExposure = (0.62 + 0.28 * dayF + 0.6 * this.night) * this.brightness;
 
     // Reflejos: solo si el sol se movió de verdad (o cambió la noche); con el

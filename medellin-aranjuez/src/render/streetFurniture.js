@@ -115,6 +115,12 @@ function placeSignAtlas(texts) {
 class Bins {
   constructor() {
     this.lists = new Map();
+    this.verts = new Map(); // vértices por material (dónde empieza la próxima pieza en la malla fusionada)
+  }
+
+  /** Vértices que lleva el material `key` (la próxima pieza empieza ahí). */
+  count(key) {
+    return this.verts.get(key) ?? 0;
   }
 
   /** geo: geometría de three (se clona); m: matriz; color: [r,g,b]; uvRect: casilla de atlas. */
@@ -134,9 +140,12 @@ class Bins {
     if (!g.index) g.setIndex([...Array(n).keys()]);
     if (!this.lists.has(key)) this.lists.set(key, []);
     this.lists.get(key).push(g);
+    this.verts.set(key, this.count(key) + n);
   }
 
+  /** Devuelve las mallas por material (Map key → Mesh). */
   build(root, mats, shadows = {}) {
+    const out = new Map();
     for (const [key, list] of this.lists) {
       const geo = mergeGeometries(list, false);
       if (!geo) continue;
@@ -147,7 +156,9 @@ class Bins {
       mesh.receiveShadow = true;
       mesh.matrixAutoUpdate = false;
       root.add(mesh);
+      out.set(key, mesh);
     }
+    return out;
   }
 }
 
@@ -181,7 +192,7 @@ function frame(p, rot = 0) {
 function streetSign(bins, p) {
   const F = frame(p, 0);
   const pole = [0.3, 0.35, 0.32];
-  bins.add('metal', CYL, M(F, 0, 1.45, 0, 0.035, 2.9, 0.035), pole);
+  bins.add('placaPoste', CYL, M(F, 0, 1.45, 0, 0.035, 2.9, 0.035), pole);
   // Una placa por vía, paralela a ella y legible por ambos lados.
   p.names.forEach((name, k) => {
     const uv = slot(PLATE_NAMES.indexOf(name), PLATE_COLS, PLATE_ROWS);
@@ -315,7 +326,17 @@ export function buildStreetFurniture(r, byType) {
   const bins = new Bins();
   PLATE_NAMES = [...new Set((byType.streetSign ?? []).flatMap((p) => p.names))];
   PLATE_ROWS = Math.max(1, Math.ceil(PLATE_NAMES.length / PLATE_COLS));
-  for (const p of byType.streetSign ?? []) streetSign(bins, p);
+  // Placas de nomenclatura: aparte del resto de la calle (dos mallas propias)
+  // y recordando dónde quedaron los vértices de cada una, para que se puedan
+  // tumbar moviendo solo esos (render/destructibles.js).
+  const plates = new Bins();
+  const parts = [];
+  for (const p of byType.streetSign ?? []) {
+    const a = plates.count('placaPoste');
+    const b = plates.count('plate');
+    streetSign(plates, p);
+    parts.push([p, a, plates.count('placaPoste') - a, b, plates.count('plate') - b]);
+  }
   for (const p of byType.busStop ?? []) busStop(bins, p);
   for (const p of byType.vendor ?? []) vendor(bins, p);
   for (const p of byType.trafficLight ?? []) trafficLight(bins, p);
@@ -337,4 +358,10 @@ export function buildStreetFurniture(r, byType) {
     lens: new THREE.MeshBasicMaterial({ vertexColors: true }),
   };
   bins.build(r.root, mats, { plate: false, vsign: false, fruit: false, signs: false, lens: false });
+  const pm = plates.build(r.root, { placaPoste: mats.metal, plate: mats.plate }, { plate: false });
+  const poleMesh = pm.get('placaPoste');
+  const plateMesh = pm.get('plate');
+  for (const m of pm.values()) m.userData.keepGeometry = true; // sus vértices se mueven al tumbarlas
+  r.signParts ??= new Map();
+  for (const [p, a, na, b, nb] of parts) r.signParts.set(p, [{ mesh: poleMesh, start: a, count: na }, { mesh: plateMesh, start: b, count: nb }]);
 }

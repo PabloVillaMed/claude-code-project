@@ -17,8 +17,19 @@ export const SEARCH = {
   zonePerStar: 14, // …más esto por estrella
   zoneGrow: 1.5, // m/s que crece mientras no te ven (hasta x1.6)
   lead: 0.6, // la zona se corre hacia donde ibas (s de ventaja)
-  insideRate: 0.4, // dentro de la zona el tiempo para perder estrellas corre más lento
+  insideRate: 0.4, // dentro de la zona el tiempo para perder estrellas corre más lento…
+  insideRateLost: 0.75, // …pero, perdido el rastro, casi normal (ya no saben por dónde ir)
+  // s sin que te vean para bajar una estrella, por nivel (0 a 5): con pocas
+  // estrellas se olvidan rápido de ti; con 5 hay que aguantar escondido.
+  cooldown: [0, 12, 17, 23, 30, 38],
+  // s sin verte para perder el rastro, por nivel: dejan de ir a la última
+  // posición y de cortarte el paso, y todos barren la zona de búsqueda.
+  lostTrail: [0, 5, 7, 9, 12, 15],
 };
+
+// Tope de unidades de policía activas a la vez (patrullas y motos) por nivel.
+// Con 5 estrellas son 5 unidades, no un enjambre: escapar es difícil pero posible.
+export const MAX_UNITS = [0, 1, 2, 3, 4, 5];
 
 export class WantedSystem {
   constructor() {
@@ -32,7 +43,12 @@ export class WantedSystem {
 
   /** Tiempo sin ser visto necesario para bajar una estrella. */
   cooldownFor(level) {
-    return 10 + level * 6;
+    return SEARCH.cooldown[level] ?? SEARCH.cooldown[SEARCH.cooldown.length - 1];
+  }
+
+  /** ¿Perdieron el rastro? (llevan rato sin verte: ya no saben hacia dónde ibas) */
+  trailLost() {
+    return this.level > 0 && this.sinceSeen > (SEARCH.lostTrail[this.level] ?? Infinity);
   }
 
   /** Delito: sube el nivel y, si hay posición, los testigos la reportan. */
@@ -88,7 +104,7 @@ export class WantedSystem {
       return this.level;
     }
     this.sinceSeen += dt;
-    const rate = pos && this.inZone(pos.x, pos.z) ? SEARCH.insideRate : 1;
+    const rate = pos && this.inZone(pos.x, pos.z) ? (this.trailLost() ? SEARCH.insideRateLost : SEARCH.insideRate) : 1;
     this.unseenTimer += dt * rate;
     if (this.unseenTimer >= this.cooldownFor(this.level)) {
       this.level -= 1;
@@ -105,8 +121,8 @@ export class WantedSystem {
     this.sinceSeen = Infinity;
   }
 
-  /** Cuántas patrullas deberían estar buscando. */
+  /** Cuántas unidades (patrullas y motos) puede haber buscando a la vez. */
   desiredUnits() {
-    return [0, 1, 2, 3, 5, 6][this.level];
+    return MAX_UNITS[this.level] ?? 0;
   }
 }

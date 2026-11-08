@@ -262,6 +262,97 @@ spread('campanero', ['¡Agua, agua! ¡Llegó la tomba!', '¡Pilas, que viene la 
 // Al empezar una balacera entre bandas.
 spread('balacera', ['¡Nos cayeron, muchachos!', '¡Esos manes se metieron al parche!', '¡A cubrirse, a cubrirse!', '¡Llegaron los de allá arriba!'], 6, { pendingVoice: true });
 
+// ------------------------------------------------------------ la rumba de la 92
+// (game/nightlife.js) De noche, frente a las discotecas y bares. Sin audio
+// todavía (pendingVoice), como las de la calle.
+// Los de los grupos del andén cuando el jugador pasa caminando cerca.
+spread('rumba', [
+  '¡Eso, parce! Hoy sí hay rumba.',
+  '¿Qué más, mi llave? ¿Se viene a bailar o qué?',
+  '¿Pa dónde es la vuelta: pa la salsoteca o pa la de reguetón?',
+  'Hágale, que la noche está joven.',
+  'Uy, esa canción está buenísima, ¡súbanle!',
+  'Pídase un guaro, que la próxima la invito yo.',
+  'Mañana no se trabaja, ¡a gozar!',
+  'Qué nota de noche, ¿cierto?',
+  'Ey, ¿usted no es el de la cuadra de abajo?',
+  'Ya casi entramos, estamos esperando a la otra parcera.',
+  '¡Avemaría, cómo está de llena la 92 hoy!',
+  'Vamos a bailar hasta que nos saquen.',
+], 6, { pendingVoice: true });
+// Los de la fila de la puerta.
+spread('rumba_fila', [
+  'Esta fila no avanza, hermano.',
+  '¿Cuánto está el cover hoy?',
+  'Dizque adentro está llenísimo.',
+  'Tranquilos, que ya casi nos toca.',
+  'Si no entramos aquí, nos vamos pa la fonda.',
+], 6, { pendingVoice: true });
+// El portero de cada local cuando el jugador llega a la puerta.
+spread('portero', [
+  'Buenas noches. Documento, por favor.',
+  'Hoy hay cover, parcero. Haga la fila.',
+  'Haga la fila como todo el mundo, mi llave.',
+  'Adentro está lleno; espere un momentico.',
+  'Aquí se viene a gozar, no a buscar problemas.',
+  'Con armas no entra nadie, ¿listo?',
+], 6, { pendingVoice: true });
+// El portero si el jugador llega a la puerta con el arma en la mano.
+spread('portero_arma', ['¡Ey, ey! Guarde eso, que aquí no se le recibe así.', 'Bájele a eso, parcero, que aquí hay mucha gente.', 'Con eso en la mano no se me arrima a la puerta.'], 6, { pendingVoice: true });
+
+// ------------------------------------------------------------ damas de compañía
+// (game/companions.js) De noche en el andén: coqueteo leve y respetuoso, en
+// las tres voces de mujer. Sin audio todavía (pendingVoice), como las de la calle.
+const damas = (cat, texts) => spread(cat, texts.map((text) => ({ text, voices: CIVIL_BY_GENDER.f })), 3, { pendingVoice: true });
+// Cuando el jugador para el carro a su lado.
+damas('dama', [
+  'Buenas noches, bizcocho. ¿Para dónde va tan solito?',
+  '¡Hola, mi amor! ¿Me invita a dar una vuelta?',
+  'Qué carro tan bonito. ¿Le provoca compañía un ratico?',
+  'Hola, corazón. Si quiere, yo lo acompaño esta noche.',
+  '¿Quiubo, mor? ¿Me va a abrir la puerta o qué?',
+]);
+// Acepta y se sube.
+damas('dama_si', [
+  'Listo, mi amor. Vamos, pero a un lugar tranquilo.',
+  'Hágale pues. Usted maneja y yo le pongo la conversación.',
+  'Me encanta. Busquemos un sitio calmadito, ¿sí?',
+  'Bueno, corazón, pero sin afanes, ¿listo?',
+]);
+// Al jugador no le alcanza.
+damas('dama_sin_plata', [
+  'Ay, mor, con eso no alcanza. Vuelva cuando ande con platica.',
+  'Uy, no, bizcocho, así no. Otro día será.',
+  'Qué pena, corazón, pero sin plata no hay paseo.',
+]);
+// Andando, cuando hay gente cerca.
+damas('dama_viaje', [
+  'Aquí hay mucha gente, mi amor. Busquemos algo más solo.',
+  'Por aquí no, que está muy concurrido.',
+  'Sigamos un poquito más, donde no haya nadie mirando.',
+  'Qué rico este carro… pero sigamos buscando, ¿sí?',
+]);
+// Hay policía cerca.
+damas('dama_tomba', ['Uy, ahí está la tomba. Sigamos derecho, mor.', 'Con la policía ahí no, corazón. Más allá.']);
+// Llegaron al lugar tranquilo (antes del fundido).
+damas('dama_lugar', ['Aquí sí está bueno, mi amor.', 'Uy, qué tranquilidad aquí. Perfecto.', 'Este sitio está perfecto, corazón.']);
+// Se despide al bajarse.
+damas('dama_chao', [
+  'Gracias, mor. Cuídese mucho, ¿oyó?',
+  'Qué noche tan agradable. Chao, bizcocho.',
+  'Bueno, corazón, me voy. Maneje con cuidado.',
+  'Fue un placer. Ya sabe dónde encontrarme.',
+]);
+// Asustada (disparos, policía, un choque): se baja y se va.
+damas('dama_susto', [
+  '¡Ay, no, no, no! ¡Déjeme bajar!',
+  '¡Usted está loco! ¡Yo me voy!',
+  '¡Pare ese carro, que yo me bajo aquí!',
+  '¡Dios mío! ¡Conmigo no cuente para eso!',
+]);
+// El jugador se bajó y la dejó sola en el carro.
+damas('dama_abandono', ['¿Y me va a dejar aquí sola? ¡Qué falta de respeto!', 'Bueno, si se va, yo también me voy.']);
+
 export { LINES };
 
 /** Número de charlas distintas. */

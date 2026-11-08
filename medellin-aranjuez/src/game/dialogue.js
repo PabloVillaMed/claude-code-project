@@ -174,6 +174,11 @@ const CATS = {
   banda: { pri: 2, radius: 16, ref: 4, vol: 0.9 },
   campanero: { pri: 3, radius: 45, ref: 8, vol: 1 },
   balacera: { pri: 3, radius: 70, ref: 10, vol: 1 },
+  // La rumba de la 92 (game/nightlife.js): hablan duro por encima de la música.
+  rumba: { pri: 2, radius: 16, ref: 4, vol: 0.95 },
+  portero: { pri: 2, radius: 14, ref: 4, vol: 1 },
+  // Damas de compañía (game/companions.js): hablan de cerca, junto al carro o adentro.
+  dama: { pri: 2, radius: 14, ref: 4, vol: 0.9 },
 };
 const catInfo = (cat) => CATS[cat] ?? CATS[cat.split('_')[0]] ?? CATS.charla;
 
@@ -519,7 +524,7 @@ export class Dialogue {
     // Saludo al pasar (de vez en cuando).
     if (this.cool.ready('saludo', this.now) && p.speed < 6 && !p.aiming) {
       for (const q of peds) {
-        if (q.faction !== 'civil' || q.calle || !q.alive || q.sim?.mode === 'flee' || this._inConversation(q) || this._speaking(q)) continue;
+        if (q.faction !== 'civil' || q.calle || q.dama || !q.alive || q.sim?.mode === 'flee' || this._inConversation(q) || this._speaking(q)) continue;
         if (Math.abs(q.x - p.x) > 4 || Math.abs(q.z - p.z) > 4 || d2(q, p) > 3.8) continue;
         if (!this.cool.ready(`saludo|${q.id}`, this.now)) continue;
         this.cool.set(`saludo|${q.id}`, this.now, 90);
@@ -532,7 +537,7 @@ export class Dialogue {
     // Alguien quieto hablando solo.
     if (this.cool.ready('comentario', this.now)) {
       for (const q of peds) {
-        if (q.faction !== 'civil' || q.calle || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
+        if (q.faction !== 'civil' || q.calle || q.dama || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
         if (d2(q, p) > 7) continue;
         if (this.rand() < 0.3 && this.speak(q, 'comentario', { hour })) this.cool.set('comentario', this.now, 30 + this.rand() * 25);
         else this.cool.set('comentario', this.now, 4);
@@ -696,6 +701,7 @@ export class Dialogue {
     if (speaker.radio) return 'Radio';
     if (speaker.faction === 'police') return 'Policía';
     if (speaker.calle) return 'Habitante de calle';
+    if (speaker.dama) return 'Dama de compañía';
     if (speaker.faction === 'banda') return speaker.look?.female ? 'Muchacha' : 'Muchacho';
     const f = speaker.look?.female;
     if (line.cat === 'pregon') return f ? 'Vendedora' : 'Vendedor';

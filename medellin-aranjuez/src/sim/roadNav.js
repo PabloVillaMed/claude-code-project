@@ -292,6 +292,9 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
     agent.to = agent.next;
     agent.next = null;
     if (depth < 4) return autopilot(graph, agent, v, opts, depth + 1);
+    // (Cinco tramos cortísimos seguidos: sin esto el siguiente quedaba vacío y
+    // el punto objetivo de abajo reventaba.)
+    agent.next = chooseNext(graph, agent, opts, v);
   }
 
   // Punto objetivo a cierta distancia adelante sobre el carril (más lejos

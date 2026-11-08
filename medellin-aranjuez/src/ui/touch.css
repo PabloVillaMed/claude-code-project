@@ -157,6 +157,10 @@ html.touch-on .menu-keys {
 #touch[data-mode='cine'] .tc-stick-hint {
   display: none;
 }
+/* El caballito solo en moto (touchControls.js pone data-moto). */
+#touch:not([data-moto='1']) .tc-btn[data-id='wheelie'] {
+  display: none;
+}
 
 /* Fila de arriba: pausa, mapa, cámara, gestos y pantalla completa. */
 .tc-top {

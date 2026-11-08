@@ -51,7 +51,9 @@ describe('variantes de vehículos', () => {
       const id = pickVariant('moto', rng.next);
       n[id] = (n[id] ?? 0) + 1;
     }
-    expect(Object.keys(n).sort()).toEqual(variantsOf('moto').sort());
+    // Todas las que tienen peso en el tráfico (la moto de la Policía no: la pone la policía).
+    expect(Object.keys(n).sort()).toEqual(variantsOf('moto').filter((id) => VEHICLE_VARIANTS[id].traffic > 0).sort());
+    expect(n.policia_moto).toBeUndefined();
     expect(n.moto).toBeGreaterThan(n.moto_tt * 2);
     expect(n.scooter).toBeGreaterThan(n.moto_enduro);
     // Parqueados: el clásico aparece más que en el tráfico.

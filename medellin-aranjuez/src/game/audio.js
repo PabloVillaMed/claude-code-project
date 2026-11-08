@@ -17,6 +17,16 @@ const RADIO_TRAFICO = 70;
 
 const MAX_VOCES_DISPARO = 14;
 const MAX_VOCES_EFECTO = 10;
+// Fuentes sintetizadas sueltas a la vez (golpes, choques, tumbes, ladridos,
+// pitidos: _tone, _noiseHit, _blip, crash). Una balacera con perros ladrando
+// y carros chocando armaba cientos de nodos vivos; pasado el tope, lo nuevo
+// no suena hasta que algo termine.
+const MAX_VOCES_SUELTAS = 32;
+
+// Timbre de un poste metálico que se tumba (tumbe): [Hz, duración s, volumen]
+// al golpearlo y cuando cae al piso (más grave y corto).
+export const TIMBRE_POSTE = [[310, 0.9, 0.07], [835, 0.6, 0.035], [1470, 0.4, 0.018]];
+export const TIMBRE_POSTE_SUELO = [[175, 0.5, 0.08], [470, 0.35, 0.04]];
 
 export class AudioSystem {
   constructor() {
@@ -44,6 +54,7 @@ export class AudioSystem {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
+    this._sueltas = 0; // (fuentes sueltas sonando: MAX_VOCES_SUELTAS)
     this.master = this.ctx.createGain();
     this.master.gain.value = this.volume;
     const comp = this.ctx.createDynamicsCompressor();
@@ -527,9 +538,10 @@ export class AudioSystem {
   }
 
   crash(pos, strength) {
-    if (!this.ctx) return;
+    if (!this.ctx || this._lleno()) return;
     const t = this.ctx.currentTime;
     const src = this.ctx.createBufferSource();
+    this._contar(src);
     src.buffer = this.noiseBuf;
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -541,6 +553,33 @@ export class AudioSystem {
     src.connect(lp).connect(g).connect(this.master);
     src.start(t, Math.random());
     src.stop(t + 0.55);
+  }
+
+  /**
+   * Utilería que se tumba (game/destructibles.js): golpe metálico que vibra
+   * (poste, farol, placa) o golpe sordo de madera con crujido y ramas
+   * (árbol). fase 'golpe' (el vehículo lo tumba) o 'suelo' (cae, más grave).
+   */
+  tumbe(pos, material, fuerza, fase = 'golpe') {
+    if (!this.ctx || !pos) return;
+    const g = this._gainFor(pos, 12);
+    if (g < 0.02) return;
+    const t = this.ctx.currentTime;
+    const k = 0.5 + 0.5 * Math.min(1, fuerza / 14);
+    const r = 0.9 + Math.random() * 0.2;
+    const suelo = fase === 'suelo';
+    if (material === 'metal') {
+      this._uno(GRUPOS.metal, pos, { gain: 0.75 * k, ref: 10, rate: (suelo ? 0.5 : 0.68) * r, envio: 0.15 });
+      // Timbre del tubo: parciales inarmónicos que se apagan.
+      const tonos = suelo ? TIMBRE_POSTE_SUELO : TIMBRE_POSTE;
+      for (const [f, d, v] of tonos) this._tone(f * r, t, d, v * g * k, 'triangle');
+      this._noiseHit(t, 0.22, 0.3 * g * k, suelo ? 600 : 1400, 0.8);
+    } else {
+      this._noiseHit(t, suelo ? 0.6 : 0.35, 0.55 * g * k, suelo ? 140 : 240, 0.7, this.master, 'lowpass');
+      // Crujido del tronco y ramas que barren.
+      if (!suelo) this._noiseHit(t + 0.04, 0.14, 0.3 * g, 1900, 4);
+      this._noiseHit(t + 0.03, suelo ? 1.1 : 0.7, 0.2 * g, 3400, 0.6);
+    }
   }
 
   explosion(pos) {
@@ -561,9 +600,10 @@ export class AudioSystem {
   }
 
   _blip(freq, dur, vol, type = 'sine') {
-    if (!this.ctx) return;
+    if (!this.ctx || this._lleno()) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
+    this._contar(o);
     o.type = type;
     o.frequency.value = freq;
     const g = this.ctx.createGain();
@@ -721,8 +761,21 @@ export class AudioSystem {
     }
   }
 
+  /** ¿Ya suenan MAX_VOCES_SUELTAS fuentes sueltas? */
+  _lleno() {
+    return (this._sueltas ?? 0) >= MAX_VOCES_SUELTAS;
+  }
+
+  /** Cuenta una fuente suelta hasta que termine (ver MAX_VOCES_SUELTAS). */
+  _contar(src) {
+    this._sueltas = (this._sueltas ?? 0) + 1;
+    src.onended = this._finSuelta ??= () => this._sueltas--;
+  }
+
   _tone(freq, t, dur, vol, type = 'sine', dest = this.master, sweep = 0) {
+    if (this._lleno()) return;
     const o = this.ctx.createOscillator();
+    this._contar(o);
     o.type = type;
     o.frequency.setValueAtTime(freq, t);
     if (sweep) o.frequency.linearRampToValueAtTime(freq + sweep, t + dur);
@@ -736,7 +789,9 @@ export class AudioSystem {
   }
 
   _noiseHit(t, dur, vol, freq, q = 1, dest = this.master, type = 'bandpass') {
+    if (this._lleno()) return;
     const src = this.ctx.createBufferSource();
+    this._contar(src);
     src.buffer = this.noiseBuf;
     const f = this.ctx.createBiquadFilter();
     f.type = type;
@@ -754,7 +809,7 @@ export class AudioSystem {
   animal(kind, pos) {
     if (!this.ctx || this.ctx.state !== 'running' || !this.master) return;
     const d = Math.hypot(pos.x - this.listener.x, pos.z - this.listener.z);
-    const k = Math.max(0, 1 - d / (kind === 'ladrido' ? 70 : 25));
+    const k = Math.max(0, 1 - d / (kind === 'ladrido' ? 70 : kind === 'gemido' ? 45 : 25));
     if (k < 0.03) return;
     const t = this.ctx.currentTime;
     if (kind === 'ladrido') {
@@ -768,9 +823,23 @@ export class AudioSystem {
       const f = 620 + Math.random() * 260;
       this._tone(f, t, 0.2, 0.035 * k, 'triangle', this.master, 240);
       this._tone(f + 240, t + 0.2, 0.38, 0.03 * k, 'triangle', this.master, -400);
+    } else if (kind === 'gemido') {
+      // Perro herido: un aullido corto y agudo que cae (más largo y con un quejido al final si se murió).
+      const f = 900 + Math.random() * 250;
+      const big = pos.fuerte ? 1 : 0;
+      this._tone(f, t, 0.22 + big * 0.12, 0.05 * k, 'sawtooth', this.master, -380);
+      this._tone(f * 1.5, t, 0.16, 0.025 * k, 'triangle', this.master, -500);
+      if (big) this._tone(f * 0.6, t + 0.42, 0.5, 0.028 * k, 'triangle', this.master, -160);
+    } else if (kind === 'quejido') {
+      // Gato herido: un maullido rasgado, agudo y corto.
+      const f = 780 + Math.random() * 220;
+      this._noiseHit(t, 0.12, 0.04 * k, 2400, 2);
+      this._tone(f, t, 0.3 + (pos.fuerte ? 0.2 : 0), 0.04 * k, 'sawtooth', this.master, -300);
     } else {
-      this._tone(3100 + Math.random() * 900, t, 0.07, 0.018 * k, 'sine', this.master, 700);
-      this._tone(3500 + Math.random() * 700, t + 0.09, 0.06, 0.014 * k, 'sine', this.master, -500);
+      // Chillido de rata (más fuerte y largo si la hirieron).
+      const v = pos.fuerte ? 2.4 : 1;
+      this._tone(3100 + Math.random() * 900, t, 0.07 * v, 0.018 * k * v, 'sine', this.master, 700);
+      this._tone(3500 + Math.random() * 700, t + 0.09 * v, 0.06 * v, 0.014 * k * v, 'sine', this.master, -500);
     }
   }
 

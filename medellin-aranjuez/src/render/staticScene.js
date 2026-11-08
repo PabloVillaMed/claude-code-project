@@ -152,3 +152,19 @@ export function skipWhenHidden(obj) {
   };
   return obj;
 }
+
+/**
+ * Mientras `isStill()` diga que nada cambió desde el último recorrido, el
+ * dibujo no recorre el subárbol de `obj` (sus matrices siguen bien: los
+ * personajes quietos, render/characterRig.js). Las llamadas explícitas
+ * (updateMatrixWorld(true), getWorldPosition) actualizan como siempre.
+ * Se instala antes que skipWhenHidden (que lo envuelve).
+ */
+export function skipWhenStill(obj, isStill) {
+  const base = obj.updateMatrixWorld;
+  obj.updateMatrixWorld = function (force) {
+    if (inScene && isStill()) return;
+    base.call(this, force);
+  };
+  return obj;
+}

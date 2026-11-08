@@ -176,6 +176,7 @@ export class TouchInput {
       // Disparar desde el vehículo es apuntar y disparar a la vez (clic der. + izq.).
       t.aim = t.fire;
       t.handbrake = d('handbrake');
+      t.wheelie = d('wheelie');
       t.horn = d('horn');
       t.lookBehind = d('lookBehind');
     } else {
@@ -344,6 +345,8 @@ export class Input {
       weaponSlot: 0,
       weaponWheel: k('Tab'),
       handbrake: k('Space'),
+      // En moto: Shift (el mismo de correr a pie) levanta la rueda (caballito).
+      wheelie: k('ShiftLeft') || k('ShiftRight'),
       horn: k('KeyH'),
       map: h('KeyM'),
       pause: h('Escape') || h('KeyP'),
@@ -376,11 +379,12 @@ export class Input {
         a.moveY += -ax(1);
         a.lookX += ax(2) * 0.045 * this.sensitivity;
         a.lookY += ax(3) * 0.035 * this.sensitivity * (this.invertY ? -1 : 1);
-        // Xbox: A saltar, B agacharse/freno de mano, X recargar, Y subir/bajar,
+        // Xbox: A saltar/caballito en moto, B agacharse/freno de mano, X recargar, Y subir/bajar,
         // LB/RB cambiar arma, LT apuntar/frenar, RT disparar/acelerar,
         // L3 correr/pito, R3 cámara, cruceta ↑ interactuar / ↓ gestos / ← hombro a pie, ← → emisora en vehículo, View mapa, Menu pausa.
         a.sprint ||= b(10);
         a.jump ||= b(0);
+        a.wheelie ||= b(0); // A en moto: caballito
         a.crouch ||= b(1);
         a.handbrake ||= b(1);
         a.fire ||= bv(7) > 0.3;

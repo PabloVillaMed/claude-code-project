@@ -6,7 +6,8 @@
 // `weaponModel(id)` devuelve un clon listo para colgar del soporte del arma
 // (mismo marco: cañón -Z, origen en la empuñadura) con
 //   userData.muzzle   → Object3D en la boca del cañón (fogonazo y disparos);
-//   userData.leftHand → Vector3 local de la mano izquierda (o null).
+//   userData.leftHand → Vector3 local de la mano izquierda (o null);
+//   userData.sightY   → altura (m) de la mira sobre la empuñadura (primera persona).
 // Si el GLB no está (o falló), usa el arma procedural de siempre.
 
 import * as THREE from 'three';
@@ -54,6 +55,7 @@ export function weaponModel(id) {
   g.userData.muzzle = boca ?? g;
   g.userData.leftHand = izq ? izq.getWorldPosition(new THREE.Vector3()) : null; // g está en el origen
   g.userData.real = true;
+  g.userData.sightY = sightHeight(g);
   return g;
 }
 
@@ -67,5 +69,16 @@ function proceduralWeapon(id) {
   g.userData.muzzle = m.userData.muzzle;
   g.userData.leftHand = null;
   g.userData.real = false;
+  g.userData.sightY = sightHeight(g);
   return g;
+}
+
+/**
+ * Altura de la línea de mira sobre la empuñadura (origen), en el marco del
+ * arma: lo más alto del modelo, un poco por debajo (el alza no es el borde).
+ * Apuntando en primera persona el arma sube hasta que esa línea pasa por los ojos.
+ */
+function sightHeight(g) {
+  const b = new THREE.Box3().setFromObject(g);
+  return b.isEmpty() ? 0.1 : Math.max(0.03, b.max.y - 0.012);
 }

@@ -78,7 +78,8 @@ export class NightLights {
     if (this.timer <= 0 && this.count) {
       this.timer = 0.3;
       const heads = this.heads;
-      const d2 = heads.map((h, i) => [(h.x - camPos.x) ** 2 + (h.z - camPos.z) ** 2, i]);
+      // (Los faroles tumbados, `off`, quedan al final: no se eligen.)
+      const d2 = heads.map((h, i) => [h.off ? Infinity : (h.x - camPos.x) ** 2 + (h.z - camPos.z) ** 2, i]);
       d2.sort((a, b) => a[0] - b[0]);
       const want = new Set(d2.slice(0, this.count).map((e) => e[1]));
       const keep = new Set();
@@ -98,7 +99,9 @@ export class NightLights {
     for (let k = 0; k < this.count; k++) {
       const l = this.lights[k];
       const target = this.assign[k] >= 0 ? 1 : 0;
-      l.userData.level += (target - l.userData.level) * Math.min(1, dt * 3);
+      // Farol tumbado: se apaga de una (sin desvanecerse).
+      if (target && this.heads[this.assign[k]].off) l.userData.level = 0;
+      else l.userData.level += (target - l.userData.level) * Math.min(1, dt * 3);
       const park = this.assign[k] >= 0 && this.heads[this.assign[k]].park;
       l.intensity = night * l.userData.level * (park ? 12 : 24);
     }
