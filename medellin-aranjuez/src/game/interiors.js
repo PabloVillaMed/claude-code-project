@@ -311,7 +311,8 @@ export class Interiors {
     this.state[i].paidNight = this._nightKey();
     this._setDoor(i, r, true);
     // Unos pasos adentro, mirando hacia el fondo; el interior se arma de una.
-    const lz = r.landing ? r.stairs[0].z0 - 1.2 : r.mezz ? r.mezz.z0 - 1.5 : r.Z1 - 2.2;
+    // (3,6 m: con menos, la cámara quedaba en el vano de la puerta y el canto del muro tapaba un lado)
+    const lz = r.landing ? r.stairs[0].z0 - 1.2 : r.mezz ? r.mezz.z0 - 1.5 : r.Z1 - 3.6;
     const w = aMundo(r, 0, lz);
     let v = this.views.get(r.id);
     if (!v) {

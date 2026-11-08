@@ -25,6 +25,12 @@ const VOL_PARLANTE = 0.5;
 // Música de los locales de rumba de la 92 (ver sim/nightlife.js: radio, filtro y hora).
 const VOL_RUMBA = 0.85; // volumen máximo de una discoteca en la puerta, de noche
 const RUMBA_BAJO_DB = 9; // refuerzo de bajos (dB) de esa música
+// Adentro de un local (game/interiors.js): su música suena completa, sin el
+// filtro 'desde adentro' ni la caída por distancia, y la de los otros locales
+// llega apagada a través de los muros.
+const VOL_ADENTRO = 1; // volumen de la música del local donde está el jugador
+const FILTRO_ADENTRO = 16000; // Hz del pasabajos adentro (casi abierto)
+const OTROS_ADENTRO = 0.15; // fracción del volumen de los demás locales estando adentro de uno
 const TOPE_FUENTES = 3; // locales sonando a la vez entre discotecas y parlantes de tiendas
 
 const guardar = (fn) => {
@@ -381,6 +387,7 @@ export class RadioSystem {
     const g = this.game;
     if (!this.rumba) this.rumba = discotecasDe(g.city);
     const hora = g.env?.timeOfDay ?? 12;
+    const adentro = g.interiors?.inside?.id ?? null; // local donde está el jugador (o null)
     const cerca = this.duracion && this.rumba.length ? fuentesRumba(this.rumba, p.x, p.z, hora) : [];
     // Cada local sigue en su canal; uno nuevo toma un canal libre (ya apagado).
     for (const o of cerca) {
@@ -410,8 +417,10 @@ export class RadioSystem {
       const key = `${em.id}/${pr.pista.id}`;
       if (c.key !== key) c.cargar(key, rutaPista(em, pr.pista), pr.offset);
       else c.reanudar();
-      c.filtrar(filtroRumba(o.d));
-      c.mezclar(VOL_RUMBA * this.volumenMusica * this.duck * tapado * o.nivel * gananciaRumba(o.d), dt, this._pan(o.p.x, o.p.z));
+      const dentro = adentro === o.p.id;
+      c.filtrar(dentro ? FILTRO_ADENTRO : filtroRumba(o.d));
+      if (dentro) c.mezclar(VOL_ADENTRO * this.volumenMusica * this.duck * o.nivel, dt, 0);
+      else c.mezclar(VOL_RUMBA * this.volumenMusica * this.duck * tapado * o.nivel * gananciaRumba(o.d) * (adentro ? OTROS_ADENTRO : 1), dt, this._pan(o.p.x, o.p.z));
       if (c.nivel > 0.01) {
         this.rumbaSonando++;
         this.rumbaLocales.push(o.p.id);
