@@ -8,6 +8,7 @@
 
 import { makeRng } from './rng.js';
 import { clamp } from './math.js';
+import { INTERIOR } from './interiors.js';
 
 /** Estilos de casa que se dibujan con fachada modelada. */
 export const MODELED_STYLES = new Set(['ladrillo', 'pintada', 'tienda', 'torre']);
@@ -210,7 +211,11 @@ function windowAttrs(rng, ground, informal, frame) {
 export function facadeLayout(b, idx) {
   // Las casas del fondo de manzana no dan a la calle: caja de ladrillo simple.
   if (!MODELED_STYLES.has(b.style) || b.interior) return null;
-  const rng = makeRng(0x51ed + idx * 7919);
+  // `fi`: el índice que tenía antes de que un local tumbara vecinos (cityLayout.js quitarEdificios).
+  const rng = makeRng(0x51ed + (b.fi ?? idx) * 7919);
+  // Local al que se entra (sim/interiors.js): puerta doble centrada y sin
+  // ventanas en el segundo piso (el salón es de doble altura y ahí va el aviso grande).
+  const access = !!b.local?.access;
   const side = b.front ?? 'S';
   const f = faceFrame(b, side);
   const len = f.len;
@@ -261,6 +266,7 @@ export function facadeLayout(b, idx) {
   const bc = len / 2;
   const doorW = Math.min(2.0, bw - 0.6);
   for (let fl = 1; fl < floors; fl++) {
+    if (access && fl === 1) continue;
     const base = fl * floorH;
     // Moravia: en algunos pisos las ventanas no quedan alineadas.
     const jitter = informal && rng.chance(0.4) ? rng.range(-0.4, 0.4) : 0;
@@ -286,7 +292,10 @@ export function facadeLayout(b, idx) {
   // ---- primer piso
   const ground = [];
   const upstairsDoor = floors >= 2 && !tower && rng.chance(0.55); // puerta aparte para subir
-  if (b.style === 'tienda') {
+  if (access) {
+    const [name, kind] = [b.local.name, b.local.kind];
+    ground.push({ kind: 'shop', w: INTERIOR.PUERTA_ANCHO, h: INTERIOR.PUERTA_ALTO, name, interior: kind, awning: -1, shutter: 1, shutterColor: rng.int(0, 4), counter: false, access: b.local.access, id: b.local.id });
+  } else if (b.style === 'tienda') {
     const doorSpace = upstairsDoor ? FACADE.door[0] + 0.4 : 0;
     const sw = clamp(usable - doorSpace, 2.2, 5.2);
     const pickShop = SHOPS[rng.int(0, SHOPS.length - 1)];
@@ -299,7 +308,8 @@ export function facadeLayout(b, idx) {
     ground.push({ kind: 'door', w: 1.8, h: 2.4, glass: true });
     for (let k = 0; k < 2; k++) ground.push({ kind: 'window', w: winW, h: 1.5 });
   } else {
-    const garage = usable >= 5.6 && rng.chance(informal ? 0.12 : 0.35);
+    // noGarage (buildingBases.js): el garaje quedaría alto sobre el andén de la loma.
+    const garage = usable >= 5.6 && rng.chance(informal ? 0.12 : 0.35) && !b.noGarage;
     if (garage) ground.push({ kind: 'garage', w: Math.min(FACADE.garage[0], usable - 1.6), h: FACADE.garage[1] });
     ground.push({ kind: 'door', w: FACADE.door[0], h: FACADE.door[1] });
     if (upstairsDoor) ground.push({ kind: 'door', w: 0.85, h: FACADE.door[1] });
@@ -328,7 +338,8 @@ export function facadeLayout(b, idx) {
       layout.openings.push({ kind: 'window', floor: 0, u0, u1, v0: 1.0, v1: 1.0 + o.h, ...windowAttrs(rng, true, informal, layout.frameColor) });
     } else if (o.kind === 'shop') {
       layout.openings.push({ kind: 'shop', floor: 0, u0, u1, v0: 0, v1: o.h, lit: true });
-      layout.shop = { ...o, u0, u1 };
+      // depth: fondo del cuarto que se ve por la vitrina (en la loma se acorta, ver buildingBases.js).
+      layout.shop = { ...o, u0, u1, depth: b.shopDepth ?? 3.2 };
     } else {
       layout.openings.push({ kind: o.kind, floor: 0, u0, u1, v0: 0, v1: o.h, design: rng.int(0, 5), color: rng.int(0, METAL_COLORS.length - 1), glass: !!o.glass });
     }

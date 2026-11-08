@@ -15,7 +15,7 @@ import { photoMaterial, PHOTO_TEXTURES } from './photoMaterials.js';
 import { CURTAIN_COLORS, FACADE, FRAME_COLORS, METAL_COLORS, SIGN_NAMES, ZOCALO_COLORS, faceFrame } from '../sim/facades.js';
 import { MAP_MIN_X, MAP_MIN_Z } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
-import { AWNING_SLOTS, DOOR_SLOTS, GRILLE_SLOTS, SIGN_COLS, SIGN_ROWS, awningAtlas, doorAtlas, grilleAtlas, signAtlas, slot, wallDirt } from './facadeTextures.js';
+import { AWNING_SLOTS, DOOR_SLOTS, GRILLE_SLOTS, SIGN_COLS, SIGN_ROWS, STONE_M, awningAtlas, doorAtlas, grilleAtlas, signAtlas, slot, stoneVeneer, wallDirt } from './facadeTextures.js';
 import { ATLAS, BACK_M, INTERIOR_KINDS, SIDE_M, interiorAtlas, shopProps } from './shopInteriors.js';
 
 const CHUNK = 360; // m por lado de cada trozo (menos llamadas de dibujo en el mapa grande)
@@ -28,7 +28,8 @@ const DETAIL = new Set(['detail', 'grille']);
 // distancia ya no se distingue y en el mapa real son millones de triángulos.
 const MID = new Set(['trim', 'awning', 'railingBars']);
 // Materiales que no proyectan sombra (planos finos o hundidos en el muro).
-const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopProps', 'shopTex', 'sign', 'detail', 'gres', 'granito', 'door']);
+// (muro y piedra: las bases en la loma, pegadas al suelo y bajo la sombra de la casa).
+const NO_SHADOW = new Set(['glass', 'glassLit', 'grille', 'interior', 'shopProps', 'shopTex', 'sign', 'detail', 'gres', 'granito', 'door', 'muro', 'piedra']);
 const LIT_WARM = [1, 0.77, 0.5];
 const LIT_COOL = [0.72, 0.82, 1];
 
@@ -152,6 +153,17 @@ export class FacadeBuilder {
       zinc: photoMaterial('corrugated_iron_02', { uvMeters: 1, vertexColors: true, extra: { metalness: 0.4, side: THREE.DoubleSide } }) ?? std({ vertexColors: true, metalness: 0.4, roughness: 0.6, side: THREE.DoubleSide }),
     };
     m.shopTex = m.interior;
+    // Bases en la loma (render/baseBuilder.js): muro de contención de
+    // concreto y enchape de piedra laja (el mismo programa de los muros: no
+    // compila nada nuevo). UV en metros.
+    m.muro = wall('concrete_wall_008');
+    const stone = stoneVeneer();
+    stone.repeat.set(1 / STONE_M, 1 / STONE_M);
+    m.piedra = wall('concrete_wall_008');
+    if (m.piedra.map) {
+      m.piedra.map = stone;
+      m.piedra.color.setRGB(1, 1, 1);
+    } else m.piedra = std({ map: stone, vertexColors: true, roughness: 0.9 });
     for (const [k, id] of Object.entries(WALLS)) m[k] = wall(id);
     return m;
   }
@@ -432,7 +444,26 @@ export class FacadeBuilder {
     const mid = P((o.u0 + o.u1) / 2, 0);
     this.shops.push({ name: shop.name, kind: shop.interior, x: mid[0], y: mid[1], z: mid[2], nx: N[0], nz: N[2], w: o.u1 - o.u0 });
     const D = 0.22;
-    const depth = 3.2;
+    if (shop.access) {
+      // Local al que se entra (sim/interiors.js): el vano queda libre (la
+      // puerta doble, la cortina, la marquesina y el salón los pone
+      // render/interiorBuilder.js) y el aviso de neón es grande, centrado
+      // donde irían las ventanas del segundo piso.
+      reveal(o, D, trimColor, false);
+      const si = Math.max(0, SIGN_NAMES.findIndex(([n]) => n === shop.name));
+      const uvS = slot(si, SIGN_COLS, SIGN_ROWS);
+      const big = shop.access === 'grande';
+      const sBot = o.v1 + 0.82;
+      const hgt = Math.max(0.6, Math.min((L.face.len - 0.8) / 4, big ? 2.05 : 1.45, L.floorH * 2 - sBot - 0.15));
+      const c = (o.u0 + o.u1) / 2;
+      const s0 = c - hgt * 2;
+      const s1 = c + hgt * 2;
+      fq(G('sign'), s0, s1, sBot, sBot + hgt, 0.1, [[uvS[0], uvS[1]], [uvS[2], uvS[1]], [uvS[2], uvS[3]], [uvS[0], uvS[3]]]);
+      fbox(G('detail'), s0 - 0.09, s1 + 0.09, sBot - 0.09, sBot + hgt + 0.09, 0, 0.09, [0.05, 0.05, 0.06]);
+      return;
+    }
+    // Fondo del cuarto: en la loma se acorta si no cabe el hueco (sim/buildingBases.js).
+    const depth = shop.depth ?? 3.2;
     const w = o.u1 - o.u0;
     const h = o.v1 - o.v0;
     reveal(o, D, trimColor, false);

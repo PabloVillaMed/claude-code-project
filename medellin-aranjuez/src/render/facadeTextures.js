@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { makeRng } from '../sim/rng.js';
 import { SIGN_NAMES } from '../sim/facades.js';
-import { canvas, stains, toTexture } from './textures.js';
+import { canvas, noise, stains, toTexture } from './textures.js';
 
 /** Rectángulo UV [u0, v0, u1, v1] de la casilla i en un atlas de cols x rows. */
 export function slot(i, cols, rows) {
@@ -329,5 +329,71 @@ export function wallDirt(seed = 5) {
     ctx.fillStyle = g;
     ctx.fillRect(x, y, rng.range(4, 14), h);
   }
+  return toTexture(c);
+}
+
+// ------------------------------------------------------------------ zócalos
+/** Metros de pared que cubre la textura del enchape de piedra (render/baseBuilder.js). */
+export const STONE_M = 1.6;
+
+/**
+ * Enchape de piedra laja para zócalos y bases (repetible en los dos
+ * sentidos): hiladas de piedras planas irregulares, ocres, grises y cafés,
+ * con su pega de mortero y algo de mugre.
+ */
+export function stoneVeneer(seed = 31) {
+  const S = 512;
+  const c = canvas(S);
+  const ctx = c.getContext('2d');
+  const rng = makeRng(seed);
+  ctx.fillStyle = '#7d776c';
+  ctx.fillRect(0, 0, S, S);
+  const PAL = [
+    [150, 132, 104],
+    [128, 118, 102],
+    [168, 150, 118],
+    [112, 100, 88],
+    [140, 112, 84],
+    [158, 154, 144],
+    [120, 92, 70],
+  ];
+  const rows = 7;
+  const rh = S / rows;
+  for (let r = 0; r < rows; r++) {
+    const y0 = r * rh;
+    const start = rng.range(0, 60);
+    let x = start;
+    while (x < S + start - 24) {
+      const w = Math.min(rng.range(46, 112), S + start - x - 3);
+      const j = () => rng.range(2, 7);
+      // Contorno irregular (6 puntos) dentro de su casilla.
+      const pts = [
+        [x + j(), y0 + j()],
+        [x + w * rng.range(0.35, 0.65), y0 + j() * 0.6],
+        [x + w - j(), y0 + j()],
+        [x + w - j(), y0 + rh - j()],
+        [x + w * rng.range(0.35, 0.65), y0 + rh - j() * 0.6],
+        [x + j(), y0 + rh - j()],
+      ];
+      const [cr, cg, cb] = PAL[rng.int(0, PAL.length - 1)];
+      const k = rng.range(0.85, 1.12);
+      for (const dx of [0, -S]) {
+        ctx.beginPath();
+        pts.forEach(([px, py], i) => (i ? ctx.lineTo(px + dx, py) : ctx.moveTo(px + dx, py)));
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, y0, 0, y0 + rh);
+        g.addColorStop(0, `rgb(${Math.min(255, cr * k * 1.1)},${Math.min(255, cg * k * 1.1)},${Math.min(255, cb * k * 1.1)})`);
+        g.addColorStop(1, `rgb(${cr * k * 0.82},${cg * k * 0.82},${cb * k * 0.82})`);
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(40,34,28,0.55)';
+        ctx.stroke();
+      }
+      x += w + rng.range(3, 6);
+    }
+  }
+  noise(ctx, S, S, rng, 9000, 0.08, 2);
+  stains(ctx, S, S, rng, 14, '30,26,20', 0.18);
   return toTexture(c);
 }

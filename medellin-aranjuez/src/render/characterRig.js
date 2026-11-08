@@ -33,6 +33,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { damp, lerp, clamp, angleDiff } from '../sim/math.js';
 import { FIDGETS, pickFidget, fidgetDelay } from '../sim/animSelect.js';
 import { CHAIR, solveSeat } from '../sim/seatFit.js';
+import { MOUNT_LEG, mountLegPath, mountStep } from '../sim/boarding.js';
 import { assets } from './assets.js';
 import { registerAssets } from './assetManifest.js';
 import { ProceduralRig, randomLook as proceduralLook, PLAYER_LOOK as PROCEDURAL_PLAYER, buildWeaponMesh } from './proceduralRig.js';
@@ -357,6 +358,47 @@ function ik2(upper, fore, hand, target, pole, weight) {
   const E2 = fore.getWorldPosition(new THREE.Vector3());
   const T2 = S.clone().addScaledVector(dir, d);
   pointBone(fore, T2.sub(E2).normalize(), weight);
+}
+
+/**
+ * IK de la pierna con la bisagra de la rodilla: como ik2, pero en vez de
+ * girar lo mínimo desde la pose animada (que con la pierna muy levantada se
+ * acerca a media vuelta y el muslo daba vueltas), pone la orientación entera
+ * del muslo y de la pantorrilla: eje X a lo largo del hueso y eje Z local
+ * sobre la bisagra (en Bip01, -(muslo × pantorrilla)), con la rodilla hacia
+ * `pole`. Sin estado: el mismo objetivo da siempre la misma pierna.
+ */
+const _lk = Array.from({ length: 8 }, () => new THREE.Vector3());
+const _lq = new THREE.Quaternion();
+const _lm = new THREE.Matrix4();
+function ikLeg(thigh, calf, foot, target, pole, weight) {
+  const [S, E, H, dir, n, X, Y, Z] = _lk;
+  thigh.getWorldPosition(S);
+  calf.getWorldPosition(E);
+  foot.getWorldPosition(H);
+  const a = S.distanceTo(E);
+  const b = E.distanceTo(H);
+  dir.subVectors(target, S);
+  const d = clamp(dir.length(), 0.05, a + b - 0.002);
+  dir.normalize();
+  const cosA = clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  n.copy(pole).addScaledVector(dir, -pole.dot(dir));
+  if (n.lengthSq() < 1e-6) n.set(0, 0, 1).addScaledVector(dir, -dir.z);
+  n.normalize();
+  // Bisagra (eje Z local de los dos huesos): normal del plano cadera-rodilla-tobillo.
+  Z.crossVectors(dir, n).normalize();
+  // Muslo: de la cadera a la rodilla.
+  X.copy(dir).multiplyScalar(cosA).addScaledVector(n, sinA);
+  Y.crossVectors(Z, X);
+  setWorldQuat(thigh, _lq.setFromRotationMatrix(_lm.makeBasis(X, Y, Z)), weight);
+  // Pantorrilla: de donde quedó la rodilla al tobillo (con peso < 1 la
+  // rodilla no queda justo en el plano: se reortogonaliza la bisagra).
+  calf.getWorldPosition(E);
+  X.copy(S).addScaledVector(dir, d).sub(E).normalize();
+  Z.addScaledVector(X, -Z.dot(X)).normalize();
+  Y.crossVectors(Z, X);
+  setWorldQuat(calf, _lq.setFromRotationMatrix(_lm.makeBasis(X, Y, Z)), weight);
 }
 
 /**
@@ -1274,6 +1316,11 @@ export class SkinnedRig {
     const pel = veh.worldToLocal(B.Bip01_Pelvis.getWorldPosition(new THREE.Vector3()));
     const tgt = new THREE.Vector3(clamp(-lean * RIDE.hipShift, -0.05, 0.05), ride.seatY + 0.09 * (this.scale / 0.97), ride.seatZ - 0.02);
     this.model.position.add(tgt.sub(pel).multiplyScalar(w));
+    // Montándose (o bajándose), el pie de apoyo se sube a su estribera y la cadera con él.
+    const mounting = mside != null;
+    const bell = mounting ? Math.sin(Math.PI * clamp(lift, 0, 1)) : 0;
+    const onPeg = mounting ? mountStep(lift) : 0;
+    this.model.position.y += MOUNT_LEG.hipRise * onPeg * (1 - w);
     this.model.updateMatrixWorld(true);
 
     // 2. Torso inclinado hacia el manubrio (~29° de la cadera al cuello; más
@@ -1284,12 +1331,14 @@ export class SkinnedRig {
     const neck = B.Bip01_Neck ?? B.Bip01_Head;
     if (spine && neck) {
       const tuck = this.tuck ?? 0;
-      const bend = 0.5 + RIDE.tuckBend * tuck + RIDE.wheelieBend * Math.max(0, ride.wheelie ?? 0);
+      const bend = 0.5 + RIDE.tuckBend * tuck + RIDE.wheelieBend * Math.max(0, ride.wheelie ?? 0) + MOUNT_LEG.extraBend * bell;
       const s0 = spine.getWorldPosition(new THREE.Vector3());
       const cur = neck.getWorldPosition(new THREE.Vector3()).sub(s0).normalize();
       const want = up.clone().multiplyScalar(Math.cos(bend)).addScaledVector(fwd, Math.sin(bend)).addScaledVector(right, -lean * RIDE.bodyLean).normalize();
       spine.getWorldQuaternion(_q2);
-      setWorldQuat(spine, _q.setFromUnitVectors(cur, want).multiply(_q2), w);
+      // Montándose (o bajándose), el torso va hacia el manubrio mientras pasa la pierna.
+      const sw = Math.max(w, MOUNT_LEG.bodyLean * bell);
+      setWorldQuat(spine, _q.setFromUnitVectors(cur, want).multiply(_q2), sw);
       if (B.Bip01_Head) {
         B.Bip01_Head.getWorldQuaternion(_q2);
         const look = clamp(lean * RIDE.headLook, -RIDE.headLookMax, RIDE.headLookMax) * w;
@@ -1300,7 +1349,6 @@ export class SkinnedRig {
 
     // 3. Manos en los puños: la muñeca un poco detrás y encima del centro del puño.
     // Montándose, las manos toman los puños primero (en el primer 40 %).
-    const mounting = mside != null;
     const hw = mounting ? Math.max(w, Math.min(1, lift * 2.5)) : w;
     for (const [side, s, wt] of [
       ['L', -1, hw],
@@ -1328,6 +1376,7 @@ export class SkinnedRig {
       const peg = ride.pegs[s < 0 ? 0 : 1];
       // Tobillo sobre la estribera (el metatarso apoya en ella).
       const ankle = toW(peg).addScaledVector(up, 0.07).addScaledVector(fwd, -0.06);
+      const onPegAnkle = mounting && s === mside ? ankle.clone() : null;
       let pole = fwd.clone().addScaledVector(right, -s * 0.12).addScaledVector(up, 0.2);
       const down = s < 0 ? this.footDown : 0;
       if (down > 0.01) {
@@ -1337,26 +1386,38 @@ export class SkinnedRig {
       }
       let lw = w;
       let planted = down > 0.5;
+      let swing = 0;
       if (mounting && s === mside) {
-        // Pie de apoyo (del lado del personaje): en el piso junto a la moto
-        // hasta que el peso pasa al asiento.
-        const plant = toW({ x: plantX ?? mside * 0.72, y: 0.08, z: ride.seatZ + 0.05 });
+        // Pie de apoyo (del lado del personaje): del piso junto a la moto se
+        // sube a su estribera mientras la otra pierna pasa, y queda en la postura de manejo.
+        const plant = toW({ x: plantX ?? mside * 0.72, y: 0.08, z: ride.seatZ + 0.05 }).lerp(onPegAnkle, onPeg);
         ankle.copy(plant.lerp(ankle, w));
         pole = pole.lerp(fwd.clone().addScaledVector(right, s * 0.3), 1 - w);
         lw = Math.max(w, Math.min(1, lift * 4));
         planted = true;
       } else if (mounting) {
-        // Pierna de afuera por encima de la parte de atrás del asiento: sube
-        // por detrás hasta arriba (lift 0,5) y de ahí baja a la estribera.
-        const over = toW({ x: s * 0.1, y: ride.seatY + 0.45, z: ride.seatZ + 0.35 });
-        const L = Math.min(1, lift);
-        if (L < 0.5) ankle.copy(over);
-        else ankle.copy(over.lerp(ankle, smoothstep((L - 0.5) * 2)));
-        lw = Math.max(w, Math.sin(L * Math.PI));
+        // Pierna que pasa por encima (sim/boarding.js MOUNT_LEG): sale del pie
+        // animado, sube de lado con la rodilla doblada hacia adelante, pasa
+        // justo detrás de la nalga sobre ride.pass (la parte de atrás del sillín, delante del baúl o de
+        // la caja) y baja al otro lado a la estribera; al bajarse, al revés.
+        const rest = veh.worldToLocal(foot.getWorldPosition(new THREE.Vector3()));
+        const fin = veh.worldToLocal(ankle.clone());
+        const hip = veh.worldToLocal(thigh.getWorldPosition(new THREE.Vector3()));
+        const P = mountLegPath(rest, fin, ride.pass ?? { z: ride.seatZ + 0.25, y: ride.seatY + 0.05 }, mside, lift, (this._legPath ??= {}), hip);
+        ankle.copy(toW(P));
+        // Rodilla: al frente al subir, al frente y arriba (algo abierta) sobre el
+        // tanque al cruzar y al frente al bajar (MOUNT_LEG; de pie y al final, la de siempre).
+        pole = new THREE.Vector3(P.px, P.py, P.pz).transformDirection(veh.matrixWorld);
+        lw = Math.max(w, P.w);
+        swing = P.knee;
       }
       if (lw < 0.01) continue;
-      ik2(thigh, calf, foot, ankle, pole, lw);
-      pointBone(foot, fwd.clone().addScaledVector(up, planted ? -0.15 : -0.35).normalize(), lw);
+      // (Con la bisagra de la rodilla: la pierna no da vueltas aunque suba mucho.)
+      ikLeg(thigh, calf, foot, ankle, pole, lw);
+      const toes = fwd.clone().addScaledVector(up, planted ? -0.15 : -0.35).normalize();
+      // Pasando por encima, el pie suelto: la punta hacia atrás y un poco abajo (no clavada en el sillín).
+      if (swing > 0) toes.lerp(fwd.clone().negate().addScaledVector(up, -0.3).normalize(), swing).normalize();
+      pointBone(foot, toes, lw);
     }
   }
 

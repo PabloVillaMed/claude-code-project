@@ -3,13 +3,16 @@
 // voces; mientras cargan (o si faltan) se sintetizan. Los motores (del
 // jugador y del tráfico cercano) usan explosiones grabadas con síntesis
 // granular (engineSound.js) y una caja de cambios simulada (sim/engineModel.js);
-// sin AudioWorklet queda un motor sintetizado de respaldo. Pito, sirena,
+// sin AudioWorklet queda un motor sintetizado de respaldo. Pito, sirena
+// (sirenaVoz.js: wail, yelp y chirp; cuándo suena, en sim/sirena.js),
 // explosiones y ambiente de ciudad siguen sintetizados.
 
 import { ARMAS_SFX, BancoSonidos, GRUPOS, RECARGAS, crearRespuestaUrbana, mezclaDistancia } from './sfxArmas.js';
 import { EngineVoice, loadEngineBanks, trafficMix } from './engineSound.js';
 import { createEngineState, stepEngine } from '../sim/engineModel.js';
 import { engineProfile } from '../sim/vehicleVariants.js';
+import { SIRENA_MEZCLA, elegirSirenas, mezclaSirena, variacionUnidad } from '../sim/sirena.js';
+import { VozSirena } from './sirenaVoz.js';
 
 // Voces de motor para el tráfico (las más cercanas; el resto no suena).
 const MAX_VOCES_TRAFICO = 4;
@@ -41,7 +44,7 @@ export class AudioSystem {
     this.master = null;
     this.volume = 0.7;
     this.engine = null;
-    this.siren = null;
+    this.sirenas = []; // voces de sirena (updateSirens)
     this.listener = { x: 0, y: 0, z: 0 };
   }
 
@@ -698,34 +701,100 @@ export class AudioSystem {
     }
   }
 
-  /** Sirena de policía con volumen según la distancia a la patrulla más cercana. */
-  setSiren(dist) {
-    if (!this.ctx) return;
-    const on = dist < 160;
-    if (on && !this.siren) {
-      const o = this.ctx.createOscillator();
-      o.type = 'sawtooth';
-      const lfo = this.ctx.createOscillator();
-      lfo.frequency.value = 0.9;
-      const lfoGain = this.ctx.createGain();
-      lfoGain.gain.value = 280;
-      lfo.connect(lfoGain).connect(o.frequency);
-      o.frequency.value = 950;
-      const lp = this.ctx.createBiquadFilter();
-      lp.frequency.value = 2000;
-      const g = this.ctx.createGain();
-      g.gain.value = 0;
-      o.connect(lp).connect(g).connect(this.master);
-      o.start();
-      lfo.start();
-      this.siren = { o, lfo, g };
+  /**
+   * Sirenas de la policía. Suenan las unidades con u.sirena.on (sim/sirena.js
+   * decide cuándo y con qué patrón; world.updatePolice lo avanza): solo las
+   * SIRENA_MEZCLA.maxVoces más cercanas, con caída y pasabajos por distancia,
+   * Doppler suave, paneo, eco de la calle, cabina si vas en un carro cerrado y
+   * fundidos de entrada y salida (una unidad que se apaga y vuelve a prender
+   * retoma su misma voz: no arranca de golpe).
+   */
+  updateSirens(units, dt, cabina = false) {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const ctx = this.ctx;
+    const M = SIRENA_MEZCLA;
+    if (!this.busSirena) {
+      this.busSirena = ctx.createGain();
+      this.busSirena.connect(this.master);
     }
-    if (!on && this.siren) {
-      this.siren.o.stop();
-      this.siren.lfo.stop();
-      this.siren = null;
+    const L = this.listener;
+    const voces = this.sirenas;
+    const cands = (this._sirCands ??= []);
+    cands.length = 0;
+    for (const u of units) {
+      const s = u.vehicle?.state;
+      if (!s || !u.sirena?.on) continue;
+      const c = (u._sirCand ??= { u, d: 0, _dEff: 0 });
+      c.d = Math.hypot(s.x - L.x, s.z - L.z);
+      cands.push(c);
     }
-    if (this.siren) this.siren.g.gain.setTargetAtTime(0.09 * Math.min(1, 25 / Math.max(25, dist)), this.ctx.currentTime, 0.1);
+    const actuales = (this._sirActuales ??= []);
+    const elegidas = elegirSirenas(cands, actuales, M.maxVoces, M.margenCambio, (this._sirElegidas ??= []));
+    // Soltar las voces de las unidades que ya no suenan (se desvanecen).
+    for (const voz of voces) {
+      if (!voz.owner) continue;
+      let sigue = false;
+      for (const c of elegidas) if (c.u === voz.owner) sigue = true;
+      if (!sigue) voz.owner = null;
+    }
+    actuales.length = 0;
+    for (const c of elegidas) {
+      actuales.push(c);
+      const u = c.u;
+      let voz = null;
+      for (const v of voces) if (v.owner === u) voz = v;
+      // La misma unidad que se apagó hace poco: retoma su voz sin reiniciarla.
+      if (!voz) for (const v of voces) if (!v.owner && v.ultimo === u) voz = v;
+      if (!voz && voces.length <= M.maxVoces) voces.push((voz = new VozSirena(ctx, this.busSirena, this.ecoIn, u.sirena.patron ?? 'wail')));
+      // Sin cupo: la que esté más apagada de las que se desvanecen.
+      if (!voz) for (const v of voces) if (!v.owner && (!voz || v.nivel < voz.nivel)) voz = v;
+      if (!voz) continue;
+      if (voz.ultimo !== u) {
+        voz.variacion = variacionUnidad(u.id ?? 0);
+        voz.nivel = Math.min(voz.nivel, 0.05);
+      }
+      voz.owner = u;
+      voz.ultimo = u;
+    }
+    const lv = this._lvel ?? { x: 0, z: 0 };
+    const pos = (this._sirPos ??= { x: 0, y: 0, z: 0 });
+    const mz = (this._sirMez ??= {});
+    const now = ctx.currentTime;
+    for (let i = voces.length - 1; i >= 0; i--) {
+      const voz = voces[i];
+      const u = voz.owner;
+      voz.nivel += ((u ? 1 : 0) - voz.nivel) * (1 - Math.exp(-dt / (u ? M.fadeIn : M.fadeOut)));
+      if (!u && voz.nivel < 0.003) {
+        voz.parar(0.1);
+        voces.splice(i, 1);
+        continue;
+      }
+      const s = voz.ultimo?.vehicle?.state;
+      if (!s) continue;
+      const dx = L.x - s.x;
+      const dz = L.z - s.z;
+      const d = Math.hypot(dx, dz);
+      const vr = (((s.vx ?? 0) - lv.x) * dx + ((s.vz ?? 0) - lv.z) * dz) / Math.max(0.5, d);
+      mezclaSirena(d, vr, cabina, mz);
+      if (u) voz.setPatron(u.sirena.patron ?? 'wail', voz.variacion.ritmo);
+      pos.x = s.x;
+      pos.y = s.y + 1.5;
+      pos.z = s.z;
+      voz.gain = mz.gain * voz.nivel;
+      voz.set(voz.gain, mz.lp, 1200 * Math.log2(mz.pitch * voz.variacion.tono), this._panFor(pos), mz.eco * voz.nivel, now);
+    }
+  }
+
+  /** Calla todas las sirenas con un fundido corto (menú, muerte, fin de partida). */
+  callarSirenas() {
+    for (const voz of this.sirenas) voz.parar(0.4);
+    this.sirenas.length = 0;
+    if (this._sirActuales) this._sirActuales.length = 0;
+  }
+
+  /** Qué sirenas suenan (para pruebas y sondas): unidad, patrón, volumen. */
+  sirenStatus() {
+    return this.sirenas.map((v) => ({ unidad: v.ultimo?.id ?? null, sonando: !!v.owner, patron: v.patron, nivel: +v.nivel.toFixed(3), gain: +(v.gain ?? 0).toFixed(4) }));
   }
 
   // ------------------------------------------------------------ vida del barrio

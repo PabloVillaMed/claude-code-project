@@ -10,7 +10,8 @@ const NONE = [];
 
 /**
  * @param o origen {x,y,z}; d dirección normalizada {x,y,z}
- * @param scene {collision, groundHeight, characters:[{ref,x,y,z,dead?}],
+ * @param scene {collision, groundHeight, characters:[{ref,x,y,z,dead?} o, montados
+ *   en moto, {ref,rider:true,x,z,y0,y1,r,hx,hy,hz,hr} (sim/riders.js)}],
  *   vehicles:[{ref,obb,y,height}], animals?:[animal de sim/animals.js], ignore:Set}
  * @returns {t, x,y,z, kind:'building'|'ground'|'character'|'vehicle'|'animal'|null, ref, headshot, normal}
  */
@@ -30,6 +31,15 @@ export function traceShot(o, d, maxDist, scene) {
     if (along < -1 || along > best.t + 1) continue;
     const lateral = Math.abs(lx * d.z - lz * d.x) / (Math.hypot(d.x, d.z) || 1);
     if (lateral > 1.2) continue;
+    if (c.rider) {
+      // Montado en moto (sim/riders.js riderHitbox): cabeza y torso donde van
+      // sentados, en coordenadas del mundo; las piernas son de la moto.
+      const th = rayVsSphere(o.x, o.y, o.z, d.x, d.y, d.z, c.hx, c.hy, c.hz, c.hr, best.t);
+      if (th !== null && th < best.t) best = { t: th, kind: 'character', ref: c.ref, headshot: true, normal: { x: -d.x, y: -d.y, z: -d.z } };
+      const tb = rayVsVerticalCapsule(o.x, o.y, o.z, d.x, d.y, d.z, c.x, c.z, c.y0, c.y1, c.r, best.t);
+      if (tb !== null && tb < best.t) best = { t: tb, kind: 'character', ref: c.ref, headshot: false, normal: { x: -d.x, y: -d.y, z: -d.z } };
+      continue;
+    }
     if (c.dead) {
       // Cuerpo en el piso: cápsula baja.
       const t = rayVsVerticalCapsule(o.x, o.y, o.z, d.x, d.y, d.z, c.x, c.z, c.y, c.y + 0.35, 0.45, best.t);

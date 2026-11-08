@@ -46,8 +46,12 @@ export const BOARD_CAM_PITCH = -0.15;
 export const VEH_FOV_PER_MS = 0.3;
 export const VEH_FOV_MAX = 12;
 export const VEH_FOV_MAX_HOOD = 8;
-/** En moto la cámara se ladea con la inclinación (fracción de la de la moto) con rapidez CAM_ROLL_RATE (1/s). */
-export const CAM_MOTO_ROLL = 0.3;
+/**
+ * En moto la cámara se ladea con la inclinación (fracción de la de la moto)
+ * con rapidez CAM_ROLL_RATE (1/s). En 0 (por defecto desde v3.6) el horizonte
+ * queda derecho: ladeado mareaba y estorbaba para ir centrado (v3.5: 0,3).
+ */
+export const CAM_MOTO_ROLL = 0;
 export const CAM_ROLL_RATE = 5;
 
 /** Vistas de vehículo (V las recorre): persecución cerca (por defecto), lejos y capó. */

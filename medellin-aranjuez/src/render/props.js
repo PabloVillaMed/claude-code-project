@@ -693,6 +693,40 @@ export function buildModelProps(r, byType, { glowSprite }) {
   const poles = buildPoles(r, byType.pole ?? [], byType.cable ?? []);
   const benches = buildBenches(r, byType.bench ?? []);
   buildSmallProps(r, byType);
+  buildSteps(r, byType.steps ?? []);
   return { trees, lamps, poles, benches };
+}
+
+// Escalas de las entradas en la loma (sim/buildingBases.js): un bloque de
+// concreto por escalón, todos instancias de la misma caja.
+/** Distancia (m) hasta la que se dibujan las escalas. */
+const STEPS_FAR = 170;
+/** Acabados de las escalas: cemento, pintadas de rojo óxido, baldosa de gres, cemento claro. */
+const STEP_COLORS = [0x9b968c, 0x7a3a2c, 0x8e5a40, 0xb4afa5];
+
+function buildSteps(r, list) {
+  if (!list.length) return;
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0.5); // pie en y = 0, cara de atrás en z = 0 (contra la fachada)
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.88 });
+  const tpl = { key: 'escalas', cerca: [{ geometry: geo, material }], lejos: null, extras: {}, box: geo.boundingBox, height: 1 };
+  // Sin sombra propia (bajas, pegadas a la fachada): no suman llamadas al mapa de sombras.
+  const set = new ChunkedInstances(tpl, { near: STEPS_FAR, far: STEPS_FAR, tint: () => true, name: 'utileria-escalas', perInstance: true, castShadow: false });
+  const col = new THREE.Color();
+  for (const s of list) {
+    const nx = Math.sin(s.rot);
+    const nz = Math.cos(s.rot);
+    col.setHex(STEP_COLORS[Math.floor(Math.abs(s.x * 7.3 + s.z * 3.1)) % STEP_COLORS.length]);
+    // Bloque j (1 = el de abajo, el que más sale): de la fachada hacia afuera
+    // (n - j + 1) huellas, alto hasta su escalón.
+    for (let j = 1; j <= s.n; j++) {
+      const out = (s.n - j + 1) * s.tread;
+      const top = s.y0 + j * s.rise;
+      set.add(s.x - nx * 0.02, s.low, s.z - nz * 0.02, s.rot, s.w, top - s.low, out + 0.02, col);
+    }
+  }
+  set.build(r.root, r.lodChunks);
 }
 

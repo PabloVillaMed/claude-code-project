@@ -75,14 +75,119 @@ export const BODY = {
 // atrás y, si no se suelta el acelerador o se frena (freno trasero), pasa de
 // fallAngle y el piloto se cae. Soltando la tecla baja suave. Frenando fuerte
 // con la tecla se levanta la llanta de atrás (stoppie), sin caída.
+// La inclinación es solo de dibujo: sale de la aceleración lateral y nunca
+// entra a la dirección ni al giro (la trayectoria no depende de v.lean).
 export const MOTO = {
-  /** Inclinación = atan(aLateral / g) × leanGain, hasta leanMax rad (~34°); entra y sale como un resorte críticamente amortiguado de frecuencia leanRate (1/s: ~95 % en 4,7 / leanRate s), sin tirones. */
-  leanGain: 1,
-  leanMax: 0.6,
-  leanRate: 7,
+  /**
+   * Inclinación = atan(aLateral / g) × leanGain, con tope suave (tanh) en leanMax
+   * rad (~17°: v3.5 llegaba a 34° y estorbaba para ir centrado); entra y sale
+   * como un resorte críticamente amortiguado de frecuencia leanRate (1/s: ~90 %
+   * en 3,9 / leanRate s ≈ 0,9 s), sin pasarse ni ir y volver.
+   */
+  leanGain: 0.55,
+  leanMax: 0.3,
+  leanRate: 4.2,
   /** Detenida (por debajo de stopSpeed m/s) se recuesta stopLean rad hacia la izquierda, sobre el pie del piloto. */
   stopSpeed: 1.2,
   stopLean: 0.06,
+};
+
+// ----------------------- moto sin piloto: se ladea y cae (ajustables)
+// Al piloto lo tumbaron (game/riders.js): la moto pierde el control (el
+// manubrio se va hacia el lado de la caída), se ladea como un péndulo
+// invertido (despacio al principio, cada vez más rápido), pega contra el piso
+// con un rebote chiquito y queda acostada sobre el manubrio y la estribera,
+// deslizándose un poco hasta parar. startMotoFall / standUpMoto.
+export const MOTO_FALL = {
+  height: 0.55, // m: altura del centro de masa (péndulo: más bajo = cae más rápido)
+  kick: 0.06, // rad mínimos de inclinación al soltarla (para que arranque a caer)
+  restLean: 1.22, // rad (~70°): acostada en el piso, apoyada en el manubrio y la estribera
+  bounce: 0.18, // fracción de la velocidad de giro que devuelve el golpe contra el piso
+  wobbleSteer: 0.55, // fracción del manubrio que se va hacia el lado de la caída mientras cae
+  rollBrake: 0.12, // freno (fracción de spec.brake) mientras todavía rueda de pie, cayéndose
+  slideFriction: 0.55, // roce (fracción de g) ya acostada: se desliza y para, también en las lomas
+  slideFrom: 0.9, // rad: desde esta inclinación ya va arrastrándose por el piso
+};
+
+const FALL_INPUT = { throttle: 0, brake: 0, steer: 0, handbrake: false, wheelie: false };
+
+/** Mando de una moto que cae sin piloto: sin acelerador, el manubrio al lado de la caída, frena al arrastrarse. */
+function fallInput(v) {
+  const i = FALL_INPUT;
+  const lying = Math.abs(v.lean) > MOTO_FALL.slideFrom;
+  const vf = v.forwardSpeed;
+  const k = lying ? 0 : MOTO_FALL.rollBrake; // (acostada la frena el roce: substep)
+  // (+ inclinación = hacia la izquierda; + manubrio = a la derecha.)
+  i.steer = lying ? 0 : -v.fallen * MOTO_FALL.wobbleSteer;
+  i.brake = vf > 0.6 ? k : 0;
+  i.throttle = vf < -0.6 ? k : 0; // (en reversa el acelerador frena)
+  return i;
+}
+
+/** La moto se queda sin piloto y cae hacia `side` (+1 / -1; 0 = hacia donde ya va ladeada). */
+export function startMotoFall(v, side = 0) {
+  if (!v.spec.twoWheels || v.fallen) return;
+  v.fallen = side || (v.lean < 0 ? -1 : 1);
+  v.fallSettled = false;
+  v.wheelie = 0;
+  v.wheelieRate = 0;
+  if (v.lean * v.fallen < MOTO_FALL.kick) v.lean = v.fallen * MOTO_FALL.kick;
+  if ((v.leanVel || 0) * v.fallen < 0) v.leanVel = 0;
+}
+
+/** La levantan del piso (alguien se monta). */
+export function standUpMoto(v) {
+  if (!v.fallen) return;
+  v.fallen = 0;
+  v.fallSettled = false;
+  v.lean = 0;
+  v.leanVel = 0;
+}
+
+/** Inclinación de la moto que cae: péndulo invertido hasta MOTO_FALL.restLean. */
+function stepFallLean(v, dt) {
+  const side = v.fallen;
+  let th = v.lean * side;
+  let w = (v.leanVel || 0) * side;
+  if (th < MOTO_FALL.restLean) w += (GRAVITY / MOTO_FALL.height) * Math.sin(Math.max(th, MOTO_FALL.kick)) * dt;
+  th += w * dt;
+  if (th >= MOTO_FALL.restLean) {
+    th = MOTO_FALL.restLean;
+    w = w > 0 ? -w * MOTO_FALL.bounce : w;
+    if (Math.abs(w) < 0.25) w = 0;
+  }
+  v.lean = th * side;
+  v.leanVel = w * side;
+  if (!w && th >= MOTO_FALL.restLean && Math.abs(v.forwardSpeed) < 0.1 && Math.abs(v.lateralSpeed) < 0.1) v.fallSettled = true;
+}
+
+// ------------------------------- moto del jugador: dirección (ajustables)
+// Con teclado la dirección es todo o nada (±1) y, sin filtro, un toque de
+// 0,1 s ya llevaba la moto a todo el agarre (14° de rumbo a 43 km/h): era
+// difícil ir centrado. En la moto que maneja el jugador (env.isPlayer) el
+// manubrio entra en rampa (un toque corto gira poco; sostener llega a todo),
+// vuelve solo al centro al soltar y el giro es proporcional a la tecla, con
+// una aceleración lateral máxima que baja con la rapidez. Sonda con un
+// jugador simulado (toques de 0,1 s, a 43 y 79 km/h): vaivén de pico a pico
+// de 3,8 / 11 m a ~0,5 m. El tráfico y la Policía en moto siguen con la
+// dirección de siempre.
+export const MOTO_STEER = {
+  /** Al apretar, la primera fracción tapLevel del manubrio entra en tapTime s (correcciones pequeñas y sin demora). */
+  tapLevel: 0.4,
+  tapTime: 0.05,
+  /** s para llevar el resto (de tapLevel a todo) con la tecla sostenida: rampInLow hasta vLow m/s, rampInHigh desde vHigh. */
+  rampInLow: 0.12,
+  rampInHigh: 0.22,
+  /** Autocentrado al soltar (o al pasar al otro lado): vuelve como exp(-centerRate·t) (1/s), y nunca más lento que centerMin (1/s, lineal) para llegar al centro. */
+  centerRate: 18,
+  centerMin: 1.5,
+  /** Rapidez (1/s) con que el giro sigue al manubrio (el resto de motos: 14). Más alto = se detiene apenas se suelta, sin seguir rotando. */
+  yawResp: 22,
+  /** Aceleración lateral máxima (g) con la tecla a fondo: latLow hasta vLow m/s y baja suave hasta latHigh en vHigh m/s (menos giro a alta velocidad; quieta la limita el ángulo del manubrio). */
+  latLow: 1.05,
+  latHigh: 0.85,
+  vLow: 6,
+  vHigh: 24,
 };
 
 export const WHEELIE = {
@@ -170,6 +275,7 @@ export function createVehicleState(type, x, z, heading, groundFn, variant = null
     forwardSpeed: 0,
     lateralSpeed: 0,
     steer: 0,
+    steerCmd: 0, // -1..1: manubrio de la moto del jugador (MOTO_STEER)
     pitch: 0,
     roll: 0,
     lean: 0,
@@ -187,6 +293,8 @@ export function createVehicleState(type, x, z, heading, groundFn, variant = null
     wheelie: 0, // moto: rad, + rueda de adelante arriba (caballito), - la de atrás (stoppie)
     wheelieRate: 0, // rad/s
     wheelieFall: false, // el caballito se pasó del punto de no volver (Game tumba al piloto)
+    fallen: 0, // moto sin piloto que cae (MOTO_FALL): +1 hacia la izquierda, -1 a la derecha, 0 de pie
+    fallSettled: false, // ya quedó quieta en el piso
   };
 }
 
@@ -212,14 +320,62 @@ export function stepVehicle(v, input, dt, env) {
   return impact;
 }
 
+/** 0..1 de la rapidez entre MOTO_STEER.vLow y vHigh (suavizado). */
+function motoSpeedBlend(speedAbs) {
+  const t = clamp((speedAbs - MOTO_STEER.vLow) / (MOTO_STEER.vHigh - MOTO_STEER.vLow), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/** Ángulo de manubrio (rad) que da la aceleración lateral máxima de MOTO_STEER a esa rapidez: tan δ = a·L / v². */
+export function motoSteerLimit(sp, speedAbs) {
+  const lat = (MOTO_STEER.latLow + (MOTO_STEER.latHigh - MOTO_STEER.latLow) * motoSpeedBlend(speedAbs)) * GRAVITY;
+  const vv = Math.max(speedAbs, 1);
+  return Math.atan((lat * sp.wheelBase) / (vv * vv));
+}
+
+/**
+ * Manubrio de la moto del jugador (-1..1, en v.steerCmd): apretando entra
+ * en rampa hacia la tecla; soltando (o pasando al otro lado) vuelve al centro
+ * (o a la tecla, si es menor) sin pasarse.
+ */
+export function riderSteer(v, want, speedAbs, dt) {
+  const c = MOTO_STEER;
+  const u = v.steerCmd ?? 0;
+  const s = Math.sign(want);
+  let next;
+  if (s !== 0 && (Math.sign(u) === s || Math.abs(u) < 1e-6) && Math.abs(want) >= Math.abs(u)) {
+    // Rápido hasta tapLevel y de ahí en rampa (más lenta a alta rapidez).
+    const ramp = c.rampInLow + (c.rampInHigh - c.rampInLow) * motoSpeedBlend(speedAbs);
+    let a = Math.abs(u);
+    let left = dt;
+    if (a < c.tapLevel) {
+      const t = Math.min(left, ((c.tapLevel - a) * c.tapTime) / c.tapLevel);
+      a += (t * c.tapLevel) / c.tapTime;
+      left -= t;
+    }
+    a += (left * (1 - c.tapLevel)) / ramp;
+    next = s * Math.min(Math.abs(want), a);
+  } else {
+    const tgt = Math.sign(u) === s ? want : 0;
+    const gap = Math.abs(u - tgt);
+    next = u + Math.sign(tgt - u) * Math.min(gap, Math.max(gap * (1 - Math.exp(-c.centerRate * dt)), c.centerMin * dt));
+  }
+  v.steerCmd = next;
+  return next;
+}
+
 function substep(v, input, dt, env) {
   const sp = v.spec;
   if (v.destroyed) input = emptyDriveInput();
+  else if (v.fallen) input = fallInput(v);
 
   // --- Dirección con reducción a alta velocidad ---
   const speedAbs = Math.abs(v.forwardSpeed);
   const steerLimit = sp.steerMax / (1 + speedAbs / 22);
-  v.steer = damp(v.steer, clamp(input.steer, -1, 1) * steerLimit, sp.twoWheels ? 10 : 8, dt);
+  if (sp.twoWheels && env.isPlayer) {
+    // Moto del jugador (MOTO_STEER): el manubrio ya viene filtrado.
+    v.steer = riderSteer(v, clamp(input.steer, -1, 1), speedAbs, dt) * Math.min(steerLimit, motoSteerLimit(sp, speedAbs));
+  } else v.steer = damp(v.steer, clamp(input.steer, -1, 1) * steerLimit, sp.twoWheels ? 10 : 8, dt);
 
   // Giro: Ackermann simplificado, limitado por el agarre (subviraje) y con
   // inercia. Con freno de mano la cola se suelta y el carro rota de más
@@ -231,7 +387,7 @@ function substep(v, input, dt, env) {
   const wMax = aMax / Math.max(2.5, speedAbs);
   const hb = !!input.handbrake && speedAbs > 4;
   const target = hb ? kin * 1.8 : clamp(kin, -wMax * 1.1, wMax * 1.1);
-  const yawResp = sp.mass > 3000 ? 5 : sp.twoWheels ? 14 : 9;
+  const yawResp = sp.mass > 3000 ? 5 : sp.twoWheels ? (env.isPlayer ? MOTO_STEER.yawResp : 14) : 9;
   v.yawRate = damp(v.yawRate ?? 0, target, yawResp, dt);
   v.heading = wrapAngle(v.heading - v.yawRate * dt);
 
@@ -267,6 +423,8 @@ function substep(v, input, dt, env) {
   // Freno de estacionamiento automático para no rodar en las lomas.
   if (throttle === 0 && Math.abs(vf) < 0.35 && Math.abs(slope) < 0.3 && brake === 0) vf = damp(vf, 0, 6, dt);
   if (input.handbrake) vf = damp(vf, 0, 1.2, dt);
+  // Moto acostada en el piso (sin piloto): el roce la frena hasta pararla, también en las lomas.
+  if (v.fallen && Math.abs(v.lean) > MOTO_FALL.slideFrom) vf = Math.sign(vf) * Math.max(0, Math.abs(vf) - MOTO_FALL.slideFriction * GRAVITY * dt);
   v.handbrake = !!input.handbrake;
 
   // --- Agarre lateral: las llantas anulan el deslizamiento hasta su límite
@@ -331,11 +489,13 @@ function substep(v, input, dt, env) {
   const hR = env.groundHeight(v.x + rx * sp.width * 0.5, v.z + rz * sp.width * 0.5);
   v.pitch = damp(v.pitch, Math.atan2(hFront - hBack, sp.length), 12, dt);
   v.roll = damp(v.roll, Math.atan2(hR - hL, sp.width), 12, dt);
-  if (sp.twoWheels) {
+  if (sp.twoWheels && v.fallen) stepFallLean(v, dt);
+  else if (sp.twoWheels) {
     // Hacia adentro de la curva según la aceleración lateral (+ = derecha);
     // casi quieta, recostada sobre el pie izquierdo del piloto.
     const ay = vf * v.yawRate;
-    let lt = -Math.atan(ay / GRAVITY) * MOTO.leanGain;
+    // (Tope suave: se acerca a leanMax sin quedarse pegada en el tope.)
+    let lt = MOTO.leanMax * Math.tanh((-Math.atan(ay / GRAVITY) * MOTO.leanGain) / MOTO.leanMax);
     const sa = Math.abs(vf);
     if (sa < MOTO.stopSpeed) lt += MOTO.stopLean * (1 - sa / MOTO.stopSpeed);
     const k = MOTO.leanRate;

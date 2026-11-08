@@ -4,19 +4,21 @@
 import { makeRng } from '../sim/rng.js';
 import { dist2D, forwardX, forwardZ, yawFromDir } from '../sim/math.js';
 import { groundHeight, onRoad } from '../sim/terrain.js';
-import { createVehicleState, stepVehicle, vehicleObb, exitPoint, emptyDriveInput } from '../sim/vehiclePhysics.js';
+import { createVehicleState, stepVehicle, vehicleObb, exitPoint, emptyDriveInput, standUpMoto } from '../sim/vehiclePhysics.js';
 import { RoadGraph, autopilot, lanePoint, obstacleAhead } from '../sim/roadNav.js';
 import { createPed, nearestBlock, stepPed, PED } from '../sim/pedAI.js';
 import { NAV_FRAME_MS, PedNav, buildPedGraph } from '../sim/pedNav.js';
 import { pointInPoly } from '../sim/geom2d.js';
 import { Group } from 'three';
 import { POLICE_AI, POLICE_MOTO, PoliceDispatch, assignRoles, canSee, pickSpawnNode, planOfficerSearch, planPatrol, policeMotoVariant } from '../sim/policeAI.js';
+import { stepSirena } from '../sim/sirena.js';
 import { VehicleView } from '../render/vehicleMesh.js';
 import { pickVariant, randomPaint } from '../sim/vehicleVariants.js';
 import { CharacterRig, randomLook } from '../render/characterRig.js';
 import { skipWhenHidden } from '../render/staticScene.js';
 import { walkStyle, walkSpeedScale, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
 import { Activities } from './activities.js';
+import { Riders } from './riders.js';
 
 let nextId = 1;
 
@@ -201,6 +203,8 @@ export class World {
     }
     // Vida cotidiana: ropa en los balcones, fumadores, dominó, picaditos...
     this.activities = new Activities(this);
+    // Los que van en moto se pueden herir y tumbar (game/riders.js).
+    this.riders = new Riders(this);
   }
 
   _indexBlocks() {
@@ -413,6 +417,7 @@ export class World {
     this._updateFixed(dt, px, pz);
     this.activities.update(dt, player);
     this._updateVehicles(dt, player);
+    this.riders.update(dt);
     this._updatePeds(dt, player);
   }
 
@@ -511,9 +516,10 @@ export class World {
         else v.honk = 0;
         // (Los cercanos también tumban postes y árboles: sim/destructibles.js.)
         stepVehicle(s, v.input, dt, far ? envFar : near(v));
-      } else if (Math.abs(s.forwardSpeed) > 0.05 || Math.abs(s.lateralSpeed) > 0.05 || s.wheelie) {
+      } else if (Math.abs(s.forwardSpeed) > 0.05 || Math.abs(s.lateralSpeed) > 0.05 || s.wheelie || (s.fallen && !s.fallSettled)) {
         // Estacionado / abandonado: sigue rodando hasta detenerse.
-        // (Una moto que quedó en caballito sigue hasta bajar la rueda.)
+        // (Una moto que quedó en caballito sigue hasta bajar la rueda; una
+        // que se quedó sin piloto, hasta quedar acostada en el piso.)
         idle.brake = Math.abs(s.forwardSpeed) > 0.3 ? 0.4 : 0;
         idle.handbrake = Math.abs(s.forwardSpeed) < 3;
         stepVehicle(s, idle, dt, near(v));
@@ -564,7 +570,8 @@ export class World {
     // peatones x 280 vehículos).
     const fast = (this._fastVehicles ??= []);
     fast.length = 0;
-    for (const v of this.vehicles) if (Math.abs(v.state.forwardSpeed) >= 3.5) fast.push(v);
+    // (La moto que se cae sin piloto no atropella: el que se cayó queda al lado.)
+    for (const v of this.vehicles) if (Math.abs(v.state.forwardSpeed) >= 3.5 && !v.state.fallen) fast.push(v);
     for (const p of this.peds) {
       const s = p.sim;
       const d = dist2D(s.x, s.z, player.x, player.z);
@@ -598,8 +605,10 @@ export class World {
             s.timer = 8 + this.rng.next() * 5;
           } else if (!p.act) s.speed = 0;
         }
-        if (d < 150 && !s.fixed) stepPed(s, dt, this.pedWorld);
-        if (s.mode === 'attack' && !player.dead && this.game.state === 'playing') this.game.combat.npcAttack(p, dt, player, d);
+        // (El que se cayó de la moto herido se queda en el piso un rato: game/riders.js.)
+        const down = p.downT > 0;
+        if (d < 150 && !s.fixed && !down) stepPed(s, dt, this.pedWorld);
+        if (s.mode === 'attack' && !down && !player.dead && this.game.state === 'playing') this.game.combat.npcAttack(p, dt, player, d);
         // Atropellos.
         for (const v of fast) {
           const vs = v.state;
@@ -638,8 +647,8 @@ export class World {
         st.speed = s.speed ?? 0;
         st.onGround = true;
         st.driving = s.sitting ? 'chair' : null;
-        st.aiming = (s.mode === 'attack' || !!p.war) && !!p.weapon && s.speed < 0.5;
-        st.dead = !p.alive;
+        st.aiming = (s.mode === 'attack' || !!p.war) && !!p.weapon && s.speed < 0.5 && !(p.downT > 0);
+        st.dead = !p.alive || p.downT > 0;
         st.aimPitch = 0;
         st.style = body.style;
         st.upper = body.upper;
@@ -810,7 +819,8 @@ export class World {
         continue;
       }
       if (u.leaving) {
-        if (u.state === 'pursuit' && !v.driver && s.health > 0 && !s.destroyed) this._remount(u);
+        if (u.state === 'pursuit' && !v.driver && s.health > 0 && !s.destroyed) this._backAboard(u);
+        if (u.eliminated) continue;
         v.chasing = false;
         v.nav = null;
         if (d > 200) this._removeUnit(u);
@@ -828,8 +838,12 @@ export class World {
       ctx.moto = u.kind === 'moto';
 
       if (u.state === 'pursuit') {
-        if (s.destroyed || s.health <= 0 || !v.agent) {
-          u.leaving = true; // patrulla inservible: la unidad se retira
+        if (s.destroyed || s.health <= 0) {
+          this._eliminate(u); // patrulla inservible: la unidad cae y no se repone
+          continue;
+        }
+        if (!v.agent) {
+          u.leaving = true;
           continue;
         }
         const prevMode = u.ai.mode;
@@ -837,6 +851,8 @@ export class World {
         v.chasing = true;
         v.siren = true;
         v.nav = plan;
+        u.planMode = plan.mode; // (para la sirena, abajo)
+        u.planCruise = plan.cruise;
         const playerSlow = !player.inVehicle || player.speed < 6;
         // Contacto: frenar y bajar a los agentes.
         if (seen && d < 22 && playerSlow) u.pendingDeploy = 'contact';
@@ -861,6 +877,25 @@ export class World {
         const doneSearching = u.deployReason === 'search' && !seen && u.deployT > POLICE_AI.footSearchTime;
         if (alive.length === 0 || escapingByCar || tooFar || doneSearching) this._recall(u, alive.length === 0 || escapingByCar);
       }
+    }
+    // Sirena (sim/sirena.js): suena solo mientras la unidad viene en camino o
+    // te persigue; llegando, buscando sin verte o retirándose, solo luces.
+    const si = (this._sirInfo ??= {});
+    for (const u of this.policeUnits) {
+      const s = u.vehicle.state;
+      si.id = u.id;
+      si.moto = u.kind === 'moto';
+      si.wanted = wanted.level > 0;
+      si.leaving = u.leaving;
+      si.state = u.state;
+      si.destroyed = s.destroyed || s.health <= 0;
+      si.pendingDeploy = u.pendingDeploy;
+      si.mode = u.planMode;
+      si.seen = seen;
+      si.dist = dist2D(s.x, s.z, player.x, player.z);
+      si.speed = s.forwardSpeed;
+      si.cruise = u.planCruise ?? 0;
+      stepSirena((u.sirena ??= {}), si, dt);
     }
     return { seen, nearest };
   }
@@ -897,13 +932,15 @@ export class World {
     v.kind = 'parked';
     v.agent = null;
     v.nav = null;
-    // Se bajan los mismos que iban montados (conductor y, en moto, parrillero).
-    const looks = [v.driverLook, u.pillion?.look];
+    // Se bajan los mismos que iban montados (u.crew: conductor y compañero o
+    // parrillero; si a uno lo mataron, se baja solo el que queda).
+    const looks = u.crew ?? [v.driverLook, u.pillion?.look];
+    u.crew = [];
     this._clearPillion(u);
     v.clearDriverRig();
     v.driver = null;
     const sideOff = u.kind === 'moto' ? POLICE_MOTO.deployOffset : 1.6;
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < looks.length; k++) {
       const side = k === 0 ? -1 : 1;
       const ox = s.x + Math.cos(s.heading) * side * sideOff;
       const oz = s.z - Math.sin(s.heading) * side * sideOff;
@@ -915,14 +952,19 @@ export class World {
     }
   }
 
-  /** Los agentes vuelven caminando a la patrulla (o de una, si hay afán). */
+  /**
+   * Los agentes vuelven caminando a la patrulla (o de una, si hay afán). Solo
+   * vuelven los vivos (u.crew); los muertos se quedan en el piso.
+   */
   _recall(u, now = false) {
     const car = u.vehicle.state;
     u.state = 'returning';
     u.returnT = 0;
+    u.crew ??= [];
     for (const o of u.officers) {
-      if (!o.alive) continue;
+      if (!o.alive || !this.peds.includes(o)) continue;
       if (now) {
+        u.crew.push(o.look);
         this.removePed(o);
         continue;
       }
@@ -932,38 +974,81 @@ export class World {
       o.sim.moveSpeed = PED.run * 0.7;
     }
     u.officers = u.officers.filter((o) => o.alive && this.peds.includes(o));
-    if (!u.officers.length) this._remount(u);
+    if (!u.officers.length) this._backAboard(u);
   }
 
   _updateReturning(u, dt) {
     const car = u.vehicle.state;
     u.returnT += dt;
+    u.crew ??= [];
     for (const o of [...u.officers]) {
-      if (!o.alive || !this.peds.includes(o) || dist2D(o.x, o.z, car.x, car.z) < 2.6 || u.returnT > 12) {
-        if (o.alive && this.peds.includes(o)) this.removePed(o);
+      const here = o.alive && this.peds.includes(o);
+      if (!here || dist2D(o.x, o.z, car.x, car.z) < 2.6 || u.returnT > 12) {
+        if (here) {
+          u.crew.push(o.look); // se montó
+          this.removePed(o);
+        }
         u.officers.splice(u.officers.indexOf(o), 1);
       }
     }
-    if (!u.officers.length) this._remount(u);
+    if (!u.officers.length) this._backAboard(u);
   }
 
-  /** La patrulla vuelve a rodar (buscando, o yéndose si ya no hay estrellas). */
+  /** Ya no queda nadie a pie: si volvió alguien, la patrulla sigue; si no, cayó la unidad. */
+  _backAboard(u) {
+    if (u.crew?.length) this._remount(u);
+    else this._eliminate(u);
+  }
+
+  /**
+   * La patrulla vuelve a rodar (buscando, o yéndose si ya no hay estrellas)
+   * con los mismos agentes que se montaron (u.crew): en moto, el primero
+   * maneja y el segundo, si lo hay, va de parrillero. Nunca gente nueva.
+   */
   _remount(u) {
     const v = u.vehicle;
     u.officers = [];
-    if (v.state.destroyed) {
-      u.leaving = true;
-      u.state = 'pursuit';
+    if (v.state.destroyed || !u.crew?.length) {
+      this._eliminate(u);
       return;
     }
     u.state = 'pursuit';
     u.ai = {};
     v.kind = 'police';
     v.driver = 'npc';
-    v.setDriverRig(randomLook(this.rng, 'police'));
-    if (u.kind === 'moto' && v.state.health > 0) this._seatPillion(u);
+    standUpMoto(v.state); // (si estaba tirada en el piso, la levantan)
+    v.setDriverRig(u.crew[0]);
+    if (u.kind === 'moto' && v.state.health > 0 && u.crew.length > 1) this._seatPillion(u, u.crew[1]);
     const n = this.graph.nearestNode(v.state.x, v.state.z);
     v.agent = { from: n.id, to: n.links[0].node, next: null };
+  }
+
+  /**
+   * Cayó toda la tripulación (o el vehículo quedó inservible): la unidad sale
+   * del caso y el despacho no la repone mientras no suban las estrellas
+   * (sim/policeAI.js DISPATCH.replaceEliminated). El vehículo queda
+   * abandonado donde está, sin nadie, con la sirena y las luces apagadas.
+   */
+  _eliminate(u) {
+    const v = u.vehicle;
+    this._clearPillion(u);
+    u.eliminated = true;
+    u.leaving = true;
+    u.officers = [];
+    u.crew = [];
+    if (v.driver === 'npc') {
+      v.clearDriverRig();
+      v.driver = null;
+    }
+    v.siren = false;
+    v.chasing = false;
+    v.nav = null;
+    v.agent = null;
+    if (v.driver !== 'player') v.kind = 'parked';
+    if (v.policeUnit === u) v.policeUnit = null;
+    const i = this.policeUnits.indexOf(u);
+    if (i >= 0) this.policeUnits.splice(i, 1);
+    this.policeDispatch?.eliminated();
   }
 
   /**
@@ -983,13 +1068,16 @@ export class World {
     const v = moto
       ? new VehicleEntity(this, 'moto', p.x, p.z, p.yaw, { kind: 'police', agent: { from: n.id, to, next: null }, cruise: 20, variant: policeMotoVariant() })
       : new VehicleEntity(this, 'policia', p.x, p.z, p.yaw, { kind: 'police', agent: { from: n.id, to, next: null }, cruise: 20 });
+    // Tripulación (u.crew): los dos agentes que van montados, el primero maneja.
+    const crew = [randomLook(this.rng, 'police'), randomLook(this.rng, 'police')];
     v.driver = 'npc';
-    v.setDriverRig(randomLook(this.rng, 'police'));
+    v.setDriverRig(crew[0]);
     v.chasing = true;
     v.siren = true;
     this.vehicles.push(v);
-    const unit = { id: this._unitId = (this._unitId ?? 0) + 1, kind: moto ? 'moto' : 'car', role: null, vehicle: v, officers: [], state: 'pursuit', leaving: false, ai: {}, sees: false };
-    if (moto) this._seatPillion(unit);
+    const unit = { id: this._unitId = (this._unitId ?? 0) + 1, kind: moto ? 'moto' : 'car', role: null, vehicle: v, officers: [], crew, state: 'pursuit', leaving: false, ai: {}, sees: false };
+    v.policeUnit = unit;
+    if (moto) this._seatPillion(unit, crew[1]);
     this.policeUnits.push(unit);
     return unit;
   }
@@ -1022,10 +1110,9 @@ export class World {
 
   // ------------------------------------------------- parrillero (motos)
   /** Sienta al parrillero detrás del conductor de la moto. */
-  _seatPillion(u) {
+  _seatPillion(u, look = randomLook(this.rng, 'police')) {
     this._clearPillion(u);
     const v = u.vehicle;
-    const look = randomLook(this.rng, 'police');
     const rig = new CharacterRig(look);
     // Un grupo propio con los puntos de apoyo del puesto de atrás (el
     // esqueleto lee los de la moto en root.parent.userData.ride): manos a
@@ -1080,6 +1167,8 @@ export class World {
     const s = u.vehicle.state;
     this._clearPillion(u);
     if (!pl) return;
+    const k = u.crew?.indexOf(pl.look) ?? -1;
+    if (k >= 0) u.crew.splice(k, 1); // (ya no va montado)
     const off = this.city.collision.resolveCircle(s.x + Math.cos(s.heading) * POLICE_MOTO.deployOffset, s.z - Math.sin(s.heading) * POLICE_MOTO.deployOffset, PED.radius);
     const o = this.spawnPedAt(off.x, off.z, { outfit: 'police', faction: 'police', weapon: 'pistol', health: 120, sim: { hostile: true }, look: pl.look });
     o.sim.mode = 'attack';
@@ -1119,7 +1208,7 @@ export class World {
       // Un tirador liviano para combat.npcAttack (la misma puntería y daño
       // que los agentes a pie), con el cañón un poco adelante del parrillero.
       const g = (pl.gun ??= {
-        x: 0, y: 0, z: 0, weapon: 'pistol', faction: 'police', mounted: true, fireCooldown: 0, sim: { yaw: 0 },
+        x: 0, y: 0, z: 0, weapon: 'pistol', faction: 'police', mounted: true, mountedOn: v, fireCooldown: 0, sim: { yaw: 0 },
         rig: { muzzleWorld: (out) => out.set(g.x + g.mx, g.y + 1.35, g.z + g.mz) },
         mx: 0, mz: 0,
       });

@@ -75,27 +75,36 @@ const PARTS = ['buildings', 'props', 'parkedVehicles', 'blocks', 'pois', 'collis
 // Sumas de la ciudad tal como salía antes de acelerar la generación (al
 // agregar locales o calles cambian edificios, lugares, utilería y colisión:
 // se actualizan aquí después de revisar que lo demás quedó igual).
+// 3.6: el asiento en la loma (sim/buildingBases.js) cambia edificios (fachadas
+// escalonadas en tramos, pisos al nivel del andén), utilería (escalas) y
+// colisión; manzanas, carros parqueados, lugares y metro siguen iguales.
+// 3.6: las discotecas, bares y la fonda de la 92 crecen y se puede entrar
+// (sim/interiors.js): cambian edificios (huellas nuevas, vecinos tumbados),
+// utilería (lo que quedaba debajo y frente a las puertas), lugares (la
+// puerta de los que se corrieron) y colisión (el cascarón hueco y lo de
+// adentro); manzanas, carros parqueados y metro siguen iguales. Mientras
+// INTERIORES_ACTIVOS sea false, las sumas son las del asiento en la loma solo.
 const EXPECTED = {
   4: {
-    all: '37210199913d68ed',
-    counts: [14890, 22464, 261],
-    buildings: 'c63011be8aa30fc5',
-    props: '7261b21b104bcadd',
+    all: 'b060dfff13442f42',
+    counts: [15691, 24153, 261],
+    buildings: 'd1af61aecbacfd81',
+    props: 'acc08d7c8cc0713b',
     parkedVehicles: '8f0b3d83691b3738',
     blocks: '7235efc8f8b15c92',
     pois: '330046757d22c82c',
-    collision: '0567fcd148eb9568',
+    collision: 'd9cf7836d6f6b02a',
     metro: '8ef5eeef08119bb0',
   },
   7: {
-    all: '6faa629f39629b9f',
-    counts: [14916, 22791, 256],
-    buildings: 'b7b683906d2d9592',
-    props: 'a73aaa5a1661aa9d',
+    all: 'c003924ac9177eeb',
+    counts: [15728, 24556, 256],
+    buildings: 'cdc44a0e8ab25299',
+    props: 'e96bf3eb80fc84df',
     parkedVehicles: '0f48bb75fb91742c',
     blocks: '7235efc8f8b15c92',
     pois: 'ef1c778461746adb',
-    collision: '9efe3ea53e791186',
+    collision: 'c511bd7bad100b73',
     metro: '8ef5eeef08119bb0',
   },
 };

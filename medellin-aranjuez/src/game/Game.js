@@ -7,7 +7,7 @@ import { groundHeight } from '../sim/terrain.js';
 import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
-import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES, CRASH, crashOtherDamage, crashOnDriver } from '../sim/vehiclePhysics.js';
+import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES, CRASH, crashOtherDamage, crashOnDriver, standUpMoto } from '../sim/vehiclePhysics.js';
 import { VEHICLE_VARIANTS, defaultVariant, isPoliceVehicle } from '../sim/vehicleVariants.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID, giveStartingKit } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
@@ -558,6 +558,7 @@ export class Game {
     } else if (s !== 'playing') this.setFade(0);
     this.audio.suspend(s === 'paused' || s === 'shop');
     if (s !== 'playing') this.audio.setEngine(false);
+    if (s !== 'playing' && s !== 'paused' && s !== 'shop') this.audio.callarSirenas();
     if (this.onStateChange) this.onStateChange(s);
   }
 
@@ -814,7 +815,10 @@ export class Game {
     this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
     this.wanted.update(dt, police.seen, { x: p.x, z: p.z });
-    this.audio.setSiren(this.wanted.level > 0 ? police.nearest : Infinity);
+    // Sirenas (las de las unidades que vienen en camino); dentro de un carro
+    // cerrado se oyen apagadas por la cabina.
+    const pv = p.inVehicle ? p.vehicle?.state : null;
+    this.audio.updateSirens(this.world.policeUnits, dt, !!pv && !pv.spec?.twoWheels && !pv.destroyed);
     this.audio.updateTraffic(this.world.vehicles, dt, p.vehicle);
     this._ambientAudio(dt);
     this.pickups.update(dt, p);
@@ -1270,6 +1274,7 @@ export class Game {
     }
     if (isPoliceVehicle(v.type, v.state.variant) && this.wanted.level < 1) this.wanted.report('carjack', p);
     v.driver = 'player';
+    standUpMoto(v.state); // (una moto tirada en el piso: la levanta al montarse)
     v.kind = 'player';
     v.agent = null;
     v.siren = false;

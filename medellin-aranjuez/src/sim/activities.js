@@ -40,7 +40,7 @@ export function activitySpots(city, { isFree = () => true, layoutOf = facadeLayo
     const b = buildings[bi];
     const L = layoutOf(b, bi);
     if (!L) continue;
-    const rng = makeRng(0xac71 + bi * 131);
+    const rng = makeRng(0xac71 + (b.fi ?? bi) * 131); // (fi: índice de antes de que un local tumbara vecinos)
     const f = L.face;
     const yaw = yawFromDir(f.nx, f.nz); // mirando a la calle
     const gy = b.groundY ?? 0;

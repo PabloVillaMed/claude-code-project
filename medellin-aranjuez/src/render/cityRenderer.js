@@ -19,6 +19,7 @@ import { buildRoof, roofParapet } from './roofs.js';
 import { buildMetro } from './metro.js';
 import { applyGroundLights } from './groundLights.js';
 import { wireLines } from './wires.js';
+import { addBuildingBase, roomCuts } from './baseBuilder.js';
 
 const FACADE_M = 12; // metros que cubre una textura de fachada
 
@@ -43,6 +44,8 @@ export class CityRenderer {
       for (const m of [...M.brick, ...M.stucco, ...M.mural, M.tower, M.plain, M.glossy, M.white, M.wood, M.stone]) if (m) applyGroundLights(m, { walls: true });
     }
     this.facades = new FacadeBuilder(this);
+    // Huecos bajo los cuartos de los locales (patio y terreno excavados).
+    this.cuts = roomCuts(city, 4);
     this._terrain();
     this._backdrop();
     this._roads();
@@ -188,7 +191,9 @@ export class CityRenderer {
       const dry = (1 - n) * 0.35;
       return [k * (0.64 + dry * 0.4) * (1 - u) + 0.3 * u, k * (0.84 - dry * 0.1) * (1 - u) + 0.28 * u, k * (0.5 + dry * 0.1) * (1 - u) + 0.28 * u];
     };
-    g.heightGrid(x0, z0, x1, z1, step, terrainHeight, 8, col, null, tint);
+    const cuts = this.cuts;
+    const h = cuts?.count ? (x, z) => cuts.clamp(x, z, terrainHeight(x, z)) : terrainHeight;
+    g.heightGrid(x0, z0, x1, z1, step, h, 8, col, null, tint);
     this._mesh(g.build(), this.materials.terrain, { cast: false, name: 'terreno' });
   }
 
@@ -440,12 +445,16 @@ export class CityRenderer {
       drapePolygon(walk(b.cx, b.cz), b.curb, hf, { step: 5, simplify: 0.25, uv: (x, z) => [x / 4, -z / 4], ...adapt }, b.lots);
       const lotArea = b.lots.reduce((acc, l) => acc + Math.abs(polyArea(l)), 0);
       const coverage = (built.get(b.id) ?? 0) / Math.max(1, lotArea);
-      for (const l of b.lots) {
+      for (let li = 0; li < b.lots.length; li++) {
+        const l = b.lots[li];
         const [cx, cz] = l[Math.floor(l.length / 2)];
+        // Huecos bajo los cuartos de los locales (sin simplificar el contorno: no los corta).
+        const holes = this.cuts?.holes.get(`${b.id}:${li}`) ?? [];
+        const simp = holes.length ? 0 : 0.4;
         // Colegios, salud y parques: lo que no es edificio es prado aunque la manzana esté construida.
         const isGreen = coverage < 0.35 || greenAreas.some((a) => (a.block === b || a.block === b.id || ['colegio', 'salud', 'parque'].includes(a.kind)) && pointInPoly(cx, cz, a.poly));
-        if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 10, -z / 10], ...adapt });
-        else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: 0.4, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74], ...adapt });
+        if (isGreen) drapePolygon(green(b.cx, b.cz), l, hLot, { step: 8, simplify: simp, uv: (x, z) => [x / 10, -z / 10], ...adapt }, holes);
+        else drapePolygon(lots(b.cx, b.cz), l, hLot, { step: 8, simplify: simp, uv: (x, z) => [x / 3, -z / 3], color: [0.8, 0.78, 0.74], ...adapt }, holes);
       }
     }
     walk.build(this.materials.sidewalk, { cast: false, name: 'andenes' });
@@ -577,7 +586,7 @@ export class CityRenderer {
 
     for (let bi = 0; bi < this.city.buildings.length; bi++) {
       const b = this.city.buildings[bi];
-      const { groundY, topY, baseY } = b;
+      const { groundY, topY } = b;
       // Casas del barrio: fachada modelada (facadeBuilder); el resto, caja texturizada.
       const layout = facadeLayout(b, bi);
       let matKey;
@@ -613,13 +622,13 @@ export class CityRenderer {
       const parapet = roofParapet(b);
       for (const side of ['S', 'N', 'W', 'E']) {
         const f = faceFrame(b, side);
-        // Cimiento visible en la ladera: el mismo ladrillo o pañete de la casa,
-        // más oscuro y sucio (antes era concreto casi blanco y la casa parecía
-        // montada sobre una base) + fachada.
-        if (groundY - baseY > 0.05) g.wall(f.x0, f.z0, f.nx, f.nz, f.len, baseY, groundY, uvScale, color.map((c) => c * 0.62), uOff, groundY);
         if (!layout) g.wall(f.x0, f.z0, f.nx, f.nz, f.len, groundY, topY + parapet, uvScale, color, uOff, groundY);
       }
       if (layout) this.facades.add(b, layout, parapet);
+      // Lo que queda a la vista entre el terreno y el primer piso: zócalo o
+      // muro de contención (baseBuilder.js), nunca la textura de la fachada.
+      const chunk = this.facades._chunkOf(b);
+      addBuildingBase((key) => this.facades._g(chunk, key), b, layout, bi);
       // Murales en culatas de algunas casas (arte urbano, como en Moravia).
       if (b.style !== 'torre' && !isWall && !b.interior && rng.chance(b.informal ? 0.08 : 0.04) && topY - groundY > 5) murals.push(b);
       buildRoof(b, get, rng, out);

@@ -322,10 +322,31 @@ export function midPlaneProxy(root, margin = 1e-3) {
 }
 
 /**
+ * Por dónde pasa la pierna al montarse en la moto (ajustable): sobre la parte
+ * de atrás del sillín, por detrás de la nalga: `back` m detrás del punto del asiento, pero `wallGap`
+ * m delante de lo primero que sobresalga más de `wallH` m del sillín (baúl,
+ * parrilla alta, caja de domicilios) y nunca a menos de `min` m. Se mide lo
+ * más alto de la moto en una franja de ±halfW m del eje alrededor de ese z
+ * (de `before` m antes a `after` m después: el largo del pie).
+ */
+export const MOTO_PASS = { back: 0.25, min: 0.12, wallH: 0.12, wallGap: 0.14, halfW: 0.2, before: 0.12, after: 0.1 };
+
+/** Paso de la pierna (MOTO_PASS) con el perfil `top(z)` (lo más alto de la moto en el eje, o -Infinity) y el inicio del obstáculo `wallZ`. */
+function motoPass(seatZ, seatY, top, wallZ = Infinity) {
+  const P = MOTO_PASS;
+  const z = Math.max(seatZ + P.min, Math.min(seatZ + P.back, wallZ - P.wallGap));
+  let y = seatY;
+  for (let q = z - P.before; q <= z + P.after + 1e-6; q += 0.02) y = Math.max(y, top(q));
+  return { z, y };
+}
+
+/**
  * Puntos de manejo de la moto medidos en el modelo ya escalado (espacio del
  * vehículo, frente en -Z): superficie del asiento, puños del manubrio (los
- * extremos del manubrio, por debajo de los espejos) y estriberas del piloto.
- * El personaje (characterRig) pone ahí cadera, manos y pies.
+ * extremos del manubrio, por debajo de los espejos), estriberas del piloto y
+ * por dónde pasa la pierna al montarse (`pass`: {z, y} del punto más alto de
+ * la moto que debe librar el pie). El personaje (characterRig) pone ahí
+ * cadera, manos y pies.
  */
 function motoRidePoints(body, seat, box, cfg = {}) {
   const h = hit(body, _v.set(0, box.max.y + 1, seat.z), new THREE.Vector3(0, -1, 0));
@@ -333,6 +354,9 @@ function motoRidePoints(body, seat, box, cfg = {}) {
   const p = new THREE.Vector3();
   const grip = [null, null];
   const peg = [null, null];
+  // Perfil del eje (lo más alto por franjas de 2 cm) detrás del asiento.
+  const prof = new Float32Array(50).fill(-Infinity);
+  const bin = (z) => Math.floor((z - seat.z + 0.2) / 0.02);
   body.updateMatrixWorld(true);
   body.traverse((o) => {
     if (!o.isMesh) return;
@@ -344,12 +368,31 @@ function motoRidePoints(body, seat, box, cfg = {}) {
       if (p.z < seat.z - 0.3 && p.z > seat.z - 0.9 && p.y > seatY && p.y < seatY + (cfg.gripTop ?? 0.22) && (!grip[s] || Math.abs(p.x) > Math.abs(grip[s].x))) grip[s] = p.clone();
       // Estriberas: lo más ancho a baja altura, cerca de la vertical del asiento.
       if (Math.abs(p.z - seat.z) < 0.3 && p.y > 0.2 && p.y < 0.42 && (!peg[s] || Math.abs(p.x) > Math.abs(peg[s].x))) peg[s] = p.clone();
+      if (Math.abs(p.x) < MOTO_PASS.halfW) {
+        const b = bin(p.z);
+        if (b >= 0 && b < prof.length && p.y > prof[b]) prof[b] = p.y;
+      }
     }
   });
   const inset = (v, d, fallback) => (v ? { x: v.x - Math.sign(v.x) * d, y: v.y, z: v.z } : fallback);
+  const top = (z) => {
+    const b = bin(z);
+    return b >= 0 && b < prof.length ? prof[b] : -Infinity;
+  };
+  // Lo primero que sobresale del sillín hacia atrás (baúl, parrilla alta).
+  let wallZ = Infinity;
+  for (let z = seat.z + 0.1; z < seat.z + 0.78; z += 0.02) {
+    if (top(z) > seatY + MOTO_PASS.wallH) {
+      wallZ = z;
+      break;
+    }
+  }
   return {
     seatY,
     seatZ: seat.z,
+    pass: motoPass(seat.z, seatY, top, wallZ),
+    // (Para recalcular el paso con algo agregado después, como la caja de domicilios.)
+    profile: top,
     // El puño ocupa los últimos ~12 cm del manubrio: la mano va en su centro.
     grips: [inset(grip[0], 0.07, { x: -0.34, y: 1.07, z: -0.32 }), inset(grip[1], 0.07, { x: 0.34, y: 1.07, z: -0.32 })],
     // Scooter: los pies van en el piso (cfg.feet), no en estriberas.
@@ -683,7 +726,7 @@ export class VehicleView {
 
   /**
    * Caja térmica de domicilios en la parrilla, detrás del conductor: un color
-   * de plataforma, tapa y franja reflectiva, sin logos.
+   * de plataforma, tapa y franja reflectiva, sin logos. Devuelve el z de su frente.
    */
   _deliveryBox(tpl, opts) {
     const color = opts.boxColor ?? BOX_COLORS[Math.floor(Math.random() * BOX_COLORS.length)];
@@ -702,6 +745,7 @@ export class VehicleView {
     g.position.set(0, tpl.ride.seatY - 0.02, Math.min(tpl.box.max.z - 0.24, tpl.seat.z + 0.5));
     g.traverse((o) => o.isMesh && ((o.castShadow = true), (o.receiveShadow = true)));
     this.chassis.add(g);
+    return g.position.z - 0.22; // z del frente de la caja (para el paso de la pierna)
   }
 
   /**
@@ -835,11 +879,13 @@ export class VehicleView {
         this.chassis.add(tl);
       }
     }
-    if (VEHICLE_VARIANTS[this.variant]?.box && tpl.ride) this._deliveryBox(tpl, opts);
+    const boxFront = VEHICLE_VARIANTS[this.variant]?.box && tpl.ride ? this._deliveryBox(tpl, opts) : null;
     if (tpl.police) this._policeMoto(tpl);
     this.seat = { ...tpl.seat };
     // Para el personaje que la maneja (characterRig lee group.userData.ride).
     if (tpl.ride) this.group.userData.ride = { ...tpl.ride, speed: 0 };
+    // Con caja de domicilios la pierna pasa delante de la caja.
+    if (boxFront != null) this.group.userData.ride.pass = motoPass(tpl.seat.z, tpl.ride.seatY, tpl.ride.profile, boxFront);
   }
 
   _lights(width, L, frontY, rearY) {

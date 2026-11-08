@@ -7,6 +7,7 @@ import { computeDamage, WEAPON_BY_ID } from '../sim/weapons.js';
 import { ANIMAL_HITBOX } from '../sim/animals.js';
 import { groundHeight } from '../sim/terrain.js';
 import { dist2D, forwardX, forwardZ, yawFromDir } from '../sim/math.js';
+import { newTarget } from './riders.js';
 
 const v3 = new THREE.Vector3();
 
@@ -55,21 +56,24 @@ export class Combat {
     const characters = sc.characters;
     characters.length = 0;
     for (const p of g.world.peds) {
-      const c = (sc.cPool[characters.length] ??= { ref: null, x: 0, y: 0, z: 0, dead: false });
+      const c = (sc.cPool[characters.length] ??= newTarget());
       c.ref = p;
       c.x = p.x;
       c.y = p.y;
       c.z = p.z;
-      c.dead = !p.alive;
+      // (El que se cayó de la moto herido está en el piso: game/riders.js.)
+      c.dead = !p.alive || p.downT > 0;
+      c.rider = false;
       characters.push(c);
     }
     if (!g.player.inVehicle && !g.player.dead) {
-      const c = (sc.cPool[characters.length] ??= { ref: null, x: 0, y: 0, z: 0, dead: false });
+      const c = (sc.cPool[characters.length] ??= newTarget());
       c.ref = g.player;
       c.x = g.player.x;
       c.y = g.player.y;
       c.z = g.player.z;
       c.dead = false;
+      c.rider = false;
       characters.push(c);
     }
     const vehicles = sc.vehicles;
@@ -79,8 +83,12 @@ export class Combat {
       o.ref = v;
       o.obb = v.obbNow();
       o.y = v.state.y;
-      o.height = v.state.spec.height;
+      // La caja de una moto llega al asiento: lo de arriba es del que va montado.
+      o.height = v.type === 'moto' ? Math.min(v.state.spec.height, v.view.group.userData.ride?.seatY ?? v.state.spec.height) : v.state.spec.height;
       vehicles.push(o);
+      // Los que van en moto (piloto y parrillero) también son blancos (game/riders.js);
+      // no los de la moto desde la que se dispara.
+      if (v.type === 'moto' && !ignore?.has(v)) g.world.riders.targets(v, characters, sc.cPool);
     }
     // Los animales van tal cual (la lista de sim/animals.js, sin copiar nada).
     sc.animals = g.animals?.list;
@@ -174,6 +182,7 @@ export class Combat {
       this.hitAnimal(hit.ref, dmg, attacker, from, pos, hit.normal);
     } else if (hit.kind === 'character') {
       if (hit.ref === g.player) this.damagePlayer(dmg, from);
+      else if (hit.ref.rider) g.world.riders.hit(hit.ref, dmg, attacker, from, hit.headshot);
       else this.damagePed(hit.ref, dmg, attacker, from, hit.headshot);
       g.effects.impact(pos, hit.normal, 'blood');
     } else if (hit.kind === 'vehicle') {
@@ -216,7 +225,14 @@ export class Combat {
       }
       // Un animal a la mano (patada o machetazo), si está más cerca que la persona.
       const an = g.animals?.meleeTarget(ax, az, fx, fz, w.range);
-      if (an && (!best || an.d < bd)) {
+      // El que va montado en una moto parada al lado (game/riders.js).
+      const rd = g.world.riders?.meleeTarget(ax, az, fx, fz, w.range);
+      if (rd && (!best || rd.d < bd) && (!an || rd.d < an.d)) {
+        const at = { x: ax + fx * rd.d, y: attacker.y + 1.3, z: az + fz * rd.d };
+        g.world.riders.hit(rd.h, w.damage, 'player', { x: ax, y: attacker.y + 1.2, z: az }, false, 'melee');
+        g.effects.impact(at, { x: fx, y: 0, z: fz }, 'blood');
+        g.audio.hit(at, true);
+      } else if (an && (!best || an.d < bd)) {
         const a = an.a;
         this.hitAnimal(a, w.damage, 'player', { x: ax, z: az }, { x: a.x, y: a.y + ANIMAL_HITBOX[a.kind].h * 0.6 * a.scale, z: a.z }, { x: -fx, y: 0.3, z: -fz }, 'melee');
         g.audio.hit({ x: a.x, y: a.y, z: a.z }, true);
@@ -314,7 +330,8 @@ export class Combat {
     const d = deviate(base, (Math.random() - 0.5) * 2 * sigma, (Math.random() - 0.5) * 2 * sigma);
     const muzzle = ped.rig.muzzleWorld(v3).clone();
     const g = this.game;
-    const scene = this._scene(new Set([ped]));
+    // (El parrillero no le pega a su propia moto ni a su conductor.)
+    const scene = this._scene(ped.mountedOn ? new Set([ped, ped.mountedOn]) : new Set([ped]));
     if (player.inVehicle) {
       // Disparar al vehículo del jugador (y, a veces, al conductor).
       const v = player.vehicle;
@@ -385,6 +402,7 @@ export class Combat {
       if (d < R) this.damagePed(p, 180 * (1 - d / R), source?.lastHitBy ?? 'vehicle', pos);
     }
     g.animals?.blast(pos.x, pos.z, R, 180, (source?.lastHitBy ?? 'vehicle') === 'player');
+    g.world.riders?.blast(pos, R, 180, source?.lastHitBy ?? 'vehicle');
     const pd = Math.hypot(g.player.x - pos.x, g.player.z - pos.z);
     if (pd < R) this.damagePlayer(140 * (1 - pd / R), pos);
     for (const v of g.world.vehicles) {

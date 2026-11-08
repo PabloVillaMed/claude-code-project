@@ -51,6 +51,27 @@ export class NightLights {
   }
 
   /**
+   * Presta las últimas `n` luces del grupo (game/interiors.js las pone dentro
+   * de un local mientras el jugador está adentro: el número de luces no
+   * cambia, nada que recompilar). Devuelve las luces prestadas; n = 0 las
+   * devuelve (quedan apagadas y los faroles las vuelven a tomar).
+   */
+  lend(n) {
+    n = Math.max(0, Math.min(n, this.count));
+    if (n === (this.lent ?? 0)) return this.lights.slice(this.count - n);
+    this.lent = n;
+    for (let k = 0; k < this.count; k++) {
+      if (k < this.count - n) continue;
+      this.assign[k] = -1;
+      this.lights[k].userData.level = 0;
+      this.lights[k].intensity = 0;
+    }
+    if (!n) for (const l of this.lights) l.color.set(0xffc68a);
+    this.timer = 0;
+    return this.lights.slice(this.count - n);
+  }
+
+  /**
    * Enciende/apaga el grupo. Las luces siguen visibles (los mismos programas
    * de día y de noche): apagadas solo quedan con intensidad 0.
    */
@@ -75,17 +96,18 @@ export class NightLights {
     if (!this.on) return;
     // Reasignar los faroles más cercanos cada 0.3 s (conservando los que siguen cerca).
     this.timer -= dt;
-    if (this.timer <= 0 && this.count) {
+    const own = this.count - (this.lent ?? 0); // (las prestadas no se reasignan)
+    if (this.timer <= 0 && own > 0) {
       this.timer = 0.3;
       const heads = this.heads;
       // (Los faroles tumbados, `off`, quedan al final: no se eligen.)
       const d2 = heads.map((h, i) => [h.off ? Infinity : (h.x - camPos.x) ** 2 + (h.z - camPos.z) ** 2, i]);
       d2.sort((a, b) => a[0] - b[0]);
-      const want = new Set(d2.slice(0, this.count).map((e) => e[1]));
+      const want = new Set(d2.slice(0, own).map((e) => e[1]));
       const keep = new Set();
-      for (let k = 0; k < this.count; k++) if (want.has(this.assign[k])) keep.add(this.assign[k]);
+      for (let k = 0; k < own; k++) if (want.has(this.assign[k])) keep.add(this.assign[k]);
       const free = [...want].filter((i) => !keep.has(i));
-      for (let k = 0; k < this.count; k++) {
+      for (let k = 0; k < own; k++) {
         if (keep.has(this.assign[k])) continue;
         const idx = free.pop();
         this.assign[k] = idx ?? -1;
@@ -96,7 +118,7 @@ export class NightLights {
         }
       }
     }
-    for (let k = 0; k < this.count; k++) {
+    for (let k = 0; k < own; k++) {
       const l = this.lights[k];
       const target = this.assign[k] >= 0 ? 1 : 0;
       // Farol tumbado: se apaga de una (sin desvanecerse).

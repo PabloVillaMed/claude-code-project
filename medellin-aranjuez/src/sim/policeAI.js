@@ -43,6 +43,14 @@ export const DISPATCH = {
   // Papel de cada unidad por orden de llegada: persiguen ('chase'), cortan el
   // paso más adelante ('cut') o barren la zona de búsqueda ('sweep').
   roles: ['chase', 'cut', 'sweep', 'chase', 'cut'],
+  // Unidades ELIMINADAS (murió toda la tripulación o el vehículo quedó
+  // inservible): con replaceEliminated en false no se reponen mientras las
+  // estrellas no suban; los refuerzos nuevos solo llegan al subir de nivel
+  // (v3.5 las reponía al rato y parecía que los muertos volvían).
+  replaceEliminated: false,
+  // s: con replaceEliminated en false, cada tanto se recupera un cupo perdido
+  // aunque no suban las estrellas (0 = nunca: solo al subir de nivel).
+  eliminatedCooldown: 0,
 };
 
 // Motos de la Policía Metropolitana del Valle de Aburrá (Honda XRE 300 de
@@ -225,13 +233,24 @@ export function planPatrol(ai, car, agent, ctx) {
  * DISPATCH.firstDelay s de subir las estrellas y los demás cada
  * DISPATCH.interval s, hasta el tope del nivel (MAX_UNITS). Si cae una unidad,
  * la siguiente tarda un intervalo entero. Al bajar las estrellas, sobran
- * unidades y se retiran de a una.
+ * unidades y se retiran de a una. Una unidad eliminada (eliminated()) deja su
+ * cupo perdido: no se repone hasta que suban las estrellas
+ * (DISPATCH.replaceEliminated, DISPATCH.eliminatedCooldown).
  */
 export class PoliceDispatch {
   constructor() {
     this.level = 0;
     this.timer = 0; // s hasta el próximo refuerzo
     this.retireT = 0;
+    this.lost = 0; // cupos de unidades eliminadas en este nivel
+    this.lostT = 0;
+  }
+
+  /** Cayó toda una unidad (tripulación muerta o vehículo inservible). */
+  eliminated() {
+    if (DISPATCH.replaceEliminated) return;
+    this.lost++;
+    this.lostT = 0;
   }
 
   /**
@@ -244,12 +263,21 @@ export class PoliceDispatch {
       this.level = 0;
       this.timer = 0;
       this.retireT = 0;
+      this.lost = 0;
       return null;
     }
     const max = MAX_UNITS[level] ?? 0;
-    // Suben las estrellas: la radio despacha pronto (pero no al instante).
-    if (level > this.level) this.timer = Math.min(this.timer > 0 ? this.timer : Infinity, DISPATCH.firstDelay[level] ?? 0);
+    // Suben las estrellas: la radio despacha pronto (pero no al instante) y
+    // vuelve a haber cupo para las unidades que habían caído.
+    if (level > this.level) {
+      this.timer = Math.min(this.timer > 0 ? this.timer : Infinity, DISPATCH.firstDelay[level] ?? 0);
+      this.lost = 0;
+    }
     this.level = level;
+    if (this.lost > 0 && DISPATCH.eliminatedCooldown > 0 && (this.lostT += dt) >= DISPATCH.eliminatedCooldown) {
+      this.lost--;
+      this.lostT = 0;
+    }
     const n = active.length;
     if (n > max) {
       this.retireT -= dt;
@@ -258,7 +286,8 @@ export class PoliceDispatch {
       return 'retire';
     }
     this.retireT = 0;
-    if (n === max) {
+    // (Los cupos perdidos no hacen retirar a nadie: solo no se reponen.)
+    if (n >= max - this.lost) {
       this.timer = Math.max(this.timer, DISPATCH.interval[level] ?? 0);
       return null;
     }

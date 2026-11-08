@@ -289,7 +289,11 @@ export function onBlock(x, z) {
 // Plataformas, escaleras, rampas y puentes peatonales (p. ej. la estación del
 // metro). Cada una: {minX, maxX, minZ, maxZ, over, height(x, z) → y | null}.
 // `over` = se puede pasar por debajo (puentes): solo cuenta si se viene de arriba.
+// `room` = un interior (sim/interiors.js): donde responde, manda sobre el
+// terreno aunque quede más abajo (sótanos, la loma bajo el piso del local);
+// su height(x, z, y) recibe la altura de los pies para escoger el nivel.
 const WALKABLES = [];
+let roomHit = false;
 
 export function addWalkable(w) {
   WALKABLES.push(w);
@@ -306,8 +310,12 @@ export function walkableHeight(x, z, y = null) {
   for (const w of WALKABLES) {
     if (x < w.minX || x > w.maxX || z < w.minZ || z > w.maxZ) continue;
     if (w.over && y === null) continue;
-    const h = w.height(x, z);
+    const h = w.height(x, z, y);
     if (h === null) continue;
+    if (w.room) {
+      roomHit = true;
+      return h;
+    }
     if (y !== null && h > y + 0.7) continue; // no se sube de un salto a un puente
     if (best === null || h > best) best = h;
   }
@@ -321,6 +329,7 @@ export function walkableHeight(x, z, y = null) {
 export function groundHeight(x, z, y = null) {
   const g = terrainHeight(x, z) + (onRoad(x, z) ? 0 : GRID.curb);
   if (!WALKABLES.length) return g;
+  roomHit = false;
   const w = walkableHeight(x, z, y);
-  return w !== null && w > g ? w : g;
+  return w !== null && (w > g || roomHit) ? w : g;
 }

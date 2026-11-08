@@ -6,7 +6,7 @@
 // incluidas), lugares especiales, andenes con su utilería y la vida de barrio.
 
 import { makeRng } from './rng.js';
-import { MAPA, GRID, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, clearWalkables, insideMap, onRoad as onRoadCheck, roadAt, terrainHeight } from './terrain.js';
+import { MAPA, GRID, MAP_MAX_X, MAP_MAX_Z, MAP_MIN_X, MAP_MIN_Z, addWalkable, clearWalkables, insideMap, onRoad as onRoadCheck, roadAt, terrainHeight } from './terrain.js';
 import { CollisionWorld, obbBounds, obbFromAxis } from './collision.js';
 import { buildMetroStation } from './metroStation.js';
 import {
@@ -26,6 +26,8 @@ import {
   polyPerimeter,
 } from './geom2d.js';
 import { LOCALES } from './facades.js';
+import { seatBuildings } from './buildingBases.js';
+import { INTERIORES_ACTIVOS, PLANES, ampliarLocal, aplicarHuella, armarInterior, caminableInteriores, colisionesInterior } from './interiors.js';
 
 const FLOOR_H = 3;
 export const PED_RADIUS = 0.35;
@@ -108,10 +110,25 @@ export function generateCity(seed = 4) {
   addPowerLines(ctx);
   placeServices(ctx);
   placeLocales(ctx);
+  // Cada edificación con su entrada al nivel del andén (fachadas escalonadas
+  // y escalas donde la loma lo pide): ver buildingBases.js.
+  seatBuildings(city);
+
+  // Interiores accesibles (sim/interiors.js): el local queda hueco, con su
+  // propia colisión y su piso caminable (una sola estructura para todos).
+  city.interiors = city.buildings.filter((b) => b.local?.access && PLANES[b.local.id]).map((b) => armarInterior(b, b.local, PLANES[b.local.id]));
+  if (city.interiors.length) addWalkable(caminableInteriores(city.interiors));
 
   // Colisiones de edificios y estructuras sólidas.
   for (const b of city.buildings) {
-    if (b.collide === false) continue;
+    if (b.collide === false || b.gone) continue;
+    if (b.local?.access) {
+      const r = city.interiors.find((q) => q.id === b.local.id);
+      const c = colisionesInterior(r);
+      for (const box of c.boxes) city.collision.add(box);
+      r.doorBox = city.collision.add(c.door);
+      continue;
+    }
     const f = b.frame;
     city.collision.add({ obb: obbFromAxis(f.x, f.z, f.ux, f.uz, f.hu, f.hv), minY: b.baseY, maxY: b.topY + (b.tower ? 6 : 0), kind: 'building' });
   }
@@ -123,6 +140,7 @@ export function generateCity(seed = 4) {
   addStreetLife(city, makeRng(seed + 777));
   // Nada de motos parqueadas sobre la estación del metro ni metidas en un edificio.
   city.parkedVehicles = city.parkedVehicles.filter((v) => !city.inStation(v.x, v.z) && !city.collision.pointBlocked(v.x, v.z));
+  quitarTumbados(city);
   return city;
 }
 
@@ -446,20 +464,6 @@ function exclusions(city) {
 }
 
 // ------------------------------------------------------------------ casas
-/**
- * Cuánto se puede meter en la ladera la parte de atrás de una casa (m). En
- * las calles comerciales, poco: los locales muestran su interior y el patio
- * del lote (que sigue el terreno) no debe asomar adentro.
- */
-const BURY = 1.6;
-const BURY_SHOP = 0.45;
-
-/** ¿La fachada principal da a la 92, la 51 o Carabobo? */
-function frontsCommercial(frame) {
-  const r = roadAt(frame.x + frame.nx * (frame.hv + GRID.sidewalk + 1.5), frame.z + frame.nz * (frame.hv + GRID.sidewalk + 1.5), 1);
-  return !!r && COMMERCIAL_STREETS.has(MAPA.edges[r.edge].name);
-}
-
 /** Altura del terreno en la fachada principal (sus dos esquinas y el centro). */
 function frontHeight(frame) {
   const { x, z, nx, nz, ux, uz, hu, hv } = frame;
@@ -482,11 +486,10 @@ function addBuilding(ctx, frame, b) {
   const fh = footprintHeights(frame);
   const floors = b.floors ?? 2;
   const baseY = fh.min - 0.6;
-  // El primer piso va al nivel del andén de la fachada: en la ladera la parte
-  // de atrás se mete en el terreno (hasta BURY m) en vez de levantar la casa
-  // entera sobre un cimiento alto (se veía elevada 1-2 m sobre una base clara).
-  const bury = b.style === 'tienda' || frontsCommercial(frame) ? BURY_SHOP : BURY;
-  const floorAt = b.topY === undefined && (b.front ?? 'S') === 'S' ? Math.max(frontHeight(frame), fh.max - bury) : fh.max;
+  // Piso provisional al nivel del frente: seatBuildings (buildingBases.js) lo
+  // pone al final a la altura del andén de las entradas, ya con el estilo
+  // definitivo (los locales se escogen después) y las fachadas escalonadas.
+  const floorAt = b.topY === undefined && (b.front ?? 'S') === 'S' ? frontHeight(frame) : fh.max;
   const groundY = floorAt + GRID.curb;
   const topY = b.topY ?? groundY + (b.height ?? floors * FLOOR_H);
   const bb = frameBounds(frame);
@@ -1579,7 +1582,7 @@ function placeLocales(ctx) {
     let best = null;
     let bd = 60;
     for (const b of city.buildings) {
-      if (b.interior || b.shop || b.local || !['ladrillo', 'pintada', 'tienda'].includes(b.style) || b.floors > 5 || b.frame.hu < 2.4) continue;
+      if (b.gone || b.interior || b.shop || b.local || !['ladrillo', 'pintada', 'tienda'].includes(b.style) || b.floors > 5 || b.frame.hu < 2.4) continue;
       const f = b.frame;
       const d = Math.hypot(f.x + f.nx * f.hv - tx, f.z + f.nz * f.hv - tz);
       if (d < bd && fronts(b, L.street)) {
@@ -1596,8 +1599,24 @@ function placeLocales(ctx) {
       continue;
     }
     if (L.musica) {
-      // Discotecas y bares: sin tienda (no se entra); el lugar marca la puerta.
-      city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'discoteca', musica: L.musica, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
+      // Discotecas y bares: se entra (sim/interiors.js). La huella crece a lo
+      // que pide su plan (tumbando vecinos de la misma manzana) y el lugar
+      // marca la puerta, en el centro del frente nuevo.
+      const plan = INTERIORES_ACTIVOS ? PLANES[L.id] : null; // (apagado mientras falte el interior)
+      if (plan) {
+        best.local.id = L.id;
+        const a = ampliarLocal(city, best, plan);
+        for (const o of a.removed) o.gone = true;
+        if (a.props.length) {
+          const gone = new Set(a.props);
+          let w = 0;
+          for (const p of city.props) if (!gone.has(p)) city.props[w++] = p;
+          city.props.length = w;
+        }
+        aplicarHuella(best, a.frame, plan);
+      }
+      const g = best.frame;
+      city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'discoteca', musica: L.musica, ...sidewalkNear(city, g.x + g.nx * (g.hv + 1), g.z + g.nz * (g.hv + 1)) });
       continue;
     }
     if (!L.menu) continue;
@@ -1610,6 +1629,24 @@ function placeLocales(ctx) {
       addProp(ctx, { type: 'chair', x, z, rot: Math.atan2(f.nx, f.nz), color: '#f4f4f0', collider: { hx: 0.24, hz: 0.24, maxY: terrainHeight(x, z) + GRID.curb + 0.9 }, owner: L.id });
     }
   }
+}
+
+/**
+ * Quita los edificios tumbados (`gone`: los vecinos que ocupa un local que
+ * crece, sim/interiors.js). Siguen en la lista hasta el final de la
+ * generación para que el azar de la utilería se gaste igual (el resto de la
+ * ciudad no cambia); la fachada de cada edificio se siembra con su índice
+ * (facades.js facadeLayout): los que se corren guardan el de antes en `fi`.
+ */
+function quitarTumbados(city) {
+  const arr = city.buildings;
+  const first = arr.findIndex((b) => b.gone);
+  if (first < 0) return;
+  for (let i = first; i < arr.length; i++) arr[i].fi ??= i;
+  let w = 0;
+  for (const b of arr) if (!b.gone) arr[w++] = b;
+  city.removedBuildings = arr.length - w;
+  arr.length = w;
 }
 
 // ------------------------------------------------------------------ metro
@@ -1812,8 +1849,20 @@ function addStreetLife(city, rng) {
     return false;
   };
   const ringDist = (b, x, z) => (b?.ring ? distToPolyEdge(x, z, b.ring) : Infinity);
+  // Escalas de las entradas (buildingBases.js): no son sólidas (se suben),
+  // pero no se pone nada encima ni pegado a ellas.
+  const stairs = new NearGrid(city.props, (p) => p.type === 'steps', (p) => Math.max(p.w / 2, p.n * p.tread) + 0.1);
+  const onStairs = (x, z, r) =>
+    stairs.some(x, z, r + 0.2, (s) => {
+      const dx = x - s.x;
+      const dz = z - s.z;
+      const d = dx * Math.sin(s.rot) + dz * Math.cos(s.rot);
+      const a = dx * Math.cos(s.rot) - dz * Math.sin(s.rot);
+      return d > -r - 0.2 && d < s.n * s.tread + r + 0.2 && Math.abs(a) < s.w / 2 + r + 0.2;
+    });
   const place = (p, block) => {
     const r = p.collider ? Math.max(p.collider.hx, p.collider.hz) : 0;
+    if (p.y === undefined && onStairs(p.x, p.z, r)) return null; // (las materas de los balcones van arriba)
     if (p.collider && block && ringDist(block, p.x, p.z) < 0.08 + PED_RADIUS + Math.min(p.collider.hx, p.collider.hz)) return null;
     if (p.collider && blocked(p.x, p.z, r)) return null;
     if (onRoadCheck(p.x, p.z) && !p.onRoad) return null;
@@ -1835,6 +1884,8 @@ function addStreetLife(city, rng) {
     if (b.style !== 'tienda' || b.interior || b.shop || b.floors >= 6 || (!b.local && !rng.chance(0.5))) continue;
     const block = blocksById[b.block];
     const f = facadeInfo(b);
+    // Locales a los que se entra (sim/interiors.js): nada frente a la puerta (el azar se gasta igual).
+    const put = b.local?.access || b.gone ? () => null : place;
     const n = rng.int(2, 4);
     const color = rng.pick(CHAIR_COLORS);
     const span = Math.min(f.len - 1.5, n * 0.75);
@@ -1844,13 +1895,13 @@ function addStreetLife(city, rng) {
       const a = start + (k + 0.5) * (span / n) + rng.range(-0.08, 0.08);
       const x = f.fx + f.tx * a + f.nx * 0.42;
       const z = f.fz + f.tz * a + f.nz * 0.42;
-      place({ type: 'chair', x, z, rot: f.rot + rng.range(-0.35, 0.35), color, collider: { hx: 0.24, hz: 0.24, maxY: ground(x, z) + 0.9 } }, block);
+      put({ type: 'chair', x, z, rot: f.rot + rng.range(-0.35, 0.35), color, collider: { hx: 0.24, hz: 0.24, maxY: ground(x, z) + 0.9 } }, block);
     }
     const a = (span / 2 + 0.45) * (rng.chance(0.5) ? 1 : -1);
     const x = f.fx + f.tx * a + f.nx * 0.3;
     const z = f.fz + f.tz * a + f.nz * 0.3;
     const stack = rng.int(1, 4);
-    place({ type: 'crate', x, z, rot: f.rot + (rng.chance(0.5) ? Math.PI / 2 : 0) + rng.range(-0.1, 0.1), stack, collider: { hx: 0.25, hz: 0.25, maxY: ground(x, z) + 0.26 * stack } }, block);
+    put({ type: 'crate', x, z, rot: f.rot + (rng.chance(0.5) ? Math.PI / 2 : 0) + rng.range(-0.1, 0.1), stack, collider: { hx: 0.25, hz: 0.25, maxY: ground(x, z) + 0.26 * stack } }, block);
   }
 
   // 2) Materas en el andén junto a la fachada y en los balcones.
@@ -1858,11 +1909,12 @@ function addStreetLife(city, rng) {
     if (b.interior || b.style === 'torre' || b.style === 'tienda') continue;
     const f = facadeInfo(b);
     const block = blocksById[b.block];
+    const put = b.gone ? () => null : place; // (tumbado por un local: el azar se gasta igual)
     if (block && b.style === 'pintada' && rng.chance(0.18)) {
       const a = rng.range(-f.len / 2 + 0.8, f.len / 2 - 0.8);
       const x = f.fx + f.tx * a + f.nx * 0.36;
       const z = f.fz + f.tz * a + f.nz * 0.36;
-      place({ type: 'planter', x, z, rot: rng.range(0, Math.PI * 2), s: rng.range(0.85, 1.1), collider: { hx: 0.3, hz: 0.3, maxY: ground(x, z) + 0.8 } }, block);
+      put({ type: 'planter', x, z, rot: rng.range(0, Math.PI * 2), s: rng.range(0.85, 1.1), collider: { hx: 0.3, hz: 0.3, maxY: ground(x, z) + 0.8 } }, block);
     }
     if (b.balcony && rng.chance(0.45)) {
       const bw = Math.min(4.2, f.len * 0.6);
@@ -1871,7 +1923,7 @@ function addStreetLife(city, rng) {
         const y = b.groundY + fl * 3;
         for (let k = 0; k < rng.int(1, 2); k++) {
           const a = (k === 0 ? -1 : 1) * (bw / 2 - 0.4);
-          place({ type: 'planter', x: f.fx + f.tx * a + f.nx * 0.45, z: f.fz + f.tz * a + f.nz * 0.45, y, rot: rng.range(0, Math.PI * 2), s: rng.range(0.6, 0.8) }, null);
+          put({ type: 'planter', x: f.fx + f.tx * a + f.nx * 0.45, z: f.fz + f.tz * a + f.nz * 0.45, y, rot: rng.range(0, Math.PI * 2), s: rng.range(0.6, 0.8) }, null);
         }
       }
     }
