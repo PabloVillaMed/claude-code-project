@@ -429,7 +429,7 @@ export class InteriorView {
     this.lightSpots = []; // dónde van las luces reales prestadas (local)
     this.shaders = [];
     this.rng = makeRng(Math.floor(Math.abs(r.ox * 13 + r.oz * 7)) + 1);
-    this._steps = this._build();
+    this._gen = this._build();
     this.t = 0;
   }
 
@@ -438,7 +438,7 @@ export class InteriorView {
     if (this.ready) return true;
     const t0 = performance.now();
     while (performance.now() - t0 < ms) {
-      if (this._steps.next().done) {
+      if (this._gen.next().done) {
         this.ready = true;
         break;
       }
@@ -1690,10 +1690,12 @@ export class InteriorView {
     // Bola de espejos: gira y riega puntos de luz por muros, piso y techo.
     if (this._ball) {
       const n = INTERIOR_FX.PUNTOS_BOLA;
-      const g = white(new THREE.CircleGeometry(0.06, 8));
+      const g = white(new THREE.CircleGeometry(0.045, 8));
       const mesh = new THREE.InstancedMesh(g, this.mats.aditivo, n);
       mesh.name = 'interior-puntos';
-      for (let k = 0; k < n; k++) mesh.setColorAt(k, tmpC.setRGB(0.9, 0.85, 0.75));
+      // Tenues y de colores cálidos: con el bloom, un punto blanco a fondo se veía como una mancha.
+      const tonos = [[0.34, 0.3, 0.24], [0.36, 0.2, 0.22], [0.36, 0.27, 0.12]];
+      for (let k = 0; k < n; k++) mesh.setColorAt(k, tmpC.setRGB(...tonos[k % 3]));
       add(mesh);
       const dirs = [];
       for (let k = 0; k < n; k++) {

@@ -31,7 +31,7 @@ import { makeRng } from './rng.js';
  * entra y no se amplían). Al terminar ese trabajo, ponerlo en true y
  * actualizar las sumas de tests/unit/carga-ciudad.test.js.
  */
-export const INTERIORES_ACTIVOS = false;
+export const INTERIORES_ACTIVOS = true;
 
 export const INTERIOR = {
   /** Grosor (m) de los muros del cascarón (fachada, costados y fondo). */

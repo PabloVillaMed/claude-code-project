@@ -11,6 +11,14 @@ import { facadeLayout, faceFrame } from '../../src/sim/facades.js';
 import { GRID, groundHeight, onRoad, roadAt, terrainHeight } from '../../src/sim/terrain.js';
 import { pointInPoly } from '../../src/sim/geom2d.js';
 
+/**
+ * `prop.building` guarda el índice de antes de que un local tumbara vecinos
+ * (`fi`, sim/cityLayout.js quitarTumbados): se busca por ahí, no por la posición.
+ */
+function porFi(c) {
+  return new Map(c.buildings.map((b, i) => [b.fi ?? i, b]));
+}
+
 /** Edificaciones con fachada a una calle (las del fondo de la manzana no tienen andén al frente). */
 function streetFacing(c) {
   const out = [];
@@ -30,6 +38,7 @@ describe('bases de las edificaciones en la loma', () => {
     const c = city();
     const steps = new Map();
     for (const p of c.props) if (p.type === 'steps') steps.set(`${p.building}:${p.x.toFixed(3)}:${p.z.toFixed(3)}`, p);
+    // (la llave usa el índice de antes de los tumbados: `fi`)
     let entries = 0;
     let withSteps = 0;
     const buried = [];
@@ -43,7 +52,7 @@ describe('bases de las edificaciones en la loma', () => {
         // El piso nunca por debajo del andén más alto frente al vano.
         if (b.groundY < lv.hi + BASES.FLOOR_LIFT - 1e-6) buried.push(i);
         const uc = (e.u0 + e.u1) / 2;
-        const key = `${i}:${(f.x0 + f.rx * uc).toFixed(3)}:${(f.z0 + f.rz * uc).toFixed(3)}`;
+        const key = `${b.fi ?? i}:${(f.x0 + f.rx * uc).toFixed(3)}:${(f.z0 + f.rz * uc).toFixed(3)}`;
         const s = steps.get(key);
         if (s) withSteps++;
         // Sin escalas: a lo sumo un escalón (salvo donde no hay andén al frente).
@@ -62,6 +71,7 @@ describe('bases de las edificaciones en la loma', () => {
   it('las escalas van sobre el andén, no salen de más y se pueden subir', () => {
     const c = city();
     const list = c.props.filter((p) => p.type === 'steps');
+    const edif = porFi(c);
     expect(list.length).toBeGreaterThan(500);
     for (const s of list.slice(0, 400)) {
       expect(s.n).toBeGreaterThanOrEqual(1);
@@ -71,7 +81,7 @@ describe('bases de las edificaciones en la loma', () => {
       const nz = Math.cos(s.rot);
       // El escalón de arriba (pegado a la fachada) queda a lo sumo un
       // contrapaso bajo el piso (si el andén sube ahí, se pisa el andén).
-      const b = c.buildings[s.building];
+      const b = edif.get(s.building);
       const top = groundHeight(s.x + nx * 0.05, s.z + nz * 0.05);
       expect(top).toBeGreaterThanOrEqual(b.groundY - s.rise - 1e-6);
       expect(top).toBeLessThanOrEqual(b.groundY + 0.02);

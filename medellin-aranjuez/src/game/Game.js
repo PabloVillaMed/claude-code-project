@@ -41,6 +41,7 @@ import { Pickups } from './pickups.js';
 import { Dialogue } from './dialogue.js';
 import { StreetLife } from './streetLife.js';
 import { Nightlife } from './nightlife.js';
+import { Interiors } from './interiors.js';
 import { Companions } from './companions.js';
 import { Tumbables } from './destructibles.js';
 import { StoryDirector } from './storyDirector.js';
@@ -272,6 +273,7 @@ export class Game {
     this.dialogue = new Dialogue(this); // voces y subtítulos de la calle (crea game.events)
     this.street = new StreetLife(this); // plazas con sus bandas, habitantes de calle y balaceras
     this.nightlife = new Nightlife(this); // la rumba de la 92: porteros, filas, grupos, parejas y murmullo
+    this.interiors = new Interiors(this); // las discotecas de la 92 por dentro (se arman solo cerca)
     this.companions = new Companions(this); // damas de compañía de noche (esquinas de avenida y la 92)
     // Postes, faroles, placas y árboles que se tumban con un vehículo (la
     // física de los vehículos consulta `breakables` al chocar).
@@ -791,6 +793,8 @@ export class Game {
       lookY,
       // Subiendo / bajando con animación: transición suave de la cámara.
       board: p.boarding && !p.dead ? p.boarding.cameraBlend((this._camBoard ??= {})) : null,
+      // Adentro de una discoteca: la cámara más cerca y sin salirse del salón.
+      hint: this.interiors?.cameraHint() ?? null,
     });
     // Primera persona: cabeza oculta y el arma (o los puños) en las manos
     // frente a la cámara ya movida (sin un cuadro de atraso al girar).
@@ -811,6 +815,7 @@ export class Game {
     this.world.update(dt, p);
     this.street.update(dt);
     this.nightlife.update(dt);
+    this.interiors.update(dt);
     this.companions.update(dt);
     this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
@@ -2015,6 +2020,21 @@ export class Game {
       /** Vida de la calle: plazas, habitantes de calle y balacera en curso. */
       street() {
         return g.street.state();
+      },
+      /** Interiores de las discotecas de la 92: locales, cuál está armado y dónde está el jugador. */
+      interiors() {
+        return g.interiors.info();
+      },
+      /** Pruebas: mete al jugador adentro del local `id` (cover pagado y puerta abierta). */
+      enterInterior(id) {
+        const e = g.interiors.enter(id);
+        if (!e) return false;
+        if (g.player.vehicle) g.exitVehicle(true);
+        g.player.state = createPlayerState(e.x, e.z, groundHeight, e.yaw);
+        g.player.state.pos.y = e.y;
+        g.camRig.yaw = e.yaw;
+        g.camRig.first = true;
+        return e;
       },
       /** La rumba de la 92: locales, nivel por hora, cupo, gente en escena y murmullo. */
       nightlife() {

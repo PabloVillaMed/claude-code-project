@@ -311,6 +311,8 @@ export class CameraRig {
       pivot.z += rz * s2;
     }
     let d = this.dist;
+    const hint = ctx.hint ?? null; // adentro de un local (game/interiors.js): más cerca y dentro del salón
+    if (hint && !eyes && !hood) d = Math.min(d, hint.maxDist);
     if (eyes) {
       // Primera persona: un poco adelante de los ojos (en horizontal: al mirar
       // abajo se ve el cuerpo desde afuera), sin atravesar la pared de enfrente.
@@ -333,6 +335,10 @@ export class CameraRig {
         if (hit) d = Math.max(0.6, hit.t - 0.3);
       }
       this.pos.set(pivot.x - fx * d, pivot.y - fy * d, pivot.z - fz * d);
+    }
+    if (hint && !eyes) {
+      this.pos.y += hint.lift;
+      hint.clamp(this.pos);
     }
     const gh = groundHeight(this.pos.x, this.pos.z) + 0.35;
     if (this.pos.y < gh) this.pos.y = gh;
