@@ -34,6 +34,11 @@ const AVISO_CADA = 6;
 const CAM_DIST = 2.6;
 const CAM_SUBE = 0.12;
 const CAM_MARGEN = 0.22;
+/** La barra: precio de un guaro ($), a cuántos m de un puesto de la barra se puede pedir, vida que da (tope 100) y sacudida leve de la cámara. */
+const GUARO_PRECIO = 20;
+const GUARO_RANGO = 1.8;
+const GUARO_VIDA = 4;
+const GUARO_MAREO = 0.12;
 
 export class Interiors {
   constructor(game) {
@@ -68,6 +73,7 @@ export class Interiors {
 
   update(dt) {
     if (!this.list.length) return;
+    this._avisoBarra();
     const g = this.game;
     const p = g.player;
     const cam = g.camera.position;
@@ -323,6 +329,38 @@ export class Interiors {
     v.buildNow();
     this._touch(r.id, true);
     return { x: w.x, z: w.z, yaw: Math.atan2(r.nx, r.nz), y: r.y0 };
+  }
+
+  /** ¿El jugador está junto a la barra del local donde está? (puesto más cercano o null) */
+  _enBarra() {
+    const r = this.inside;
+    const p = this.game.player;
+    if (!r || !p || p.dead || p.inVehicle) return null;
+    for (const s of r.spots?.barra ?? []) if (Math.hypot(s.x - p.x, s.z - p.z) < GUARO_RANGO) return s;
+    return null;
+  }
+
+  /** Al arrimarse a la barra, el aviso de la tecla E (una vez por arrimada). */
+  _avisoBarra() {
+    const b = !!this._enBarra();
+    if (b && !this.barraAvisada) this.game.hud?.help?.(`Presiona E para pedir un guaro ($${GUARO_PRECIO})`, 4);
+    this.barraAvisada = b;
+  }
+
+  /** E junto a la barra: pide un guaro. Devuelve true si atendió la tecla. */
+  pedirGuaro() {
+    if (!this._enBarra()) return false;
+    const g = this.game;
+    const p = g.player;
+    if (p.money < GUARO_PRECIO) {
+      g.hud?.toast?.('Bartender: sin plata no hay guaro, mor.', 2.5);
+      return true;
+    }
+    p.money -= GUARO_PRECIO;
+    p.health = Math.min(100, p.health + GUARO_VIDA);
+    g.camRig?.shake?.(GUARO_MAREO);
+    g.hud?.toast?.(`<span style="color:#e8b64c">-$${GUARO_PRECIO}</span> · ¡Salud! Un guarito bien frío`, 2.5);
+    return true;
   }
 
   /** Puntos de la gente de adentro (para game/ quien los use): spots del interior `id`. */

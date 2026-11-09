@@ -1496,6 +1496,8 @@ export class Game {
     // E con el carro detenido junto a una dama de compañía: la invita (va antes
     // que los locales; solo atiende la tecla cuando ofrece "E para invitarla").
     if (a.interact && !p.dead && this.companions.interact()) return;
+    // E junto a la barra de una discoteca: un guaro (game/interiors.js).
+    if (a.interact && !p.dead && this.interiors?.pedirGuaro()) return;
     if (near && a.interact && !p.dead) this.interact(near);
     // Sin local cerca: E le da los cien pesitos al habitante de calle que acaba de pedir.
     else if (a.interact && !p.dead) this.street?.give();
