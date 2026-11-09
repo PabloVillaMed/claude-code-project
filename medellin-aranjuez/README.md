@@ -8,12 +8,13 @@ Juego de mundo abierto en tercera persona inspirado en el barrio **Aranjuez (Com
 
 | | |
 |---|---|
-| ![Menú](docs/capturas/00-menu-principal.png) | ![Disparando](docs/capturas/05-disparando.png) |
-| ![Taxi](docs/capturas/07-taxi-amarillo.png) | ![Moto](docs/capturas/08-moto.png) |
-| ![Persecución](docs/capturas/12-persecucion-policial.png) | ![Noche](docs/capturas/13-aranjuez-de-noche.png) |
-| ![Rueda de armas](docs/capturas/06-rueda-de-armas.png) | ![Mapa](docs/capturas/14-mapa.png) |
+| ![La Calle 92 de noche](docs/capturas/20-calle-92-de-noche.jpg) | ![Discoteca Neón por fuera](docs/capturas/21-discoteca-neon-fachada.jpg) |
+| ![Adentro de Discoteca Flow 92](docs/capturas/22-discoteca-flow92-adentro.jpg) | ![Adentro de Discoteca Neón](docs/capturas/23-discoteca-neon-adentro.jpg) |
+| ![Fonda La Ruana](docs/capturas/24-fonda-la-ruana.jpg) | ![Bar Los Compadres](docs/capturas/25-bar-los-compadres.jpg) |
+| ![Caballito en moto](docs/capturas/26-caballito.jpg) | ![Policía en moto con parrillero](docs/capturas/27-policia-en-moto.jpg) |
+| ![Tienda a nivel del andén](docs/capturas/28-tienda-a-nivel-del-anden.jpg) | ![Mapa](docs/capturas/14-mapa.png) |
 
-Generadas con `npm run shots` (render por software en calidad Media; en una GPU real se ve igual pero a 60 FPS).
+Capturas del juego en una GPU real (calidad Alta, versiones 3.5 a 3.7): la 92 de noche con su rumba, el adentro de las discotecas, el caballito, la Policía en moto y las casas asentadas en la loma. Las capturas anteriores (menú, armas, taxi, persecución) siguen en `docs/capturas/` y se regeneran con `npm run shots`.
 
 ## Qué incluye el MVP
 
