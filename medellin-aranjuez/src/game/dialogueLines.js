@@ -227,9 +227,10 @@ spread('radio_fin', [
 ]);
 
 // ------------------------------------------------------------ la calle
-// (game/streetLife.js) En las seis voces: cualquiera las puede decir. Sin
-// audio todavía (pendingVoice): salen en subtítulos hasta que
-// scripts/assets/voces.mjs las genere (ese script genera todas las de LINES).
+// (game/streetLife.js) En las seis voces: cualquiera las puede decir. Una
+// línea nueva se puede marcar con `{ pendingVoice: true }` (cuarto parámetro
+// de spread): sale solo en subtítulos hasta que scripts/assets/voces.mjs
+// genere su audio (ese script genera todas las de LINES).
 // Habitantes de calle cuando el jugador pasa caminando cerca.
 spread('limosna', [
   '¿Me da cien pesitos, por favor?',
@@ -239,14 +240,14 @@ spread('limosna', [
   'Mi amor, una moneda, que hoy no he comido nada.',
   '¿Me da cien pesitos? Lo que sea es bien recibido.',
   "Ayúdeme con cien pesitos, por favor, pa' la aguapanela.",
-], 6, { pendingVoice: true });
+], 6);
 spread('limosna_gracias', [
   '¡Dios le pague, mijo! Que le vaya bonito.',
   'Gracias, mi amor. Dios me lo bendiga.',
   'Uy, qué persona tan especial. Gracias, patrón.',
   'Que la Virgen me lo acompañe, mijo.',
-], 6, { pendingVoice: true });
-spread('limosna_nada', ['Bueno, de todas formas, que Dios lo bendiga.', 'Tranquilo, mijo, otro día será.', 'Bueno, siga pues, que le vaya bien.'], 6, { pendingVoice: true });
+], 6);
+spread('limosna_nada', ['Bueno, de todas formas, que Dios lo bendiga.', 'Tranquilo, mijo, otro día será.', 'Bueno, siga pues, que le vaya bien.'], 6);
 // Los muchachos de la plaza cuando el jugador se arrima a la esquina.
 spread('banda', [
   '¿Qué más, parce? ¿Qué se le ofrece?',
@@ -256,15 +257,14 @@ spread('banda', [
   '¿Usted de dónde es? Por acá no lo había visto.',
   'Quieto ahí, parcero. ¿Busca algo?',
   'Todo bien, todo bien, pero siga caminando.',
-], 6, { pendingVoice: true });
+], 6);
 // El campanero cuando ve una patrulla.
-spread('campanero', ['¡Agua, agua! ¡Llegó la tomba!', '¡Pilas, que viene la ley!', '¡Ojo, muchachos, patrulla en la esquina!'], 6, { pendingVoice: true });
+spread('campanero', ['¡Agua, agua! ¡Llegó la tomba!', '¡Pilas, que viene la ley!', '¡Ojo, muchachos, patrulla en la esquina!'], 6);
 // Al empezar una balacera entre bandas.
-spread('balacera', ['¡Nos cayeron, muchachos!', '¡Esos manes se metieron al parche!', '¡A cubrirse, a cubrirse!', '¡Llegaron los de allá arriba!'], 6, { pendingVoice: true });
+spread('balacera', ['¡Nos cayeron, muchachos!', '¡Esos manes se metieron al parche!', '¡A cubrirse, a cubrirse!', '¡Llegaron los de allá arriba!'], 6);
 
 // ------------------------------------------------------------ la rumba de la 92
-// (game/nightlife.js) De noche, frente a las discotecas y bares. Sin audio
-// todavía (pendingVoice), como las de la calle.
+// (game/nightlife.js) De noche, frente a las discotecas y bares.
 // Los de los grupos del andén cuando el jugador pasa caminando cerca.
 spread('rumba', [
   '¡Eso, parce! Hoy sí hay rumba.',
@@ -279,7 +279,7 @@ spread('rumba', [
   'Ya casi entramos, estamos esperando a la otra parcera.',
   '¡Avemaría, cómo está de llena la 92 hoy!',
   'Vamos a bailar hasta que nos saquen.',
-], 6, { pendingVoice: true });
+], 6);
 // Los de la fila de la puerta.
 spread('rumba_fila', [
   'Esta fila no avanza, hermano.',
@@ -287,7 +287,7 @@ spread('rumba_fila', [
   'Dizque adentro está llenísimo.',
   'Tranquilos, que ya casi nos toca.',
   'Si no entramos aquí, nos vamos pa la fonda.',
-], 6, { pendingVoice: true });
+], 6);
 // El portero de cada local cuando el jugador llega a la puerta.
 spread('portero', [
   'Buenas noches. Documento, por favor.',
@@ -296,13 +296,13 @@ spread('portero', [
   'Adentro está lleno; espere un momentico.',
   'Aquí se viene a gozar, no a buscar problemas.',
   'Con armas no entra nadie, ¿listo?',
-], 6, { pendingVoice: true });
+], 6);
 // El portero si el jugador llega a la puerta con el arma en la mano.
-spread('portero_arma', ['¡Ey, ey! Guarde eso, que aquí no se le recibe así.', 'Bájele a eso, parcero, que aquí hay mucha gente.', 'Con eso en la mano no se me arrima a la puerta.'], 6, { pendingVoice: true });
+spread('portero_arma', ['¡Ey, ey! Guarde eso, que aquí no se le recibe así.', 'Bájele a eso, parcero, que aquí hay mucha gente.', 'Con eso en la mano no se me arrima a la puerta.'], 6);
 
 // ------------------------------------------------------------ adentro de las discotecas
-// (game/salonSound.js y game/danceGame.js) Sin audio todavía (pendingVoice):
-// salen en subtítulos. El DJ por el micrófono (reguetón, electrónica, el club frío).
+// (game/salonSound.js y game/danceGame.js)
+// El DJ por el micrófono (reguetón, electrónica, el club frío).
 spread('dj', [
   '¡Esas manos arriba, mi gente! ¡Que se sienta la 92!',
   "¡Bulla pa'l DJ! ¿Dónde están los que vinieron a gozar?",
@@ -311,7 +311,7 @@ spread('dj', [
   "¡Un saludo pa' la mesa del fondo, que están encendidos!",
   "Este tema va pa' todos los que vinieron con la parcería.",
   '¡No me dejen solo, mi gente! ¡Todo el mundo a la pista!',
-], 6, { pendingVoice: true });
+], 6);
 // El animador de la fonda paisa.
 spread('animador', [
   '¡Bienvenidos a la fonda, mi gente! ¡Aquí se goza a lo paisa!',
@@ -320,7 +320,7 @@ spread('animador', [
   '¡Ánimo, que la noche está joven y la fonda está prendida!',
   "¡Esa pareja de allá sí sabe! ¡Un aplauso pa' ellos!",
   '¡Arriba ese ánimo, que aquí no se viene a dormir!',
-], 6, { pendingVoice: true });
+], 6);
 // El cantante de la orquesta (salsoteca y bar de son).
 spread('cantante', [
   "¡Sabor pa' Medellín!",
@@ -329,7 +329,7 @@ spread('cantante', [
   "¡Un aplauso pa' los muchachos de la orquesta!",
   '¡Sabroso, sabroso! ¡Que no pare la rumba!',
   '¡Esto es salsa de la buena, mi gente!',
-], 6, { pendingVoice: true });
+], 6);
 // El bartender al servir un guaro.
 spread('bartender', [
   '¡Ahí está, bien frío! Salud, parcero.',
@@ -338,7 +338,7 @@ spread('bartender', [
   'Ese guarito sí está bueno. ¡Salud!',
   'Pida lo que quiera, que aquí lo atendemos bien.',
   'Despacio con ese, que la noche es larga.',
-], 6, { pendingVoice: true });
+], 6);
 // La gente que baila cerca del jugador.
 spread('baile_gente', [
   '¡Qué buena está esta canción!',
@@ -348,7 +348,7 @@ spread('baile_gente', [
   '¡Qué rumba tan buena la de hoy!',
   'Hoy no me siento en toda la noche.',
   '¡Eso, mor! ¡Así se baila!',
-], 6, { pendingVoice: true });
+], 6);
 // El corro cuando el jugador baila con combo alto.
 spread('baile_corro', [
   '¡Eso, eso, eso!',
@@ -357,7 +357,7 @@ spread('baile_corro', [
   '¡Abran campo, que este se lució!',
   '¡Qué paso tan bueno, parce!',
   '¡Uepa! ¡Otra, otra!',
-], 6, { pendingVoice: true });
+], 6);
 // Al terminar la canción (o al salir de la pista) con propina.
 spread('baile_propina', [
   "¡Ese man sí baila! Tome, pa' que se tome algo.",
@@ -365,12 +365,12 @@ spread('baile_propina', [
   '¡Qué berraquera de baile! Tome esto, pues.',
   'Tome, mor, por el espectáculo. ¡Usted sí es el propio!',
   '¡Bailó más que un trompo! Tome una propinita.',
-], 6, { pendingVoice: true });
+], 6);
 
 // ------------------------------------------------------------ damas de compañía
 // (game/companions.js) De noche en el andén: coqueteo leve y respetuoso, en
-// las tres voces de mujer. Sin audio todavía (pendingVoice), como las de la calle.
-const damas = (cat, texts) => spread(cat, texts.map((text) => ({ text, voices: CIVIL_BY_GENDER.f })), 3, { pendingVoice: true });
+// las tres voces de mujer.
+const damas = (cat, texts) => spread(cat, texts.map((text) => ({ text, voices: CIVIL_BY_GENDER.f })), 3);
 // Cuando el jugador para el carro a su lado.
 damas('dama', [
   'Buenas noches, bizcocho. ¿Para dónde va tan solito?',
@@ -423,27 +423,27 @@ damas('dama_abandono', ['¿Y me va a dejar aquí sola? ¡Qué falta de respeto!'
 // ------------------------------------------------------------ los comercios
 // (game/comercios.js) Adentro de las tiendas, panaderías y almacenes: el que
 // atiende saluda al entrar, da las gracias después de una compra y le
-// contesta a la clienta que conversa. En las seis voces; sin audio todavía.
+// contesta a la clienta que conversa. En las seis voces.
 spread('tendero', [
   '¿Qué se le ofrece, vecino?',
   '¡Buenas! ¿Qué le vendo, mijo?',
   'A la orden, vecino. ¿Qué va a llevar?',
   'Siga, siga, que aquí lo atendemos.',
   '¿Qué más pues? ¿Qué le provoca hoy?',
-], 6, { pendingVoice: true });
+], 6);
 spread('tendero_gracias', [
   'Con mucho gusto, vecino. Vuelva pronto.',
   'Gracias, mijo. Que le aproveche.',
   'A la orden. Me saluda a la familia.',
   'Listo, vecino. Pa servirle.',
-], 6, { pendingVoice: true });
+], 6);
 spread('tendero_charla', [
   'Ay, sí, mija. Todo está carísimo.',
   'Ahí vamos, con el favor de Dios.',
   'Esa lluvia de anoche estuvo brava, ¿cierto?',
   'Dígale que le mando saludes.',
   'Hágale, que el viernes me paga.',
-], 6, { pendingVoice: true });
+], 6);
 // La clienta que conversa junto al mostrador.
 spread('clienta', [
   'Don, ¿me fía hasta el viernes?',
@@ -451,18 +451,18 @@ spread('clienta', [
   'Ay, vecino, ¿supo lo de la señora de la esquina?',
   'Écheme también unos huevitos, pues.',
   'Esta semana sí ha hecho un calor, ¿no?',
-], 6, { pendingVoice: true });
+], 6);
 // La vendedora de los almacenes: al entrar y cuando uno se prueba algo frente al espejo.
 spread('vendedora', [
   '¿Le muestro algo, vecino?',
   'Siga y mire sin compromiso.',
   'Llegó mercancía nueva, pruébese lo que quiera.',
-], 6, { pendingVoice: true });
+], 6);
 spread('vendedora_espejo', [
   'Pruébeselo, que el espejo es gratis.',
   'Uy, ese le queda pintado, se lo digo yo.',
   'Ese color le luce, mijo.',
-], 6, { pendingVoice: true });
+], 6);
 
 export { LINES };
 

@@ -2,7 +2,7 @@
 
 Juego de mundo abierto en tercera persona inspirado en el barrio **Aranjuez (Comuna 4, Medellín)**. Es un **juego web**: corre en el navegador (Three.js sobre WebGL 2), con teclado y ratón, mando o pantalla táctil; se puede **instalar como app** desde Chrome o Edge y, después de la primera carga, abre sin conexión. La **app de Windows** (Electron) sigue como alternativa para quien prefiera un ejecutable.
 
-> El barrio es una recreación libre, no un plano exacto. El mundo (terreno, calles, manzanas, fachadas, techos, cables y metro) se arma por código al arrancar; encima van recursos de verdad: personajes y animaciones glTF de Microsoft Rocketbox, vehículos, armas, utilería y vegetación en glTF, texturas fotográficas PBR, un cielo HDRI, sonidos grabados (armas y motores), voces sintetizadas y música con licencia libre. Son ~83 MB en `public/`; fuentes y licencias en [ASSETS-CREDITS.md](ASSETS-CREDITS.md).
+> El barrio es una recreación libre, no un plano exacto. El mundo (terreno, calles, manzanas, fachadas, techos, cables y metro) se arma por código al arrancar; encima van recursos de verdad: personajes y animaciones glTF de Microsoft Rocketbox, vehículos, armas, utilería y vegetación en glTF, texturas fotográficas PBR, un cielo HDRI, sonidos grabados (armas y motores), voces sintetizadas y música con licencia libre. Son ~88 MB en `public/`; fuentes y licencias en [ASSETS-CREDITS.md](ASSETS-CREDITS.md).
 
 ## Capturas (del juego corriendo)
 

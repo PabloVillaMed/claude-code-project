@@ -23,10 +23,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { LINES, VOICES } from '../../src/game/dialogueLines.js';
 import { STORY_CAST, STORY_LINES, STORY_STYLE } from '../../src/game/storyLines.js';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+// fileURLToPath: en Windows `new URL(...).pathname` da '/C:/…' y la ruta sale mal.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CACHE = path.join(ROOT, '.cache/voces');
 const OUT = path.join(ROOT, 'public/sounds/voces');
 const OUT_STORY = path.join(ROOT, 'public/sounds/historia'); // líneas de la historia (storyLines.js)
@@ -94,6 +96,17 @@ const RESEED = {
   'pregon-arepas-04-m3': 2,
   'pregon-mangos-02-m2': 3,
   'radio_patrulla-01-r2': 2,
+  // Tanda de la 3.8 (rumba, discotecas, damas, comercios): las que el propio
+  // guion marcó «revisar» o «posible final cortado» en la primera pasada.
+  'baile_corro-01-h3': 2,
+  'baile_corro-03-h1': 2,
+  'baile_propina-03-m3': 2,
+  'dj-01-m1': 2,
+  'dj-04-m3': 2,
+  'limosna_gracias-02-m1': 2,
+  'limosna_nada-01-m1': 2,
+  'tendero_charla-05-h1': 3, // (con la 2 salió de 6,5 s: el doble de lo que dura la frase)
+  'tendero_gracias-03-h2': 2, // 6,3 s para una frase de 2,5 s
 };
 
 const args = process.argv.slice(2);
