@@ -471,3 +471,58 @@ html.touch-on .controls-grid {
     display: flex;
   }
 }
+
+/* ---------------- Bailando en la pista (game/danceGame.js) ----------------
+   Cuatro carriles grandes abajo en el centro, con los colores de la pista de
+   ritmo; el racimo de a pie se esconde (menos Usar, que saca de la pista). */
+.tc-carriles {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--tc-sb) + 14px);
+  transform: translateX(-50%);
+  display: flex;
+  gap: calc(10px * var(--tc-k));
+}
+.tc-carriles[hidden] {
+  display: none;
+}
+.tc-lane {
+  width: calc(74px * var(--tc-k));
+  height: calc(74px * var(--tc-k));
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.38);
+  background: rgba(10, 12, 14, 0.4);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tc-lane svg {
+  width: 48%;
+  height: 48%;
+  fill: var(--c);
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 1;
+  transform: rotate(var(--g));
+}
+.tc-lane.tc-on {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: var(--c);
+}
+html.tc-baile #touch > .tc-btn.tc-pie {
+  display: none;
+}
+.tc-lane.tc-salir {
+  width: calc(58px * var(--tc-k));
+  margin-left: calc(6px * var(--tc-k));
+  border-radius: 50%;
+  align-self: center;
+  height: calc(58px * var(--tc-k));
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

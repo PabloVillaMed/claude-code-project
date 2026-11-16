@@ -7,6 +7,7 @@
 // La cámara hace la transición con cameraBlend (ver cameraRig: ctx.board).
 
 import { carEntryPlan, carExitPlan, motoEntryPlan, motoExitPlan, poseAt, fireEvents } from '../sim/boarding.js';
+import { PUERTA } from '../render/carDoors.js';
 
 /** s en que el gesto ya recorrido (con su desplazamiento de cadera aplicado) se desvanece en la base. */
 export const BOARD_COMMIT_FADE = 0.4;
@@ -19,6 +20,15 @@ export const BOARD_CANCEL_FADE = 0.15;
 export const BOARD_SETTLE = 0.3;
 /** m: más lejos que esto (teletransporte, reaparición), no se suaviza. */
 export const BOARD_SETTLE_MAX = 1.2;
+/**
+ * Subir / bajar en primera persona (la cámara en los ojos, sin pasar a
+ * tercera): eyeUp m de los ojos sobre el hueso de la cabeza; blend s de la
+ * mezcla con la cámara del vehículo (al final de la subida, al principio de
+ * la bajada); follow 1/s con que la cámara alcanza la cabeza (suaviza el
+ * temblor del hueso: el cuello estable); turn 1/s con que el rumbo de la
+ * mirada sigue al del cuerpo (el ratón mira alrededor encima de eso).
+ */
+export const BOARD_FP = { eyeUp: 0.09, blend: 0.45, follow: 22, turn: 5 };
 
 // Nombre del plan -> clip del rig.
 const CLIP = { door: 'door', sit: 'sit_down', sitL: 'sit_down_l', stand: 'stand_up' };
@@ -62,6 +72,10 @@ export class Boarding {
     this.mountSide = -1;
     this.mountPlant = null; // x (marco del vehículo) del pie de apoyo al montarse / bajarse
     this.done = false;
+    // La puerta del carro (render/carDoors.js): abre con el gesto de la mano, cierra al final.
+    this.doorSide = vehicle.type === 'moto' ? 0 : (plan.side ?? -1);
+    // Al bajarse, la puerta abre antes de sacar las piernas (no las atraviesan).
+    if (this.doorSide && mode === 'exit') vehicle.view.doorTo?.(this.doorSide, 1, PUERTA.exitDelay);
     this.order = rig.root.rotation.order;
     rig.setWeapon?.(null);
     vehicle.view.group.add(rig.root);
@@ -98,7 +112,11 @@ export class Boarding {
     });
     // El vehículo se inclina un poco con el peso del que se monta o se sienta.
     this.vehicle.view.boardTilt = p.tilt ?? 0;
-    if (this.t >= this.plan.total) this.done = true;
+    if (this.t >= this.plan.total) {
+      this.done = true;
+      // Ya sentado (o ya afuera): la puerta se cierra.
+      if (this.doorSide) this.vehicle.view.doorTo?.(this.doorSide, 0, this.mode === 'enter' ? PUERTA.closeAfterSit : PUERTA.closeAfterOut);
+    }
     return this.done;
   }
 
@@ -136,6 +154,23 @@ export class Boarding {
     out.heading = s.heading;
     out.size = s.spec.length;
     out.moto = this.vehicle.type === 'moto';
+    // Primera persona (cameraRig: ctx.board.eyes): los ojos siguen la cabeza
+    // (su posición, no su giro: el cuello queda estable) y el cuerpo da el
+    // rumbo; fpW mezcla con la cámara del vehículo solo al final de la subida
+    // (ya sentado) o al principio de la bajada (todavía sentado).
+    const hb = this.rig.bones?.Bip01_Head;
+    out.head = !!hb;
+    if (hb) {
+      hb.updateWorldMatrix(true, false);
+      const h = hb.matrixWorld.elements;
+      out.hx = h[12];
+      out.hy = h[13] + BOARD_FP.eyeUp;
+      out.hz = h[14];
+    }
+    out.bodyYaw = s.heading + this.rig.root.rotation.y;
+    const tb = BOARD_FP.blend;
+    const fw = out.enter ? Math.min(1, Math.max(0, (this.t - (this.plan.total - tb)) / tb)) : 1 - Math.min(1, this.t / tb);
+    out.fpW = fw * fw * (3 - 2 * fw);
     return out;
   }
 
@@ -143,6 +178,7 @@ export class Boarding {
   cancel() {
     // Terminado normalmente, el gesto ya se está desvaneciendo (commit): no se apura.
     if (this.t < this.plan.total) this.rig.stopGesture?.(BOARD_CANCEL_FADE);
+    if (this.doorSide && !this.done) this.vehicle.view.doorTo?.(this.doorSide, 0);
     this.done = true;
     this.vehicle.view.boardTilt = 0;
     this.rig.root.rotation.order = this.order;
@@ -150,7 +186,12 @@ export class Boarding {
 
   _fire() {
     this.next = fireEvents(this.plan, this.next, this.t, (e) => {
-      if (e.type === 'play') this.rig.play(CLIP[e.clip], { speed: e.speed, fadeIn: e.fadeIn ?? 0.2, hold: !!e.hold, instant: !!e.instant, mask: 'full' });
+      if (e.type === 'play') {
+        this.rig.play(CLIP[e.clip], { speed: e.speed, fadeIn: e.fadeIn ?? 0.2, hold: !!e.hold, instant: !!e.instant, mask: 'full' });
+        // La mano llega a la manija y la puerta abre; al levantarse, abre de una.
+        if (this.doorSide && e.clip === 'door') this.vehicle.view.doorTo?.(this.doorSide, 1, ((this.rig.clipInfo?.(CLIP.door)?.duration ?? 1) / (e.speed || 1)) * PUERTA.hand);
+        else if (this.doorSide && e.clip === 'stand') this.vehicle.view.doorTo?.(this.doorSide, 1, PUERTA.standDelay);
+      }
       else if (e.type === 'commit') this.rig.commitRootMotion(BOARD_COMMIT_FADE);
       else if (e.type === 'seat') {
         this.driving = e.driving ?? null;

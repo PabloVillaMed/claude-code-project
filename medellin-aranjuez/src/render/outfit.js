@@ -636,14 +636,17 @@ export function applyOutfit(rig, outfit) {
       const mesh = new THREE.Mesh(a.geo, a.mat);
       mesh.name = `ropa-${it.id}`;
       mesh.userData.slot = slot; // (el LOD de la gente lejana esconde los accesorios chicos: game/nightlife.js)
-      mesh.castShadow = true;
+      mesh.castShadow = rig._shadowOn !== false; // (como el resto del muñeco: la gente sin sombra de adentro sigue sin sombra)
       bone.add(mesh);
       st.meshes.push(mesh);
     }
   }
-  // La lista de mallas con sombra cambió (ver setRigShadow).
+  // La lista de mallas con sombra cambió (ver setRigShadow); las nuevas ya nacen con el _shadowOn de siempre.
   rig._shadowMeshes = null;
-  rig._shadowOn = undefined;
   rig._poseDirty = true; // (personaje congelado: lo nuevo necesita sus matrices)
   return true;
 }
+
+// Las mallas de la ropa también visten las repisas de los almacenes a los que
+// se entra (render/localInteriors.js: sombreros, gorras y carrieles exhibidos).
+export { capGeo, carrielGeo, hatGeo };

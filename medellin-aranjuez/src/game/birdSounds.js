@@ -66,7 +66,7 @@ function loro(audio, ev) {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(bp).connect(g).connect(audio.master);
+  o.connect(bp).connect(g).connect(audio.calle ?? audio.master);
   o.start(t);
   lfo.start(t);
   o.stop(t + dur + 0.02);

@@ -64,7 +64,9 @@ export function buildMetro(r) {
     const pole = new THREE.CylinderGeometry(0.12, 0.16, 7.5, 8).translate(0, 3.75, 0);
     const arm = new THREE.BoxGeometry(5.2, 0.12, 0.12).translate(-2.4, 6.8, 0);
     const geo = mergeSimple([pole, arm]);
-    const im = new THREE.InstancedMesh(geo, mats.rail, posts.length);
+    // (Su propia copia del material de los rieles: con el mismo material con y sin instancias three vuelve a buscar
+    // el programa en cada cambio, dos veces por cuadro con la vía a la vista.)
+    const im = new THREE.InstancedMesh(geo, mats.rail.clone(), posts.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     posts.forEach((p, i) => {
@@ -284,8 +286,20 @@ function buildStation(r, root, S, mats, add) {
   add(dark, mats.dark, { name: 'estacion-metal' });
   add(green, mats.green, { name: 'estacion-verde' });
   add(yellow, mats.yellow, { cast: false, name: 'estacion-borde' });
-  const gm = add(glass, mats.glass, { cast: false, name: 'estacion-vidrio' });
+  // El vidrio en dos mallas con la misma geometría: primero las caras de atrás y luego las de adelante (mismo
+  // orden de dibujo y misma distancia: desempata el id). Es lo que three hace solo con un material transparente
+  // de doble cara, pero así no le pone needsUpdate dos veces por cuadro (getParameters de un MeshPhysicalMaterial
+  // cada vez, con la estación a la vista).
+  const glassBack = mats.glass.clone();
+  glassBack.side = THREE.BackSide;
+  mats.glass.side = THREE.FrontSide;
+  const gb = add(glass, glassBack, { cast: false, name: 'estacion-vidrio-atras' });
+  gb.renderOrder = 2;
+  const gm = new THREE.Mesh(gb.geometry, mats.glass);
+  gm.receiveShadow = true;
+  gm.name = 'estacion-vidrio';
   gm.renderOrder = 2;
+  root.add(gm);
 
   // Letreros de acceso y del puente.
   signBoard(root, P(c.a1 + 0.1, 0, yC + 2.4), L, 'CARIBE', true);

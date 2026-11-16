@@ -444,7 +444,8 @@ export class FacadeBuilder {
     const mid = P((o.u0 + o.u1) / 2, 0);
     this.shops.push({ name: shop.name, kind: shop.interior, x: mid[0], y: mid[1], z: mid[2], nx: N[0], nz: N[2], w: o.u1 - o.u0 });
     const D = 0.22;
-    if (shop.access) {
+    // (Los comercios del día a día, access 'local', conservan su vitrina, su aviso y su toldo: ver más abajo.)
+    if (shop.access && shop.access !== 'local') {
       // Local al que se entra (sim/interiors.js): el vano queda libre (la
       // puerta doble, la cortina, la marquesina y el salón los pone
       // render/interiorBuilder.js) y el aviso de neón es grande, centrado
@@ -478,6 +479,15 @@ export class FacadeBuilder {
     // ---- el cuarto (siempre visible): fondo, paredes, piso y techo pintados
     const g = G('interior');
     const tint = rng.pick([[1, 1, 1], [1, 0.97, 0.9], [0.95, 1, 0.95], [0.94, 0.97, 1], [1, 0.95, 0.94]]);
+    // Comercio al que se entra (access 'local'): el cuarto, la utilería y la
+    // cortina los pone render/localInteriors.js (el interior de verdad, el
+    // cuarto de lejos y la cortina que baja de noche); aquí quedan las guías,
+    // el aviso y el toldo. (El azar se gasta igual: la fachada no cambia.)
+    if (shop.access === 'local') {
+      if (!FLOORS[kind]) rng.pick(['piso-rojo', 'piso-granito']);
+      this._shopFront(G, P, N, fq, fbox, o, L, shop);
+      return;
+    }
     face(g, [P(o.u0, 0, -depth), P(o.u1, 0, -depth), P(o.u1, h, -depth), P(o.u0, h, -depth)], N, atlasUv(crop(ATLAS[`back:${kind}`], w / BACK_M)), tint);
     const fs = (depth - D) / SIDE_M;
     face(g, [P(o.u0, 0, -D), P(o.u0, 0, -depth), P(o.u0, h, -depth), P(o.u0, h, -D)], R, atlasUv(crop(ATLAS[`side:${kind}`], fs, 1, 0)), tint);
@@ -517,6 +527,11 @@ export class FacadeBuilder {
     const shutterTop = o.v1;
     const shutterBottom = o.v1 - Math.max(0.25, shop.shutter * h);
     fq(G('shutter'), o.u0, o.u1, shutterBottom, shutterTop, -0.05, null, lighten(sc, 1, 0.25));
+    this._shopFront(G, P, N, fq, fbox, o, L, shop);
+  }
+
+  /** Guías de la cortina, aviso con el nombre y toldo de un local (también los de los comercios a los que se entra). */
+  _shopFront(G, P, N, fq, fbox, o, L, shop) {
     fbox(G('detail'), o.u0, o.u0 + 0.06, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
     fbox(G('detail'), o.u1 - 0.06, o.u1, 0, o.v1, -0.09, -0.02, [0.3, 0.31, 0.33]);
     // Aviso con el nombre del negocio.

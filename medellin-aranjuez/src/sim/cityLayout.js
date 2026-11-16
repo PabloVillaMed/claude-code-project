@@ -25,9 +25,9 @@ import {
   polyCentroid,
   polyPerimeter,
 } from './geom2d.js';
-import { LOCALES } from './facades.js';
-import { seatBuildings } from './buildingBases.js';
-import { INTERIORES_ACTIVOS, PLANES, ampliarLocal, aplicarHuella, armarInterior, caminableInteriores, colisionesInterior } from './interiors.js';
+import { LOCALES, facadeLayout } from './facades.js';
+import { accesoCabe, seatBuildings, walkLevel } from './buildingBases.js';
+import { COMERCIO, INTERIORES_ACTIVOS, MENUS_COMERCIO, PLANES, PLANES_LOCAL, TEMA_POR_TIPO, ampliarLocal, aplicarHuella, armarInterior, armarLocal, caminableInteriores, colisionesInterior, planComercio } from './interiors.js';
 
 const FLOOR_H = 3;
 export const PED_RADIUS = 0.35;
@@ -118,12 +118,17 @@ export function generateCity(seed = 4) {
   // propia colisión y su piso caminable (una sola estructura para todos).
   city.interiors = city.buildings.filter((b) => b.local?.access && PLANES[b.local.id]).map((b) => armarInterior(b, b.local, PLANES[b.local.id]));
   if (city.interiors.length) addWalkable(caminableInteriores(city.interiors));
+  // Los comercios del día a día (tiendas, panaderías, almacenes...): la huella
+  // propia, la puerta es el vano de la vitrina (su estructura caminable aparte).
+  city.locales = armarComercios(city);
+  if (city.locales.length) addWalkable(caminableInteriores(city.locales));
+  const accesibles = new Map([...city.interiors, ...city.locales].map((r) => [r.id, r]));
 
   // Colisiones de edificios y estructuras sólidas.
   for (const b of city.buildings) {
     if (b.collide === false || b.gone) continue;
-    if (b.local?.access) {
-      const r = city.interiors.find((q) => q.id === b.local.id);
+    const r = b.local?.access ? accesibles.get(b.local.id) : null;
+    if (r) {
       const c = colisionesInterior(r);
       for (const box of c.boxes) city.collision.add(box);
       r.doorBox = city.collision.add(c.door);
@@ -1593,6 +1598,8 @@ function placeLocales(ctx) {
     if (!best) continue;
     best.style = 'tienda';
     best.local = { name: L.name, kind: kinds.get(L.name) ?? L.kind ?? 'cafeteria' };
+    // Comercio al que se entra (sim/interiors.js PLANES_LOCAL): la huella propia.
+    if (INTERIORES_ACTIVOS && PLANES_LOCAL[L.id] && !COMERCIO.EXCLUIDOS.includes(L.id) && aptoComercio(best, city)) Object.assign(best.local, { id: L.id, access: 'local' });
     const f = best.frame;
     if (L.store) {
       city.pois.push({ radius: 3.5, id: L.id, name: L.name, desc: L.desc, type: 'ropa', store: L.store, ...sidewalkNear(city, f.x + f.nx * (f.hv + 1), f.z + f.nz * (f.hv + 1)) });
@@ -1629,6 +1636,80 @@ function placeLocales(ctx) {
       addProp(ctx, { type: 'chair', x, z, rot: Math.atan2(f.nx, f.nz), color: '#f4f4f0', collider: { hx: 0.24, hz: 0.24, maxY: terrainHeight(x, z) + GRID.curb + 0.9 }, owner: L.id });
     }
   }
+  if (INTERIORES_ACTIVOS) abrirComercios(city, fronts);
+}
+
+// ------------------------------------------------------------------ comercios a los que se entra
+/** ¿El edificio sirve para un comercio con interior? (de frente a la calle, ancho y hondo, sin ser torre, y su hueco cabe en el lote). */
+function aptoComercio(b, city) {
+  const f = b.frame;
+  if ((b.front ?? 'S') !== 'S' || b.interior || b.shop || b.floors > 5 || 2 * f.hu < COMERCIO.ANCHO_MIN || 2 * f.hv < COMERCIO.FONDO_MIN) return false;
+  // (Con la casa y su andén dentro del mapa jugable: el jugador no pasa del borde.)
+  if (!insideMap(f.x, f.z, -(Math.hypot(f.hu, f.hv) + COMERCIO.MARGEN_MAPA))) return false;
+  return accesoCabe(b, city.blocks[b.block]?.lots);
+}
+
+/**
+ * Escoge (determinista, sin gastar el azar de la ciudad) las tiendas
+ * genéricas que se abren: de las calles comerciales, de tipos con interior
+ * (sim/interiors.js COMERCIO.CUPOS), con el andén casi plano al frente y
+ * separadas de los otros locales accesibles. Les deja el aviso que ya
+ * tenían (facades.js) en `local` para que no cambie con el asiento en la loma.
+ */
+function abrirComercios(city, fronts) {
+  const pts = city.buildings.filter((b) => b.local?.access).map((b) => [b.frame.x, b.frame.z]);
+  const cupo = { ...COMERCIO.CUPOS };
+  const cands = [];
+  city.buildings.forEach((b, i) => {
+    if (b.gone || b.style !== 'tienda' || b.local || !aptoComercio(b, city)) return;
+    if (!COMERCIO.CALLES.some((s) => fronts(b, s))) return;
+    const s = facadeLayout(b, i)?.shop;
+    if (!s || s.access) return;
+    const tema = TEMA_POR_TIPO[s.interior];
+    if (!(cupo[tema] > 0)) return;
+    // De las ferreterías, solo la cacharrería (la remontadora y la ferretería se quedan con su vitrina).
+    if (tema === 'cacharreria' && !/Cacharrer/.test(s.name)) return;
+    const f = b.frame;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let k = 0; k <= 4; k++) {
+      const u = -f.hu + 0.4 + ((2 * f.hu - 0.8) * k) / 4;
+      const y = walkLevel(f.x + f.ux * u + f.nx * (f.hv + 0.6), f.z + f.uz * u + f.nz * (f.hv + 0.6));
+      lo = Math.min(lo, y);
+      hi = Math.max(hi, y);
+    }
+    if (hi - lo > COMERCIO.DESNIVEL_MAX) return;
+    cands.push({ b, i, tema, name: s.name, kind: s.interior, key: Math.imul(i + 1, 2654435761) >>> 0 });
+  });
+  cands.sort((a, b) => a.key - b.key);
+  for (const c of cands) {
+    if (!(cupo[c.tema] > 0)) continue;
+    const f = c.b.frame;
+    if (pts.some(([x, z]) => Math.hypot(x - f.x, z - f.z) < COMERCIO.SEPARACION)) continue;
+    cupo[c.tema]--;
+    // (generico: el azar de la utilería del andén se gasta como si no tuviera local, ver addStreetLife.)
+    c.b.local = { name: c.name, kind: c.kind, id: `com${c.i}`, access: 'local', generico: true };
+    pts.push([f.x, f.z]);
+  }
+}
+
+/** Arma los interiores de los comercios (ya asentados): la puerta es el vano de la vitrina de su fachada. */
+function armarComercios(city) {
+  const out = [];
+  city.buildings.forEach((b, i) => {
+    if (b.gone || b.local?.access !== 'local') return;
+    const plan = planComercio(b.local.id, b.local.kind);
+    const s = plan ? facadeLayout(b, i)?.shop : null;
+    if (!s?.access) {
+      delete b.local.access;
+      return;
+    }
+    plan.puerta = { x0: s.u0 - b.frame.hu, x1: s.u1 - b.frame.hu };
+    plan.cortina = s.shutterColor;
+    const poi = city.pois.find((p) => p.id === b.local.id);
+    out.push(armarLocal(b, { id: b.local.id, name: b.local.name, kind: b.local.kind, menu: poi?.menu ?? MENUS_COMERCIO[plan.tema] ?? null, store: poi?.store ?? null, poi: poi?.id ?? null }, plan));
+  });
+  return out;
 }
 
 /**
@@ -1881,7 +1962,8 @@ function addStreetLife(city, rng) {
   // 1) Tiendas de barrio: sillas plásticas y canastas de cerveza en el andén.
   const CHAIR_COLORS = ['#f4f4f0', '#f4f4f0', '#f4f4f0', '#d8312b', '#2f6fb3', '#3f8f4a'];
   for (const b of city.buildings) {
-    if (b.style !== 'tienda' || b.interior || b.shop || b.floors >= 6 || (!b.local && !rng.chance(0.5))) continue;
+    // (Los comercios genéricos que se abren gastan el azar como cuando no tenían local.)
+    if (b.style !== 'tienda' || b.interior || b.shop || b.floors >= 6 || ((!b.local || b.local.generico) && !rng.chance(0.5))) continue;
     const block = blocksById[b.block];
     const f = facadeInfo(b);
     // Locales a los que se entra (sim/interiors.js): nada frente a la puerta (el azar se gasta igual).

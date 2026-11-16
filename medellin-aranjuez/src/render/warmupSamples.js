@@ -22,6 +22,7 @@ import { applyOutfit } from './outfit.js';
 import { makeRng } from '../sim/rng.js';
 import { VEHICLE_VARIANTS } from '../sim/vehicleVariants.js';
 import { pintaRumba } from '../sim/nightlife.js';
+import { muestrasUtileria } from './dancePoses.js';
 
 // ------------------------------------------------------------------ ajustables
 /** Grupos de AVATARS del muestrario: los que llegan con la policía y las misiones, y los civiles vestidos (la ropa cambia el material del cuerpo: la gente de la 92). */
@@ -66,11 +67,17 @@ export function buildWarmupSamples(camera, groundHeight) {
   props.push(line.group);
   const table = buildDominoTable(4);
   props.push(table.group, broomMesh(), ballMesh(0.11), smallGoal(1.2, 0.8), stoneGoal(1.2), bucketMesh(), ragMesh());
+  // Utilería de la gente de las discotecas (micrófono, maracas, botella, bandeja, chispas de la bengala).
+  props.push(muestrasUtileria());
   for (const p of props) group.add(p);
   // Un vehículo de cada variante (la patrulla y la moto de la policía llegan
   // después; el taxi que se pide o una variante rara pueden no estar al arrancar).
   const views = Object.entries(VEHICLE_VARIANTS).map(([id, v]) => new VehicleView(v.type, { variant: id }));
   for (const v of views) group.add(v.group);
+  // Con la puerta del conductor abierta: las dos puertas se cortan una vez por
+  // plantilla (render/carDoors.js, ~20 ms cada una) aquí y no al subirse por
+  // primera vez, y el forro y la cara de adentro de la puerta compilan sus programas.
+  for (const v of views) if (v.prepareDoors() && v.doorTo(-1, 1)) v._setDoor(-1, 0.5);
   // En fila de lado a lado, delante de la cámara y sobre el piso.
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
   const side = new THREE.Vector3(-fwd.z, 0, fwd.x);

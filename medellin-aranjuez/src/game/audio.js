@@ -65,6 +65,14 @@ export class AudioSystem {
     comp.ratio.value = 6;
     this.master.connect(comp).connect(this.ctx.destination);
     this.noiseBuf = this._noise(2);
+    // La calle (ambiente, motores, sirenas, pájaros y el murmullo de la 92) pasa por su filtro:
+    // adentro de una discoteca suena apagada y lejana (game/salonSound.js lo cierra y lo abre).
+    this.calle = this.ctx.createBiquadFilter();
+    this.calle.type = 'lowpass';
+    this.calle.frequency.value = 22000;
+    this.calle.Q.value = 0.5;
+    this.calleGain = this.ctx.createGain();
+    this.calle.connect(this.calleGain).connect(this.master);
     this._mezclaArmas();
     this.banco.decodificar(this.ctx);
     this._ambient();
@@ -78,7 +86,7 @@ export class AudioSystem {
         // El bus de motores pasa por su propia ganancia (volumen relativo).
         this.busMotor = this.ctx.createGain();
         this.busMotor.gain.value = 0.8;
-        this.busMotor.connect(this.master);
+        this.busMotor.connect(this.calle ?? this.master);
         if (this.engine) this.setEngine(false);
       })
       .catch((e) => console.warn('Motores grabados no disponibles:', e?.message ?? e));
@@ -449,7 +457,7 @@ export class AudioSystem {
     lp.frequency.value = 420;
     const g = this.ctx.createGain();
     g.gain.value = 0.05;
-    src.connect(lp).connect(g).connect(this.master);
+    src.connect(lp).connect(g).connect(this.calle ?? this.master);
     src.start();
     this.ambientGain = g;
   }
@@ -702,6 +710,87 @@ export class AudioSystem {
   }
 
   /**
+   * Bocina pegada de un carro con el conductor desplomado sobre el timón
+   * (game/occupants.js): una sola voz, la del más cercano, con caída y paneo
+   * por distancia; `pos` null la apaga. Se llama en cada cuadro.
+   */
+  bocinaPegada(pos) {
+    if (!this.ctx) return;
+    const b = this._bocina;
+    if (!pos) {
+      if (b) {
+        const t = this.ctx.currentTime;
+        b.g.gain.setTargetAtTime(0, t, 0.03);
+        b.o.stop(t + 0.15);
+        b.o2.stop(t + 0.15);
+        this._bocina = null;
+      }
+      return;
+    }
+    const t = this.ctx.currentTime;
+    if (!b) {
+      const o = this.ctx.createOscillator();
+      const o2 = this.ctx.createOscillator();
+      o.type = o2.type = 'square';
+      // Un poco más grave y desafinada que la del jugador (otro carro).
+      o.frequency.value = 392;
+      o2.frequency.value = 466;
+      const lp = this.ctx.createBiquadFilter();
+      lp.frequency.value = 1300;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      const pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+      o.connect(lp);
+      o2.connect(lp);
+      lp.connect(g);
+      // (Por el filtro de la calle, como los motores y las sirenas: desde adentro de un local suena apagada.)
+      if (pan) g.connect(pan).connect(this.calle ?? this.master);
+      else g.connect(this.calle ?? this.master);
+      o.start();
+      o2.start();
+      this._bocina = { o, o2, lp, g, pan };
+      return this.bocinaPegada(pos);
+    }
+    const p = (this._bocinaPos ??= { x: 0, y: 0, z: 0 });
+    p.x = pos.x;
+    p.y = (pos.y ?? 0) + 0.8;
+    p.z = pos.z;
+    b.g.gain.setTargetAtTime(0.07 * this._gainFor(p, 8), t, 0.05);
+    b.lp.frequency.setTargetAtTime(500 + 900 * this._gainFor(p, 10), t, 0.1);
+    if (b.pan) b.pan.pan.setTargetAtTime(this._panFor(p), t, 0.05);
+  }
+
+  /**
+   * Puerta de carro (render/carDoors.js): 'abre' (el clic de la chapa y un
+   * roce) o 'cierra' (el golpe sordo y la chapa).
+   */
+  puerta(pos, kind = 'cierra') {
+    if (!this.ctx || !pos || this._lleno()) return;
+    const t = this.ctx.currentTime;
+    const v = this._gainFor(pos, 6);
+    if (v < 0.02) return;
+    if (kind === 'abre') {
+      this._noiseHit(t, 0.03, 0.22 * v, 2600, 4, this.master);
+      this._noiseHit(t + 0.05, 0.12, 0.05 * v, 900, 2, this.master);
+      return;
+    }
+    this._noiseHit(t, 0.16, 0.55 * v, 140, 0.8, this.master, 'lowpass');
+    this._tone(85, t, 0.12, 0.18 * v, 'sine', this.master, -25);
+    this._noiseHit(t + 0.012, 0.035, 0.2 * v, 3000, 5, this.master);
+  }
+
+  /** Vidrio de carro roto por un tiro: chasquido agudo y astillas que tintinean. */
+  vidrio(pos) {
+    if (!this.ctx || !pos || this._lleno()) return;
+    const t = this.ctx.currentTime;
+    const v = this._gainFor(pos, 7);
+    if (v < 0.02) return;
+    this._noiseHit(t, 0.09, 0.5 * v, 4200, 1.2, this.master, 'highpass');
+    this._noiseHit(t + 0.01, 0.28, 0.22 * v, 6500, 3, this.master);
+    for (let i = 0; i < 3; i++) this._tone(3200 + Math.random() * 2600, t + 0.03 + i * 0.045 + Math.random() * 0.03, 0.05, 0.05 * v, 'triangle');
+  }
+
+  /**
    * Sirenas de la policía. Suenan las unidades con u.sirena.on (sim/sirena.js
    * decide cuándo y con qué patrón; world.updatePolice lo avanza): solo las
    * SIRENA_MEZCLA.maxVoces más cercanas, con caída y pasabajos por distancia,
@@ -715,7 +804,7 @@ export class AudioSystem {
     const M = SIRENA_MEZCLA;
     if (!this.busSirena) {
       this.busSirena = ctx.createGain();
-      this.busSirena.connect(this.master);
+      this.busSirena.connect(this.calle ?? this.master);
     }
     const L = this.listener;
     const voces = this.sirenas;

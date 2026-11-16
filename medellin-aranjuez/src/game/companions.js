@@ -105,6 +105,31 @@ export class Companions {
     if (this.date) this.impact = Math.max(this.impact, impact);
   }
 
+  /**
+   * Un tiro (o una explosión) le pegó sentada de copiloto (game/occupants.js):
+   * herida, se asusta y se quiere bajar (como con un disparo cerca); muerta,
+   * se acaba la cita y queda en la calle, al lado de su puerta.
+   */
+  hitInCar(dmg, attacker, from, headshot = false, how = 'gun') {
+    const d = this.date;
+    if (!d || !d.seated || d.out || !d.ped.alive) return;
+    const m = d.ped;
+    if (m.health - dmg > 0) {
+      m.health -= dmg;
+      m.sim.health = m.health;
+      this.shotD = 0; // (sim/companions.js pasoCita: un disparo a 0 m la asusta)
+      // El delito y el aviso, como a cualquier civil herido (Combat.damagePed), sin sacarla del carro.
+      this.game.events?.emit('pedHurt', { ped: m, attacker, how });
+      if (attacker === 'player' && how !== 'impact') this.game.wanted?.report('assault', this.game.player);
+      return;
+    }
+    d.cita.motivo = 'susto';
+    d.blink = null;
+    this._out(d);
+    this.game.combat.damagePed(m, dmg, attacker, from, headshot, how);
+    this._finish(d);
+  }
+
   update(dt) {
     const g = this.game;
     if (g.state !== 'playing' || !g.world || !g.player) return;

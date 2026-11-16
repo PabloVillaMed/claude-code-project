@@ -413,6 +413,71 @@ test('ropa: en Gorras y Tenis La 52 se compra una gorra, se pone, se quita y que
   expect(saved.owned).toContain('gorra-plana-roja');
 });
 
+test('comercios: de día se entra caminando a una tienda, se compra en el mostrador y se sale', async () => {
+  await G(() => {
+    window.__game.setTime(11);
+    window.__gameInstance.addMoney(500);
+  });
+  const t = (await G(() => window.__game.comercios())).locales.find((l) => l.tema === 'tienda');
+  expect(t.abierto).toBe(true);
+  // Caminar con el teclado hasta un punto, corrigiendo el rumbo con la cámara.
+  const walkTo = async (x, z, near = 0.45) => {
+    for (let i = 0; i < 90; i++) {
+      const d = await G(([x, z]) => {
+        const p = window.__gameInstance.player;
+        const dx = x - p.x;
+        const dz = z - p.z;
+        window.__game.look(Math.atan2(-dx, -dz));
+        return Math.hypot(dx, dz);
+      }, [x, z]);
+      if (d < near) return d;
+      await page.keyboard.down('KeyW');
+      await frames(d > 2 ? 3 : 1);
+      await page.keyboard.up('KeyW');
+    }
+    return Infinity;
+  };
+  const dentro = async () => (await G(() => window.__game.comercios())).dentro;
+  // Del andén, por la puerta (la cortina arriba), hasta el mostrador.
+  await G((t) => window.__game.teleport(t.afuera.x, t.afuera.z), t);
+  await frames(6);
+  expect(await dentro()).toBe(null);
+  expect(await walkTo(t.adentro.x, t.adentro.z)).toBeLessThan(0.6);
+  await frames(2);
+  expect(await dentro()).toBe(t.id);
+  expect(await walkTo(t.mostrador.x, t.mostrador.z, 0.5)).toBeLessThan(0.6);
+  await frames(4);
+  // El interior está armado y con quien atiende detrás del mostrador.
+  const c = await G(() => window.__game.comercios());
+  expect(c.armados).toContain(t.id);
+  expect(c.gente?.local).toBe(t.id);
+  expect(c.gente.roles).toContain('tendero');
+  // E frente al mostrador: el menú de la tienda (el mismo de afuera).
+  const m0 = (await st()).money;
+  await page.keyboard.press('KeyE');
+  await expect(page.locator('#shop')).toBeVisible();
+  await expect(page.locator('#shop-title')).toHaveText(t.name);
+  await expect(page.locator('#shop-kicker')).toHaveText('Tienda de barrio');
+  await page.locator('#shop-items button').first().click();
+  expect((await st()).money).toBe(m0 - 15);
+  await page.locator('button[data-action="close-shop"]').click();
+  await expect(page.locator('#shop')).toBeHidden();
+  await frames(3);
+  // Y se sale caminando a la calle.
+  expect(await walkTo(t.adentro.x, t.adentro.z)).toBeLessThan(0.6);
+  expect(await walkTo(t.afuera.x, t.afuera.z)).toBeLessThan(0.6);
+  await frames(2);
+  expect(await dentro()).toBe(null);
+  // De noche, cortina abajo y cerrado.
+  await G(() => window.__game.setTime(23));
+  await frames(4);
+  const n = (await G(() => window.__game.comercios())).locales.find((l) => l.id === t.id);
+  expect(n.abierto).toBe(false);
+  expect(n.puertaAbierta).toBe(false);
+  await G(() => window.__game.setTime(11));
+  expect(errors).toEqual([]);
+});
+
 test('policía: con estrellas aparecen patrullas', async () => {
   await G((S) => {
     window.__game.teleport(S.x, S.z);
@@ -605,5 +670,72 @@ test('cielo: nubes según la hora y el cielo se rehornea solo si el sol se mueve
   await frames(3);
   expect(await G(() => window.__gameInstance.env.night)).toBeGreaterThan(0.9);
   await G(() => window.__game.setTime(16.5));
+  expect(errors).toEqual([]);
+});
+
+test('discotecas: de noche se entra, hay gente bailando, se pide en la barra y se baila con E al compás', async () => {
+  await G(() => {
+    window.__game.setTime(23.5);
+    window.__gameInstance.addMoney(500);
+  });
+  await frames(3);
+  expect(await G(() => window.__game.enterInterior('flow92'))).toBeTruthy();
+  await frames(10);
+  const c = await G(() => window.__game.clubLife({ llenar: true }));
+  expect(c.local).toBe('flow92');
+  expect(c.bailando).toBeGreaterThan(3);
+  // La barra va primero: pegado a ella, E pide un guaro.
+  const plata0 = (await st()).money;
+  await G(() => {
+    const g = window.__gameInstance;
+    const b = g.interiors.spots('flow92').barra[0];
+    g.player.state.pos.x = b.x;
+    g.player.state.pos.z = b.z;
+  });
+  await frames(3);
+  await page.keyboard.press('KeyE');
+  await frames(3);
+  expect((await st()).money).toBe(plata0 - 20);
+  expect(await G(() => window.__game.baile().activo)).toBe(false);
+  // En la pista: E para bailar y sale la pista de ritmo.
+  expect(await G(() => window.__game.baile('pista'))).toBeTruthy();
+  await frames(3);
+  expect((await G(() => window.__game.baile())).enPista).toBe(true);
+  await page.keyboard.press('KeyE');
+  await frames(3);
+  let b = await G(() => window.__game.baile());
+  expect(b.activo).toBe(true);
+  expect(b.estilo).toBe('regueton');
+  expect(b.tanda).toBeTruthy();
+  await expect(page.locator('#baile-hud')).toHaveClass(/on/);
+  // Mientras baila, las teclas de carril no lo mueven.
+  const p0 = await G(() => ({ x: window.__gameInstance.player.x, z: window.__gameInstance.player.z }));
+  await page.keyboard.press('KeyW');
+  await page.keyboard.press('ArrowLeft');
+  await frames(3);
+  const p1 = await G(() => ({ x: window.__gameInstance.player.x, z: window.__gameInstance.player.z }));
+  expect(Math.hypot(p1.x - p0.x, p1.z - p0.z)).toBeLessThan(0.05);
+  expect(await G(() => window.__game.baile().activo)).toBe(true);
+  // Unos golpes acertados: el combo sube y el paso se vuelve más vistoso.
+  await G(() => window.__game.baile('acertar', 12));
+  await frames(2);
+  b = await G(() => window.__game.baile());
+  expect(b.tanda.combo).toBeGreaterThanOrEqual(12);
+  expect(b.paso).not.toBe('normal');
+  expect(b.emocion).toBeGreaterThan(0);
+  // E otra vez: deja de bailar (con la propina de la tanda) y se esconde la pista.
+  const plata1 = (await st()).money;
+  await page.keyboard.press('KeyE');
+  await frames(3);
+  b = await G(() => window.__game.baile());
+  expect(b.activo).toBe(false);
+  expect((await st()).money).toBeGreaterThanOrEqual(plata1);
+  await expect(page.locator('#baile-hud')).not.toHaveClass(/on/);
+  // Afuera de nuevo, de día.
+  await G((s) => {
+    window.__game.teleport(s.x, s.z);
+    window.__game.setTime(16.5);
+  }, S);
+  await frames(5);
   expect(errors).toEqual([]);
 });

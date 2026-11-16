@@ -135,12 +135,15 @@ game.onStateChange = (s) => {
 
 game.onOpenShop = () => {
   renderShop();
+  // (Frente al espejo de un almacén: el panel a un lado, para verse de frente.)
+  $('shop').classList.toggle('espejo', !!game.comercios?.espejo);
   showOverlay('shop');
 };
 
 function renderShop() {
   $('shop-title').textContent = game.shopPoi?.name ?? 'Armería El Parcero';
-  $('shop-kicker').textContent = game.shopPoi?.menu ? 'Pedido' : game.shopPoi?.type === 'ropa' ? 'Almacén de ropa' : 'Tienda';
+  // (`kicker`: el rubro de un comercio genérico adentro, game/comercios.js.)
+  $('shop-kicker').textContent = game.shopPoi?.kicker ?? (game.shopPoi?.menu ? 'Pedido' : game.shopPoi?.type === 'ropa' ? 'Almacén de ropa' : 'Tienda');
   $('shop-money').textContent = `Tu plata: $${game.player.money.toLocaleString('es-CO')}`;
   const items = game.shopItems();
   $('shop-items').innerHTML = items

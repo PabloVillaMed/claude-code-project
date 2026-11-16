@@ -299,7 +299,10 @@ export function buildDominoTable(seats = 4) {
   const q = new THREE.Quaternion();
   const one = new THREE.Vector3(1, 1, 1);
   for (const part of parts) {
-    const im = new THREE.InstancedMesh(part.geometry, part.material, seats);
+    // (Copia del material, en caché: las sillas de la ciudad llevan color por instancia y estas no; con el mismo
+    // material three volvía a buscar el programa en cada cambio, dos veces por cuadro con las dos a la vista.)
+    const material = once(`sinTinte:${part.material.uuid}`, () => part.material.clone());
+    const im = new THREE.InstancedMesh(part.geometry, material, seats);
     im.castShadow = true;
     for (let i = 0; i < seats; i++) {
       const s = seatAt[i];

@@ -601,6 +601,7 @@ export class SkinnedRig {
     this.lookYaw = 0;
     this.lookPitch = 0;
     this.post = null;
+    this.postLocal = false;
     this.forceProp = null;
   }
 
@@ -960,7 +961,8 @@ export class SkinnedRig {
     // Lo que no se dibuja no se anima (y lo lejano, a menor frecuencia).
     this.accum += dt;
     const visible = this.frame - this.rendered <= 2 || this.frame < 3;
-    const tabla = driving === 'car' || driving === 'moto' ? ANIM_LOD.conduce : speed < ANIM_LOD_QUIETO && !driving ? ANIM_LOD.quieto : ANIM_LOD.mueve;
+    // (`st.lod`: tabla propia de quien lo anima; la gente que baila adentro de las discotecas: game/clubLife.js.)
+    const tabla = st.lod ?? (driving === 'car' || driving === 'moto' ? ANIM_LOD.conduce : speed < ANIM_LOD_QUIETO && !driving ? ANIM_LOD.quieto : ANIM_LOD.mueve);
     const every = !visible ? ANIM_LOD.oculto : lodEvery(tabla, this.viewDist);
     if (this.frame % every !== 0 && this.punchTimer <= 0 && this.deadBlend < 0.01) return;
     const step = this.accum;
@@ -980,7 +982,7 @@ export class SkinnedRig {
       wsum += w;
     }
     if (wsum > 0) this.phase = (this.phase + (step * cyc) / wsum) % 1;
-    this.clock += step;
+    this.clock += step * (st.rate ?? 1); // (`st.rate`: el clip de reposo a otro ritmo: el de baile al tempo del local)
     this.tCrouch += step * (crouch && speed > 0.3 ? 1.6 : 1);
 
     // El mezclador de three.js solo escribe un hueso si su valor cambió desde
@@ -1070,7 +1072,8 @@ export class SkinnedRig {
     this._look(st.lookAt ?? null, step, dead || a > 0.3 || db > 0.5);
     // Pose por código de la actividad en curso (colgar ropa, patear, barrer...).
     if (this.post) {
-      this.root.updateMatrixWorld(true);
+      // (`postLocal`: la pose no usa matrices de mundo; se ahorra recalcular los ~90 nodos: render/dancePoses.js.)
+      if (!this.postLocal) this.root.updateMatrixWorld(true);
       this.post(this, step);
     }
   }

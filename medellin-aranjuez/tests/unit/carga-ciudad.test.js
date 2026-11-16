@@ -84,27 +84,33 @@ const PARTS = ['buildings', 'props', 'parkedVehicles', 'blocks', 'pois', 'collis
 // puerta de los que se corrieron) y colisión (el cascarón hueco y lo de
 // adentro); manzanas, carros parqueados y metro siguen iguales. Mientras
 // INTERIORES_ACTIVOS sea false, las sumas son las del asiento en la loma solo.
+// 3.8: los comercios del día a día a los que se entra (sim/interiors.js
+// armarLocal, city.locales): cambian edificios (el `local` de los que se
+// abren), utilería (las sillas y canastas que estaban frente a su puerta: 19
+// menos en la semilla 4, 8 en la 7) y colisión (el cascarón hueco con su
+// mostrador y lo de adentro); manzanas, carros parqueados, lugares, metro y
+// el número de edificios siguen iguales.
 const EXPECTED = {
   4: {
-    all: 'd54a191a71979de4',
-    counts: [15681, 24140, 261],
-    buildings: '74752f482d7ce1bf',
-    props: 'c750c4f80938ff46',
+    all: '6d649fb734f255a9',
+    counts: [15681, 24121, 261],
+    buildings: '861ea3b884fda1b6',
+    props: '513a910ae9aa8d8c',
     parkedVehicles: '8f0b3d83691b3738',
     blocks: '7235efc8f8b15c92',
     pois: '9128ba9dab3b48ab',
-    collision: 'aabdb944834a2b32',
+    collision: 'cb88f9d33e5e77f5',
     metro: '8ef5eeef08119bb0',
   },
   7: {
-    all: 'b59ed8b1d2e1aaff',
-    counts: [15717, 24540, 256],
-    buildings: '1e2cbc367141e7a4',
-    props: 'e194822209ef8e37',
+    all: '7993ac83fd92390a',
+    counts: [15717, 24532, 256],
+    buildings: 'a164e7e0a5b5be68',
+    props: '298e044ab451748a',
     parkedVehicles: '0f48bb75fb91742c',
     blocks: '7235efc8f8b15c92',
     pois: '8fe2228e1e02b2da',
-    collision: 'aac5ee4e574697d3',
+    collision: '50dd12f5b32890a2',
     metro: '8ef5eeef08119bb0',
   },
 };

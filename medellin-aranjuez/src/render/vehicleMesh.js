@@ -13,6 +13,7 @@ import { assets } from './assets.js';
 import { vehicleSpec } from '../sim/vehiclePhysics.js';
 import { VEHICLE_VARIANTS, BOX_COLORS } from '../sim/vehicleVariants.js';
 import { groundHeight, terrainHeight } from '../sim/terrain.js';
+import { DoorRig, PUERTA, doorKit, doorMaterials } from './carDoors.js';
 
 // ------------------------------------------- moto de la Policía (ajustables)
 // Como las Honda XRE 300 de la Policía Metropolitana del Valle de Aburrá:
@@ -251,6 +252,19 @@ export function hit(root, origin, dir) {
   _ray.far = 50;
   const h = _ray.intersectObject(root, true);
   return h.length ? h[0] : null;
+}
+
+/** Rayo contra la carrocería de una plantilla, para medir su puerta (render/carDoors.js): {point, glass}. */
+const doorRay = (tpl) => (origin, dir) => {
+  const h = hit(tpl.body, origin, dir);
+  if (!h) return null;
+  const m = h.object.material;
+  return { point: h.point, glass: m === MODEL_MATS.vidrio() || (m.transparent && m.opacity < 0.9) };
+};
+/** Lo de la puerta (geometrías y materiales) es de la plantilla: nunca se libera con el carro. */
+function registerDoorKit(kit) {
+  registerShared(kit);
+  for (const m of doorMaterials()) registerShared(m);
 }
 
 /**
@@ -572,7 +586,7 @@ function modelTemplate(type, variant = null) {
     }
   });
 
-  const tpl = { type, cfg, body, wheels, L, W, box, roofY, roofCenterZ, beltY, decals: [], sL };
+  const tpl = { type, key, cfg, body, wheels, L, W, box, roofY, roofCenterZ, beltY, decals: [], sL };
   const paintMeshes = [];
   body.traverse((o) => o.isMesh && o.material.name === 'pintura' && paintMeshes.push(o));
   // Calcomanía lateral (ambos costados) proyectada sobre la pintura.
@@ -829,11 +843,16 @@ export class VehicleView {
     });
     this.paint ??= paint(color);
     this.chassis.add(body);
+    // (Para la puerta que abre: render/carDoors.js.)
+    this.tpl = tpl;
+    this.bodyMesh = body;
+    this.decalMeshes = [];
     const decals = type === 'buseta' ? [...tpl.decals, ...busStripes(tpl, opts.color ?? [0x1d4e89, 0xd62828, 0x2a9d8f, 0xf4a261][Math.floor(Math.random() * 4)])] : tpl.decals;
     for (const d of decals) {
       const m = new THREE.Mesh(d.geometry, d.material);
       m.receiveShadow = true;
       this.chassis.add(m);
+      this.decalMeshes.push(m);
     }
     for (const w of tpl.wheels) {
       const pivot = new THREE.Group();
@@ -1074,6 +1093,7 @@ export class VehicleView {
   /** Sincroniza con el estado de la simulación. */
   sync(v, dt, night, siren = false) {
     this._fitGround(v, dt);
+    if (this.doorAnim) this._stepDoor(dt);
     for (const w of this.wheels) w.rotation.x = -v.wheelSpin;
     const ride = this.group.userData.ride;
     if (ride) {
@@ -1131,7 +1151,8 @@ export class VehicleView {
       const b = F.base[i];
       const wx = v.x + b.x * c + b.z * sn;
       const wz = v.z - b.x * sn + b.z * c;
-      const h = surfaceHeight(wx, wz);
+      // (+ lo que la sube un poste o árbol tumbado: VehicleView.bumpAt lo pone el juego.)
+      const h = surfaceHeight(wx, wz) + (VehicleView.bumpAt ? VehicleView.bumpAt(wx, wz) : 0);
       F.h[i] = Math.abs(h - F.h[i]) > 1 ? h : F.h[i] + (h - F.h[i]) * k;
       mx += b.x;
       mz += b.z;
@@ -1205,6 +1226,103 @@ export class VehicleView {
       }
     });
     for (const m of this.lights.bar) m.emissiveIntensity = 0;
+  }
+
+  // ------------------------------------------------ la puerta que abre (render/carDoors.js)
+  /**
+   * Lleva la puerta del lado `side` (-1 conductor, 1 copiloto) a `target`
+   * (1 abierta, 0 cerrada) después de `delay` s. `hold`: s que queda abierta
+   * antes de cerrarse sola (para el que se baja asustado). false si este
+   * carro no tiene puerta que abre (moto, buseta, respaldo procedural...).
+   */
+  doorTo(side, target, delay = 0, hold = null) {
+    if (!this.tpl || this.type === 'moto') return false;
+    const a = this.doorAnim;
+    if (a && a.side !== side) {
+      // La otra puerta se cierra de una (una a la vez).
+      this._setDoor(a.side, 0);
+      this.doorAnim = null;
+    }
+    if (!this.doorAnim && target <= 0) return true;
+    if (!this.doorAnim) {
+      if (!doorKit(this.tpl, side, doorRay(this.tpl), registerDoorKit)) return false;
+      this.doorAnim = { side, k: 0, target: 0, delay: 0, hold: null };
+    }
+    const d = this.doorAnim;
+    // Ya iba hacia allá (abre al bajarse y otra vez al levantarse): no se detiene.
+    if (d.target !== target || d.k === d.target) d.delay = delay;
+    d.target = target;
+    d.hold = hold;
+    return true;
+  }
+
+  /**
+   * Corta las dos puertas de la plantilla (~3-30 ms cada una, una sola vez):
+   * en el calentamiento, para que no haya tirón la primera vez que abre una
+   * (la del copiloto: la dama, el lado bloqueado, el compañero de la patrulla).
+   */
+  prepareDoors() {
+    if (!this.tpl || this.type === 'moto') return false;
+    const ok = !!doorKit(this.tpl, -1, doorRay(this.tpl), registerDoorKit);
+    if (ok) doorKit(this.tpl, 1, doorRay(this.tpl), registerDoorKit);
+    return ok;
+  }
+
+  /** Abre la puerta y la cierra sola al rato (el conductor que se baja corriendo, el cuerpo que sacan). */
+  doorPulse(side = -1) {
+    return this.doorTo(side, 1, 0, PUERTA.pulseHold);
+  }
+
+  _stepDoor(dt) {
+    const d = this.doorAnim;
+    if (d.delay > 0) {
+      d.delay -= dt;
+      return;
+    }
+    const k0 = d.k;
+    if (d.target > d.k) d.k = Math.min(d.target, d.k + dt / PUERTA.openTime);
+    else if (d.target < d.k) d.k = Math.max(d.target, d.k - dt / PUERTA.closeTime);
+    if (k0 === 0 && d.k > 0) VehicleView.doorSound?.(this, 'abre');
+    if (d.k >= 1 && d.hold != null) {
+      d.hold -= dt;
+      if (d.hold <= 0) {
+        d.target = 0;
+        d.hold = null;
+      }
+    }
+    // (Suave al arrancar y al llegar.)
+    const e = d.k * d.k * (3 - 2 * d.k);
+    this._setDoor(d.side, e);
+    if (d.k <= 0 && d.target <= 0) {
+      if (k0 > 0) VehicleView.doorSound?.(this, 'cierra');
+      this.doorAnim = null;
+    }
+  }
+
+  /** Pone la puerta (0 cerrada .. 1 abierta); cerrada vuelve la carrocería de siempre. */
+  _setDoor(side, k) {
+    let r = this.doorRig;
+    if (k <= 0) {
+      if (r) {
+        r.group.removeFromParent();
+        this.doorRig = null;
+        this.bodyMesh.visible = true;
+        for (const m of this.decalMeshes) m.visible = true;
+      }
+      return;
+    }
+    if (!r || r.kit.side !== side) {
+      if (r) this._setDoor(r.kit.side, 0);
+      const kit = doorKit(this.tpl, side, doorRay(this.tpl), registerDoorKit);
+      if (!kit) return;
+      const head = this.lights.head;
+      const tail = this.lights.tail;
+      r = this.doorRig = new DoorRig(kit, (m) => (m.name === 'pintura' ? this.paint : m.name === 'faro' ? head : m.name === 'stop' ? tail : m));
+      this.chassis.add(r.group);
+      this.bodyMesh.visible = false;
+      for (const m of this.decalMeshes) m.visible = false;
+    }
+    r.set(k);
   }
 
   dispose() {

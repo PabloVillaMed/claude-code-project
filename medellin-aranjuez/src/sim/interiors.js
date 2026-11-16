@@ -67,6 +67,9 @@ export const TAMANOS = {
   grande: { ancho: 14, fondo: 22, alto: 6.6, pisos: 3, mezz: true, cover: 50 },
   mediano: { ancho: 10, fondo: 16, alto: 4.4, pisos: 2, mezz: false, cover: 30 },
   bar: { ancho: 8, fondo: 12, alto: 3.4, pisos: 2, mezz: false, cover: 0 },
+  // Local del día a día (v3.8): la huella PROPIA del edificio (no tumba
+  // vecinos), solo el primer piso; el fondo lo pone el tema (COMERCIO_TEMAS).
+  local: { ancho: 0, fondo: 12, alto: 3.0, pisos: 1, mezz: false, cover: 0, propia: true },
 };
 
 /** Ampliación de la huella: lo menos que se acepta de cada medida (fracción de la buscada), corrimiento del centro a lo largo del frente y castigos al escoger. */
@@ -99,6 +102,149 @@ export const PLANES = {
 /** ¿El local está abierto a la hora `h`? (de noche, con la rumba). */
 export function localAbierto(h) {
   return nivelRumba(h) > INTERIOR.ABRE_NIVEL;
+}
+
+// ------------------------------------------------------------------ comercios (configurables)
+/**
+ * Locales del día a día a los que se entra (v3.8): tiendas de barrio,
+ * panaderías, droguerías, cacharrerías, papelerías, comidas y almacenes de
+ * ropa. Usan la huella propia del edificio (TAMANOS.local) y abren de día.
+ */
+export const COMERCIO = {
+  /** Locales genéricos (avisos de facades.js SHOPS) que se vuelven accesibles, por tema; la suma es el total. */
+  CUPOS: { tienda: 6, panaderia: 3, drogueria: 2, cacharreria: 1, papeleria: 2 },
+  /** Calles donde se escogen los genéricos (las comerciales de cityLayout.js). */
+  CALLES: ['Calle 92', 'Carrera 51', 'Carrera 52'],
+  /** Distancia mínima (m) entre dos locales accesibles (genéricos con cualquiera). */
+  SEPARACION: 14,
+  /** Medidas mínimas del edificio (m): frente y fondo. */
+  ANCHO_MIN: 4.8,
+  FONDO_MIN: 4.8,
+  /** m que debe quedar entre la casa y el borde del mapa jugable (más allá el jugador no llega). */
+  MARGEN_MAPA: 4,
+  /** Desnivel máximo (m) del andén a lo largo del frente de un genérico (los de la loma muy parada se quedan con su vitrina). */
+  DESNIVEL_MAX: 0.6,
+  /** Alto libre (m) bajo el techo del local: lo menos entre esto y el primer piso menos MARGEN_TECHO. */
+  ALTO: 3.0,
+  MARGEN_TECHO: 0.2,
+  /** Alto (m) del vano de la vitrina (facades.js FACADE.shopH): la puerta del local. */
+  PUERTA_ALTO: 2.65,
+  /** Locales con nombre que NO se abren (la historia los usa por fuera: la abuela se sienta en su silla). */
+  EXCLUIDOS: ['abuela'],
+  /** m: a esta distancia del punto del mostrador (o del espejo de los almacenes) se compra (o se prueba la ropa) con E. */
+  RANGO_COMPRA: 1.35,
+  RANGO_ESPEJO: 1.0,
+};
+
+/** Horario (horas del día, [abre, cierra)) por tema; de noche, cortina abajo. */
+export const HORARIOS = {
+  tienda: [6, 22],
+  panaderia: [5, 20],
+  almacen: [9, 20],
+  comidas: [10, 24],
+  drogueria: [7, 21],
+  cacharreria: [8, 19],
+  papeleria: [7, 19],
+};
+
+/** Fondo (m) que usa cada tema (lo de atrás de la casa queda macizo, como bodega). */
+export const COMERCIO_TEMAS = {
+  tienda: { fondo: 6.4 },
+  panaderia: { fondo: 7.2 },
+  comidas: { fondo: 8.2 },
+  almacen: { fondo: 11 },
+  drogueria: { fondo: 6.2 },
+  cacharreria: { fondo: 8 },
+  papeleria: { fondo: 6.2 },
+};
+
+/** Tema por tipo de aviso (segundo campo de facades.js SHOPS / LOCALES). */
+export const TEMA_POR_TIPO = { tienda: 'tienda', panaderia: 'panaderia', drogueria: 'drogueria', ferreteria: 'cacharreria', papeleria: 'papeleria', cafeteria: 'comidas', heladeria: 'comidas', ropa: 'almacen' };
+
+/** Locales con nombre de cityLayout.js LOCAL_SPOTS que se abren (id -> tema y variante). */
+export const PLANES_LOCAL = {
+  mandingas92: { tema: 'comidas', variante: 'papas' },
+  granizados92: { tema: 'comidas', variante: 'granizados' },
+  arriero: { tema: 'almacen', variante: 'paisa' },
+  silletera: { tema: 'almacen', variante: 'paisa' },
+  talabarteria: { tema: 'almacen', variante: 'cuero' },
+  modapaisa: { tema: 'almacen', variante: 'moda' },
+  boutique92: { tema: 'almacen', variante: 'moda' },
+  remates: { tema: 'almacen', variante: 'moda' },
+  deportes: { tema: 'almacen', variante: 'deportes' },
+  gorras52: { tema: 'almacen', variante: 'deportes' },
+};
+
+/**
+ * Lo que se vende en los genéricos (los de nombre usan el menú o el surtido
+ * de su lugar). `cosa`: no es de comer (se paga y ya: game/Game.js buy).
+ */
+export const MENUS_COMERCIO = {
+  tienda: [
+    { id: 'gaseosa', name: 'Gaseosa fría', desc: 'De la nevera de vidrio', price: 15, heal: 10 },
+    { id: 'panbocadillo', name: 'Pan con bocadillo', desc: 'El algo de la tarde', price: 12, heal: 10 },
+    { id: 'papitas', name: 'Paquete de papitas', desc: 'De la tira de mecato', price: 10, heal: 6 },
+    { id: 'cerveza', name: 'Cerveza fría', desc: 'Pa acompañar el dominó', price: 25, heal: 5 },
+  ],
+  panaderia: [
+    { id: 'pandebono', name: 'Pandebono', desc: 'Calientico, recién salido', price: 20, heal: 15 },
+    { id: 'bunuelo', name: 'Buñuelo', desc: 'Redondito y dorado', price: 20, heal: 15 },
+    { id: 'pandequeso', name: 'Pan de queso', desc: 'Del horno de la mañana', price: 15, heal: 12 },
+    { id: 'tinto', name: 'Tinto', desc: 'De la greca', price: 10, heal: 5 },
+  ],
+  comidas: [
+    { id: 'empanada', name: 'Empanada con ají', desc: 'De papa y carne', price: 15, heal: 12 },
+    { id: 'arepa', name: 'Arepa con quesito', desc: 'De la plancha', price: 25, heal: 20 },
+    { id: 'jugo', name: 'Jugo en agua', desc: 'De mora o de lulo', price: 20, heal: 12 },
+  ],
+  drogueria: [
+    { id: 'acetaminofen', name: 'Acetaminofén', desc: 'Pa el dolor de cabeza', price: 20, heal: 15 },
+    { id: 'curitas', name: 'Curitas y yodo', desc: 'Pa los raspones de la calle', price: 25, heal: 20 },
+    { id: 'suero', name: 'Suero oral', desc: 'Pa reponerse', price: 30, heal: 25 },
+  ],
+  cacharreria: [
+    { id: 'linterna', name: 'Linterna de pilas', desc: 'Pa cuando se va la luz', price: 35, cosa: true },
+    { id: 'balde', name: 'Balde plástico', desc: 'Del rojo, el que no se rompe', price: 20, cosa: true },
+    { id: 'pito', name: 'Pito de árbitro', desc: 'Pa el picadito de la cancha', price: 8, cosa: true },
+  ],
+  papeleria: [
+    { id: 'minutos', name: 'Minutos a celular', desc: 'A cualquier operador', price: 5, cosa: true },
+    { id: 'fotocopias', name: 'Fotocopias', desc: 'Blanco y negro, a doble cara', price: 3, cosa: true },
+    { id: 'cuaderno', name: 'Cuaderno cuadriculado', desc: 'De cien hojas', price: 25, cosa: true },
+    { id: 'chicles', name: 'Chicles', desc: 'De a dos por cien', price: 5, heal: 2 },
+  ],
+};
+
+/** Rótulo de la tienda en la ventana de compra (main.js), por tema. */
+export const RUBROS = { tienda: 'Tienda de barrio', panaderia: 'Panadería', comidas: 'Comidas', almacen: 'Almacén de ropa', drogueria: 'Droguería', cacharreria: 'Cacharrería', papeleria: 'Papelería y minutos' };
+
+/** ¿El interior `r` está abierto a la hora `h`? (los comercios por su horario; las discotecas de noche). */
+export function abiertoA(r, h) {
+  const hr = r?.horario;
+  if (!hr) return localAbierto(h);
+  const [a, b] = hr;
+  const x = ((h % 24) + 24) % 24;
+  return a <= b ? x >= a && x < b : x >= a || x < b;
+}
+
+/**
+ * Qué atiende la tecla E en (x, z) adentro del comercio `r`: 'espejo' (frente
+ * al espejo de un almacén, a probarse), 'mostrador' (a comprar) o null.
+ */
+export function puntoCompra(r, x, z) {
+  const e = r?.spots?.espejo?.[0];
+  if (e && r.store && Math.hypot(e.x - x, e.z - z) < COMERCIO.RANGO_ESPEJO) return 'espejo';
+  const m = r?.spots?.mostrador?.[0];
+  if (m && Math.hypot(m.x - x, m.z - z) < COMERCIO.RANGO_COMPRA) return 'mostrador';
+  return null;
+}
+
+/** Plan de un comercio: tema, variante y tamaño 'local' (null si el tipo no tiene interior). */
+export function planComercio(id, kind) {
+  const p = PLANES_LOCAL[id];
+  if (p) return { ...p, tam: 'local' };
+  const tema = TEMA_POR_TIPO[kind];
+  return tema ? { tema, variante: null, tam: 'local' } : null;
 }
 
 const hash = (s) => {
@@ -221,6 +367,7 @@ const inRect = (o, x, z) => x >= o.x0 && x <= o.x1 && z >= o.z0 && z <= o.z1;
  * estructura, `items` (barra, tarima, mesas...) y `spots`.
  */
 export function armarInterior(b, L, plan) {
+  if (plan.tam === 'local') return armarLocal(b, L, plan);
   const f = b.frame;
   const T = INTERIOR.MURO;
   const tam = TAMANOS[plan.tam];
@@ -394,6 +541,19 @@ export function caminableInteriores(rooms) {
     maxZ = Math.max(maxZ, r.maxZ);
   }
   const p = { x: 0, z: 0 };
+  // Muchos locales regados por el barrio (los comercios): rejilla de celdas
+  // para no revisar todos en cada consulta de altura (las hace cada peatón).
+  const cs = CELDA_CAMINABLE;
+  const cells = rooms.length > 8 ? new Map() : null;
+  if (cells)
+    for (const r of rooms)
+      for (let i = Math.floor(r.minX / cs); i <= Math.floor(r.maxX / cs); i++)
+        for (let j = Math.floor(r.minZ / cs); j <= Math.floor(r.maxZ / cs); j++) {
+          const k = i * 4096 + j;
+          if (!cells.has(k)) cells.set(k, []);
+          cells.get(k).push(r);
+        }
+  const NONE = [];
   return {
     minX,
     maxX,
@@ -403,7 +563,8 @@ export function caminableInteriores(rooms) {
     room: true,
     interiors: rooms,
     height(x, z, y = null) {
-      for (const r of rooms) {
+      const list = cells ? (cells.get(Math.floor(x / cs) * 4096 + Math.floor(z / cs)) ?? NONE) : rooms;
+      for (const r of list) {
         if (x < r.minX || x > r.maxX || z < r.minZ || z > r.maxZ) continue;
         aLocal(r, x, z, p);
         const h = alturaInterior(r, p.x, p.z, y);
@@ -413,6 +574,8 @@ export function caminableInteriores(rooms) {
     },
   };
 }
+/** Lado (m) de las celdas de la rejilla de caminableInteriores. */
+const CELDA_CAMINABLE = 16;
 
 // ------------------------------------------------------------------ colisión
 /**
@@ -792,3 +955,396 @@ export const TEMAS = {
     r.spots.meseros.push(spot(r, 0, r.Z0 + 5.2, r.y0, 0, -1));
   },
 };
+
+// ------------------------------------------------------------------ comercios: distribución
+// Los del día a día (TAMANOS.local): la huella propia del edificio, la puerta
+// es el vano de la vitrina de la fachada (facades.js) y el tema reparte el
+// mostrador, las estanterías y lo demás sin tapar el paso de la puerta al
+// mostrador. `spots`: tendero (detrás del mostrador), mostrador (donde se
+// compra con E), clientes (comprando, conversando, sentados o mirando ropa)
+// y espejo (el de los almacenes: probarse la ropa).
+
+/** Medidas comunes de los comercios (m). */
+const CM = {
+  /** Franja libre detrás de la fachada frente a la puerta. */
+  ENTRADA: 1.0,
+  /** Media anchura del camino de la puerta al mostrador. */
+  CAMINO: 0.5,
+  /** Fondo del mostrador y paso del tendero en un extremo. */
+  MOSTRADOR: 0.62,
+  PASO: 0.85,
+  /** Fondo de las estanterías de pared. */
+  ESTANTE: 0.42,
+};
+
+/**
+ * Arma el interior de un comercio en la huella propia de `b` (ya asentado).
+ * `L` = {id, name, kind, menu?, store?, poi?}; `plan` = {tema, variante,
+ * puerta: {x0, x1}} (el vano de la vitrina en x local, ver cityLayout.js).
+ */
+export function armarLocal(b, L, plan) {
+  const f = b.frame;
+  const T = INTERIOR.MURO;
+  const tema = COMERCIO_TEMAS[plan.tema] ?? COMERCIO_TEMAS.tienda;
+  const W = 2 * f.hu;
+  const D = Math.min(2 * f.hv, tema.fondo);
+  const floorY = b.groundY;
+  const H = Math.min(COMERCIO.ALTO, b.topY - floorY - COMERCIO.MARGEN_TECHO);
+  const pu = plan.puerta ?? { x0: -1.1, x1: 1.1 };
+  const r = {
+    id: L.id,
+    name: L.name,
+    tema: plan.tema,
+    variante: plan.variante ?? null,
+    tam: 'local',
+    kind: L.kind ?? null,
+    cover: 0,
+    horario: HORARIOS[plan.tema] ?? HORARIOS.tienda,
+    cortina: plan.cortina ?? 4, // color de la cortina metálica (facades.js METAL_COLORS)
+    menu: L.menu ?? null,
+    store: L.store ?? null,
+    poi: L.poi ?? null,
+    ox: f.x + f.nx * f.hv,
+    oz: f.z + f.nz * f.hv,
+    ux: f.ux,
+    uz: f.uz,
+    nx: f.nx,
+    nz: f.nz,
+    rot: Math.atan2(f.nx, f.nz),
+    W,
+    D,
+    deep: 2 * f.hv,
+    hu: f.hu,
+    X0: -f.hu + T,
+    X1: f.hu - T,
+    Z0: -D + T,
+    Z1: -T,
+    floorY,
+    y0: floorY,
+    H,
+    baseY: b.baseY,
+    topY: b.topY,
+    door: { x0: Math.max(-f.hu + T + 0.05, pu.x0), x1: Math.min(f.hu - T - 0.05, pu.x1), h: Math.min(COMERCIO.PUERTA_ALTO, H - 0.05) },
+    mezz: null,
+    stairs: [],
+    landing: null,
+    shaft: null,
+    items: [],
+    spots: { tendero: [], mostrador: [], clientes: [], espejo: [] },
+    pista: null,
+    cabina: null,
+    minX: b.minX,
+    maxX: b.maxX,
+    minZ: b.minZ,
+    maxZ: b.maxZ,
+  };
+  // Lo que no se puede tapar: la entrada y el camino al mostrador (se borra al final).
+  r._libre = [{ x0: r.door.x0 - 0.25, x1: r.door.x1 + 0.25, z0: r.Z1 - CM.ENTRADA, z1: r.Z1 }];
+  const rng = makeRng(hash(L.id) || 1);
+  (TEMAS_LOCAL[plan.tema] ?? TEMAS_LOCAL.tienda)(r, rng);
+  // Tubos fluorescentes del cielo raso: uno cada ~2,4 m de fondo.
+  const n = Math.max(1, Math.round((r.Z1 - r.Z0) / 2.4));
+  for (let k = 0; k < n; k++) deco(r, 'tubo', { x: 0, z: r.Z0 + ((k + 0.5) * (r.Z1 - r.Z0)) / n, y: r.y0 + r.H, largo: Math.min(1.2, r.X1 - r.X0 - 1) });
+  delete r._libre;
+  return r;
+}
+
+/** ¿El rectángulo (local) está libre de lo macizo y de lo reservado? */
+function libre(r, x0, x1, z0, z1) {
+  if (x0 < r.X0 - 1e-6 || x1 > r.X1 + 1e-6 || z0 < r.Z0 - 1e-6 || z1 > r.Z1 + 1e-6) return false;
+  const hit = (o) => x0 < o.x1 - 0.02 && x1 > o.x0 + 0.02 && z0 < o.z1 - 0.02 && z1 > o.z0 + 0.02;
+  for (const o of r._libre) if (hit(o)) return false;
+  for (const it of r.items) if (it.solid && hit(it)) return false;
+  return true;
+}
+
+/** Rectángulo de ancho `a` (x) contra el muro lateral `lado` (-1 = X0, +1 = X1), de z0 a z1. */
+function contraMuro(r, lado, a, z0, z1) {
+  return lado < 0 ? [r.X0, r.X0 + a, z0, z1] : [r.X1 - a, r.X1, z0, z1];
+}
+
+/** Pone el primer candidato libre ([x0, x1, z0, z1, extra]); devuelve el ítem o null. */
+function poner(r, t, cands, y, h, extra = {}) {
+  for (const c of cands) {
+    if (!c || !libre(r, c[0], c[1], c[2], c[3])) continue;
+    return caja(r, t, c[0], c[1], c[2], c[3], y, h, { ...extra, ...(c[4] ?? {}) });
+  }
+  return null;
+}
+
+/**
+ * Mostrador de lado a lado (con el paso del tendero en el extremo lejos de la
+ * puerta), estantería de fondo y de los costados detrás, y los puntos del
+ * tendero y de la compra. o = {cliente: fondo del área de clientes, alto,
+ * frente: casilla del frente (render), encima, fondo, costados, prod}.
+ */
+function mostradorAlFrente(r, o = {}) {
+  const prof = r.Z1 - r.Z0;
+  const cliente = Math.max(1.9, Math.min(o.cliente ?? 3.0, prof - CM.MOSTRADOR - 1.05 - CM.ESTANTE));
+  const cz1 = r.Z1 - cliente;
+  const cz0 = cz1 - CM.MOSTRADOR;
+  const dc = (r.door.x0 + r.door.x1) / 2;
+  const s = dc <= 0 ? 1 : -1;
+  const mx0 = s > 0 ? r.X0 : r.X0 + CM.PASO;
+  const mx1 = s > 0 ? r.X1 - CM.PASO : r.X1;
+  caja(r, 'mostrador', mx0, mx1, cz0, cz1, r.y0, o.alto ?? 1.0, { dir: [0, 1], frente: o.frente ?? 'vitrina-dulces', encima: o.encima ?? null, kind: o.kind ?? 'madera' });
+  // La tablilla del paso (se levanta para pasar): solo dibujo.
+  deco(r, 'tablilla', { x0: s > 0 ? mx1 : r.X0, x1: s > 0 ? r.X1 : mx0, z0: cz0, z1: cz1, y: r.y0 + (o.alto ?? 1.0) });
+  const zb = r.Z0 + CM.ESTANTE;
+  if (o.fondo !== false) caja(r, 'estante', r.X0, r.X1, r.Z0, zb, r.y0, Math.min(2.35, r.H - 0.3), { dir: [0, 1], tex: o.fondo ?? ['gondola-viveres', 'gondola-mecato'], prod: o.prod ?? 'viveres' });
+  // Costados detrás del mostrador (si queda fondo).
+  if (o.costados !== false && cz0 - zb > 0.9)
+    for (const lado of [-1, 1]) {
+      const [x0, x1] = contraMuro(r, lado, 0.36, 0, 0);
+      caja(r, 'estante', x0, x1, zb, cz0 - 0.08, r.y0, Math.min(2.2, r.H - 0.4), { dir: [-lado, 0], tex: o.costados ?? ['gondola-mecato'], prod: o.prod ?? 'viveres' });
+    }
+  const px = Math.max(mx0 + 0.55, Math.min(mx1 - 0.55, dc));
+  r.spots.tendero.push(spot(r, px, cz0 - 0.5, r.y0, 0, 1));
+  r.spots.mostrador.push(spot(r, px, cz1 + 0.5, r.y0, 0, -1));
+  // El camino de la puerta al mostrador queda libre.
+  r._libre.push({ x0: Math.min(px, dc) - CM.CAMINO, x1: Math.max(px, dc) + CM.CAMINO, z0: cz1, z1: r.Z1 });
+  return { cz0, cz1, mx0, mx1, s, px, zb };
+}
+
+/** Clientes junto al mostrador: uno comprando (al lado del punto de compra) y una que conversa. */
+function clientesMostrador(r, m) {
+  const pts = [];
+  for (const dx of [0.75, -0.75, 1.4, -1.4]) {
+    const x = m.px + dx;
+    if (x < m.mx0 + 0.3 || x > m.mx1 - 0.3) continue;
+    pts.push(x);
+  }
+  if (pts[0] !== undefined) r.spots.clientes.push(spot(r, pts[0], m.cz1 + 0.42, r.y0, 0, -1, { rol: 'compra' }));
+  if (pts[1] !== undefined) r.spots.clientes.push(spot(r, pts[1], m.cz1 + 0.62, r.y0, (m.px - pts[1]) * 0.6, -1, { rol: 'charla', female: true }));
+}
+
+/** Mesa plástica con dos sillas (y dominó encima si `domino`) contra un muro del área de clientes. */
+function mesaClientes(r, m, rng, o = {}) {
+  const zc0 = m.cz1 + 0.25;
+  const zc1 = r.Z1 - 0.15;
+  for (const lado of o.lados ?? [1, -1]) {
+    for (let z = zc0; z + 1.8 <= zc1; z += 0.3) {
+      const [x0, x1] = contraMuro(r, lado, 0.82, 0, 0);
+      if (!libre(r, x0, x1, z, z + 1.8)) continue;
+      const cx = (x0 + x1) / 2 + lado * 0.04;
+      const cz = z + 0.9;
+      caja(r, 'mesa', cx - 0.36, cx + 0.36, cz - 0.36, cz + 0.36, r.y0, 0.72, { kind: o.kind ?? 'plastico', domino: !!o.domino, cx, cz, color: rng.int(0, 2) });
+      for (const sz of [-1, 1]) {
+        caja(r, 'silla', cx - 0.22, cx + 0.22, cz + sz * 0.62 - 0.22, cz + sz * 0.62 + 0.22, r.y0, 0.46, { kind: o.kind ?? 'plastico', cx, cz: cz + sz * 0.62, dir: [0, -sz], color: rng.int(0, 2) });
+        r.spots.clientes.push(spot(r, cx, cz + sz * 0.62, r.y0, 0, -sz, { rol: 'mesa', sit: true }));
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Mesas plásticas en el medio del área de clientes (los locales anchos, como
+ * Mandingas): de a una con dos sillas frente a frente, sin tapar la entrada ni
+ * el camino al mostrador. Devuelve cuántas puso (hasta `max`).
+ */
+function mesasCentro(r, m, rng, max = 4, o = {}) {
+  if (r.Z1 - m.cz1 < 2.7) return 0;
+  const cz = Math.min(r.Z1 - 1.1, (m.cz1 + r.Z1) / 2 + 0.2);
+  // (Delante del mostrador queda el sitio del que compra y de la que conversa.)
+  r._libre.push({ x0: m.px - 1.7, x1: m.px + 1.7, z0: m.cz1, z1: m.cz1 + 0.95 });
+  let n = 0;
+  for (let cx = r.X0 + 1.3; cx <= r.X1 - 1.3 && n < max; cx += 0.25) {
+    if (!libre(r, cx - 0.62, cx + 0.62, cz - 1.0, cz + 1.0)) continue;
+    caja(r, 'mesa', cx - 0.36, cx + 0.36, cz - 0.36, cz + 0.36, r.y0, 0.72, { kind: o.kind ?? 'plastico', domino: false, cx, cz, color: rng.int(0, 2) });
+    for (const sz of [-1, 1]) {
+      caja(r, 'silla', cx - 0.22, cx + 0.22, cz + sz * 0.62 - 0.22, cz + sz * 0.62 + 0.22, r.y0, 0.46, { kind: o.kind ?? 'plastico', cx, cz: cz + sz * 0.62, dir: [0, -sz], color: rng.int(0, 2) });
+      r.spots.clientes.push(spot(r, cx, cz + sz * 0.62, r.y0, 0, -sz, { rol: 'mesa', sit: true }));
+    }
+    n++;
+    cx += 1.4;
+  }
+  return n;
+}
+
+/** Candidatos contra los dos muros del área de clientes (el más cercano al mostrador primero). */
+function contraMuros(r, m, a, l, lados = [-m.s, m.s]) {
+  const out = [];
+  for (const lado of lados) for (let z = m.cz1 + 0.08; z + l <= r.Z1 - 0.1; z += 0.25) out.push([...contraMuro(r, lado, a, z, z + l), { lado, dir: [-lado, 0] }]);
+  return out;
+}
+
+export const TEMAS_LOCAL = {
+  /** Tienda de barrio: mostrador con vitrina de dulces y balanza, víveres hasta el techo, nevera de gaseosas, bultos, plátanos, canastas, dominó, altar y televisor. */
+  tienda(r, rng) {
+    const m = mostradorAlFrente(r, { cliente: 3.0, frente: 'vitrina-dulces', encima: ['balanza', 'frascos', 'registradora'] });
+    poner(r, 'nevera', contraMuros(r, m, 0.72, 0.72), r.y0, 1.95);
+    poner(r, 'canastas', contraMuros(r, m, 0.46, 0.36), r.y0, 1.2, { n: rng.int(3, 4) });
+    poner(r, 'bultos', [[m.mx1 - 1.0, m.mx1 - 0.1, m.cz1 + 0.04, m.cz1 + 0.55], [m.mx0 + 0.1, m.mx0 + 1.0, m.cz1 + 0.04, m.cz1 + 0.55], ...contraMuros(r, m, 0.55, 0.9)], r.y0, 0.6);
+    mesaClientes(r, m, rng, { domino: true });
+    clientesMostrador(r, m);
+    // Colgados: plátanos sobre el paso, tiras de mecato frente al mostrador; altar y televisor arriba.
+    deco(r, 'platanos', { x: m.s > 0 ? m.mx1 + 0.35 : m.mx0 - 0.35, z: m.cz1 - 0.15, y: r.y0 + r.H });
+    for (const dx of [-1.1, 0.9]) if (m.px + dx > m.mx0 + 0.3 && m.px + dx < m.mx1 - 0.3) deco(r, 'tiraMecato', { x: m.px + dx, z: m.cz0 + 0.1, y: r.y0 + r.H });
+    deco(r, 'altar', { x: m.s > 0 ? r.X1 - 0.5 : r.X0 + 0.5, z: r.Z0 + CM.ESTANTE + 0.02, y: r.y0 + Math.min(2.45, r.H - 0.5) });
+    deco(r, 'tv', { x: m.s > 0 ? r.X0 + 0.32 : r.X1 - 0.32, z: m.cz1 - 0.1, y: r.y0 + Math.min(2.15, r.H - 0.65), mira: [m.s * 0.7, 0.7] });
+    deco(r, 'afiche', { tex: 'afiche', x: m.px, z: r.Z0 + 0.03, y: r.y0 + Math.min(2.45, r.H - 0.45), w: 0.9, h: 0.4, dir: [0, 1] });
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 1.0 });
+  },
+  /** Panadería: vitrinas con pan y buñuelos, horno, latas de hornear, greca de tinto y mesitas. */
+  panaderia(r, rng) {
+    const m = mostradorAlFrente(r, { cliente: 3.1, alto: 1.15, frente: 'vitrina-pan', encima: ['greca', 'canastaPan'], fondo: false, costados: ['vitrina-pan'], prod: 'pan' });
+    // Fondo: horno a un lado, carro de latas y estantería de pan.
+    const hx = m.s > 0 ? r.X0 : r.X1 - 1.25;
+    caja(r, 'horno', hx, hx + 1.25, r.Z0, r.Z0 + 0.85, r.y0, 1.7, { dir: [0, 1] });
+    const bx = m.s > 0 ? r.X0 + 1.35 : r.X1 - 1.95;
+    caja(r, 'bandejas', bx, bx + 0.6, r.Z0 + 0.05, r.Z0 + 0.5, r.y0, 1.75, { dir: [0, 1] });
+    const ex0 = m.s > 0 ? r.X0 + 2.05 : r.X0;
+    const ex1 = m.s > 0 ? r.X1 : r.X1 - 2.05;
+    if (ex1 - ex0 > 0.8) caja(r, 'estante', ex0, ex1, r.Z0, r.Z0 + CM.ESTANTE, r.y0, Math.min(2.3, r.H - 0.3), { dir: [0, 1], tex: ['back:panaderia'], prod: 'pan' });
+    for (let k = 0; k < 2; k++) if (!mesaClientes(r, m, rng, { kind: 'metal' })) break;
+    clientesMostrador(r, m);
+    deco(r, 'afiche', { tex: 'menuPanaderia', x: (ex0 + ex1) / 2, z: r.Z0 + CM.ESTANTE + 0.02, y: r.y0 + Math.min(2.55, r.H - 0.35), w: 1.5, h: 0.5, dir: [0, 1] });
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 1.3 });
+  },
+  /** Comidas (Mandingas, granizados, cafeterías): barra con la cocina detrás (plancha, freidora y campana), menú pintado, barra de pared con butacas. */
+  comidas(r, rng) {
+    const gran = r.variante === 'granizados';
+    const m = mostradorAlFrente(r, { cliente: 3.2, alto: 1.05, frente: gran ? 'vitrina-helado' : 'vitrina-comida', encima: gran ? ['licuadoras', 'vasos'] : ['salsas', 'vitrinaComida', 'servilletero'], fondo: false, costados: false, kind: 'acero' });
+    // La cocina contra el fondo (o la máquina de granizados, el congelador y la licuadora).
+    caja(r, 'cocina', r.X0, r.X1, r.Z0, r.Z0 + 0.72, r.y0, 0.92, { dir: [0, 1], kind: gran ? 'granizados' : 'frituras' });
+    deco(r, 'campana', { x0: r.X0 + 0.3, x1: Math.min(r.X1 - 0.3, r.X0 + 2.6), z0: r.Z0, z1: r.Z0 + 0.8, y: r.y0 + 1.95 });
+    deco(r, 'afiche', { tex: gran ? 'menuGranizados' : r.variante === 'papas' ? 'menuPapas' : 'menuComidas', x: (r.X0 + r.X1) / 2 + (r.X1 - r.X0) * 0.18, z: r.Z0 + 0.03, y: r.y0 + Math.min(2.6, r.H - 0.3), w: Math.min(2.2, (r.X1 - r.X0) * 0.55), h: 0.85, dir: [0, 1] });
+    poner(r, 'nevera', contraMuros(r, m, 0.72, 0.72, [m.s, -m.s]), r.y0, 1.95);
+    // Barra de pared con butacas altas.
+    const barra = poner(r, 'barraPared', contraMuros(r, m, 0.38, Math.min(2.4, r.Z1 - m.cz1 - 1.4)), r.y0, 1.05);
+    if (barra) {
+      const lado = barra.lado;
+      const n = Math.max(2, Math.floor((barra.z1 - barra.z0) / 0.62));
+      for (let k = 0; k < n; k++) {
+        const z = barra.z0 + ((k + 0.5) * (barra.z1 - barra.z0)) / n;
+        const x = lado < 0 ? barra.x1 + 0.32 : barra.x0 - 0.32;
+        deco(r, 'butaca', { x, z, y: r.y0 });
+        // (De pie, recostado a la barra: la pose de sentado es la de una silla baja.)
+        if (k === 0) r.spots.clientes.push(spot(r, x - lado * 0.12, z, r.y0, lado, 0, { rol: 'barra' }));
+      }
+    }
+    // Mesas plásticas en lo que quede (las de los locales anchos, como Mandingas, se llenan de mesas).
+    for (let k = 0; k < 3; k++) if (!mesaClientes(r, m, rng, {})) break;
+    mesasCentro(r, m, rng, 4);
+    clientesMostrador(r, m);
+    // Televisor en la esquina del área de clientes y, en los anchos, otro tablero con los jugos.
+    deco(r, 'tv', { x: m.s > 0 ? r.X0 + 0.32 : r.X1 - 0.32, z: m.cz1 + 0.4, y: r.y0 + Math.min(2.2, r.H - 0.6), mira: [m.s * 0.75, 0.66] });
+    // (El mismo menú que se compra: Mandingas no vende empanadas.)
+    if (r.X1 - r.X0 > 8.5) deco(r, 'afiche', { tex: gran ? 'menuGranizados' : r.variante === 'papas' ? 'menuPapas' : 'menuComidas', x: (r.X0 + r.X1) / 2 - (r.X1 - r.X0) * 0.25, z: r.Z0 + 0.03, y: r.y0 + Math.min(2.6, r.H - 0.3), w: 1.7, h: 0.85, dir: [0, 1] });
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 1.4 });
+  },
+  /** Almacén de ropa: percheros con ponchos, ruanas y camisas, repisas (sombreros, carrieles, gorras, tenis), maniquíes, espejo, vestier y mostrador al fondo. */
+  almacen(r, rng) {
+    const v = r.variante ?? 'moda';
+    // Mostrador al fondo (la vendedora detrás) y el vestier en la esquina.
+    const dc = (r.door.x0 + r.door.x1) / 2;
+    const s = dc <= 0 ? 1 : -1; // el vestier, del lado contrario a la puerta
+    const vx0 = s > 0 ? r.X1 - 1.15 : r.X0;
+    caja(r, 'vestier', vx0, vx0 + 1.15, r.Z0, r.Z0 + 1.15, r.y0, 2.25, { dir: [0, 1] });
+    const mx0 = s > 0 ? r.X0 + 0.35 : r.X0 + 1.45;
+    const mx1 = s > 0 ? r.X1 - 1.45 : r.X1 - 0.35;
+    const cz0 = r.Z0 + 1.05;
+    const cz1 = cz0 + 0.58;
+    caja(r, 'mostrador', mx0, mx1, cz0, cz1, r.y0, 1.0, { dir: [0, 1], frente: v === 'deportes' ? 'gorras' : 'ropa-doblada', encima: ['registradora', 'bolsas'], kind: 'madera' });
+    const tex = { paisa: 'sombreros', cuero: 'carrieles', deportes: 'gorras', moda: 'ropa' }[v];
+    deco(r, 'repisa', { x0: s > 0 ? r.X0 : r.X0 + 1.2, x1: s > 0 ? r.X1 - 1.2 : r.X1, z: r.Z0, y: r.y0, h: Math.min(2.4, r.H - 0.3), que: tex, dir: [0, 1] });
+    const px = Math.max(mx0 + 0.55, Math.min(mx1 - 0.55, dc));
+    r.spots.tendero.push(spot(r, px, cz0 - 0.48, r.y0, 0, 1, { vendedora: true }));
+    r.spots.mostrador.push(spot(r, px, cz1 + 0.5, r.y0, 0, -1));
+    r._libre.push({ x0: Math.min(px, dc) - CM.CAMINO, x1: Math.max(px, dc) + CM.CAMINO, z0: cz1, z1: r.Z1 });
+    // El espejo en el muro del lado del vestier, a media sala; el punto para probarse, delante.
+    const zA = cz1 + 0.5;
+    const zB = r.Z1 - CM.ENTRADA - 0.2;
+    const zm = Math.max(zA + 0.6, Math.min(zB - 0.6, (zA + zB) / 2));
+    const ex = s > 0 ? r.X1 : r.X0;
+    deco(r, 'espejo', { x: ex - s * 0.02, z0: zm - 0.42, z1: zm + 0.42, y: r.y0 + 0.15, h: 1.85, dir: [-s, 0] });
+    r.spots.espejo.push(spot(r, ex - s * 1.35, zm, r.y0, s, 0));
+    r._libre.push({ x0: Math.min(ex, ex - s * 1.6), x1: Math.max(ex, ex - s * 1.6), z0: zm - 0.5, z1: zm + 0.5 });
+    // Percheros contra el otro muro y repisa del lado del espejo (por tramos libres).
+    const telas = { paisa: ['poncho', 'ruana', 'camisa'], cuero: ['camisa', 'poncho'], deportes: ['camiseta', 'sudadera'], moda: ['camiseta', 'camisa', 'buso'] }[v];
+    for (let z = zA; z + 1.2 <= zB; z += 0.3) {
+      const z1 = Math.min(zB, z + 3.2);
+      const [x0, x1] = contraMuro(r, -s, 0.62, 0, 0);
+      if (z1 - z < 1.2 || !libre(r, x0, x1, z, z1)) continue;
+      caja(r, 'perchero', x0, x1, z, z1, r.y0, 1.75, { dir: [s, 0], telas, pared: true });
+      r.spots.clientes.push(spot(r, -s * 0.2 + (s > 0 ? x1 + 0.55 : x0 - 0.55), (z + z1) / 2, r.y0, -s, 0, { rol: 'mira', female: true }));
+      z = z1;
+    }
+    for (const [za, zb] of [[zA, zm - 0.55], [zm + 0.55, zB]]) {
+      if (zb - za < 0.8) continue;
+      const [x0, x1] = contraMuro(r, s, 0.4, 0, 0);
+      if (libre(r, x0, x1, za, zb)) caja(r, 'estante', x0, x1, za, zb, r.y0, Math.min(2.1, r.H - 0.5), { dir: [-s, 0], tex: [v === 'deportes' ? 'gorras' : 'ropa-doblada'], prod: v === 'paisa' || v === 'cuero' ? 'sombreros' : v === 'deportes' ? 'tenis' : 'ropa' });
+    }
+    // Perchero del medio (si cabe sin tapar el camino) y maniquíes junto a la vitrina.
+    const cw = r.X1 - r.X0;
+    if (cw > 5.8) {
+      for (const cx of [0, -0.6, 0.6, -1.1, 1.1]) {
+        const z0 = zA + 0.3;
+        const z1 = Math.min(zB - 0.2, z0 + 2.6);
+        if (z1 - z0 > 1.4 && libre(r, cx - 0.32, cx + 0.32, z0, z1)) {
+          caja(r, 'perchero', cx - 0.32, cx + 0.32, z0, z1, r.y0, 1.6, { dir: [1, 0], telas, doble: true });
+          break;
+        }
+      }
+    }
+    let nm = 0;
+    for (const x of [r.door.x0 - 0.55, r.door.x1 + 0.55, r.X0 + 0.5, r.X1 - 0.5]) {
+      if (nm >= 2) break;
+      const z = r.Z1 - 0.55;
+      if (x - 0.3 < r.X0 || x + 0.3 > r.X1) continue;
+      if (r.items.some((it) => it.t === 'maniqui' && Math.abs(it.cx - x) < 0.8)) continue;
+      // (Los maniquíes van junto a la vitrina, fuera de la franja de la puerta.)
+      if (x + 0.3 > r.door.x0 - 0.05 && x - 0.3 < r.door.x1 + 0.05) continue;
+      if (!r.items.every((it) => !it.solid || x + 0.3 <= it.x0 || x - 0.3 >= it.x1 || z + 0.3 <= it.z0 || z - 0.3 >= it.z1)) continue;
+      caja(r, 'maniqui', x - 0.28, x + 0.28, z - 0.28, z + 0.28, r.y0, 1.85, { cx: x, cz: z, dir: [0, 1], pinta: v, k: nm });
+      nm++;
+    }
+    // Una clienta conversando con la vendedora en el mostrador.
+    const cx2 = px + (px + 0.9 < mx1 - 0.2 ? 0.9 : -0.9);
+    r.spots.clientes.push(spot(r, cx2, cz1 + 0.45, r.y0, (px - cx2) * 0.5, -1, { rol: 'charla', female: true }));
+    deco(r, 'zocalo', { tex: 'madera', h: 0.12 });
+  },
+  /** Droguería: exhibidor de vidrio, estantería de remedios hasta el techo, cruz verde, báscula y silla de espera. */
+  drogueria(r, rng) {
+    const m = mostradorAlFrente(r, { cliente: 2.8, alto: 1.05, frente: 'gondola-drogas', encima: ['registradora', 'exhibidorChico'], fondo: ['gondola-drogas', 'back:drogueria'], costados: ['gondola-drogas'], prod: 'drogas', kind: 'blanco' });
+    poner(r, 'bascula', contraMuros(r, m, 0.45, 0.4, [-m.s, m.s]), r.y0, 1.55);
+    const silla = poner(r, 'silla', contraMuros(r, m, 0.48, 0.48, [m.s, -m.s]), r.y0, 0.46, { kind: 'plastico', color: 0 });
+    clientesMostrador(r, m);
+    // La que espera turno, sentada (va primero: es la que se pone si hay cupo para uno).
+    if (silla) {
+      silla.cx = (silla.x0 + silla.x1) / 2;
+      silla.cz = (silla.z0 + silla.z1) / 2;
+      r.spots.clientes.unshift(spot(r, silla.cx, silla.cz, r.y0, silla.dir[0], silla.dir[1], { rol: 'espera', sit: true, female: true }));
+    }
+    deco(r, 'cruz', { x: m.px, z: r.Z0 + CM.ESTANTE + 0.02, y: r.y0 + Math.min(2.55, r.H - 0.35) });
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 0.12 });
+  },
+  /** Cacharrería: de todo colgado y apilado (baldes, escobas, ollas, juguetes), estanterías llenas y mostrador. */
+  cacharreria(r, rng) {
+    const m = mostradorAlFrente(r, { cliente: 3.4, frente: 'herramientas', encima: ['registradora'], fondo: ['back:ferreteria', 'herramientas'], costados: ['side:ferreteria'], prod: 'cacharro' });
+    for (const lado of [-m.s, m.s]) poner(r, 'estante', contraMuros(r, m, 0.4, 1.4, [lado]), r.y0, Math.min(2.1, r.H - 0.5), { tex: ['side:ferreteria'], prod: 'cacharro' });
+    poner(r, 'baldes', contraMuros(r, m, 0.5, 0.5), r.y0, 1.1, { n: rng.int(4, 6) });
+    poner(r, 'escobas', contraMuros(r, m, 0.3, 0.7), r.y0, 1.5);
+    for (const dx of [-1.2, 0, 1.2]) if (m.px + dx > m.mx0 + 0.2 && m.px + dx < m.mx1 - 0.2) deco(r, 'colgados', { x: m.px + dx, z: m.cz1 + 0.35, y: r.y0 + r.H, seed: rng.int(0, 999) });
+    clientesMostrador(r, m);
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 0.12 });
+  },
+  /** Papelería y minutos: mostrador con cuadernos, fotocopiadora, estanterías de papel y el celular de los minutos. */
+  papeleria(r, rng) {
+    const m = mostradorAlFrente(r, { cliente: 2.7, frente: 'cuadernos', encima: ['celulares', 'registradora'], fondo: ['back:papeleria', 'cuadernos'], costados: ['cuadernos'], prod: 'papel' });
+    const fx = m.s > 0 ? m.mx1 - 1.0 : m.mx0 + 0.1;
+    if (m.cz0 - m.zb > 1.0) caja(r, 'fotocopiadora', fx, fx + 0.9, m.zb + 0.05, m.zb + 0.7, r.y0, 1.0, { dir: [0, 1] });
+    poner(r, 'estante', contraMuros(r, m, 0.4, 1.3), r.y0, 1.8, { tex: ['cuadernos'], prod: 'papel' });
+    clientesMostrador(r, m);
+    deco(r, 'afiche', { tex: 'aficheMinutos', x: m.px, z: r.Z0 + CM.ESTANTE + 0.02, y: r.y0 + Math.min(2.5, r.H - 0.4), w: 1.1, h: 0.45, dir: [0, 1] });
+    deco(r, 'zocalo', { tex: 'baldosaPared', h: 0.12 });
+  },
+};
+
+/** Puntos de un comercio para el que llega de afuera: frente a la puerta (en la calle), unos pasos adentro y el yaw del jugador mirando hacia adentro (sim/math.js yawFromDir). */
+export function entradaLocal(r) {
+  const dc = (r.door.x0 + r.door.x1) / 2;
+  return { afuera: aMundo(r, dc, 1.4), adentro: aMundo(r, dc, r.Z1 - 1.3), yaw: Math.atan2(r.nx, r.nz) };
+}

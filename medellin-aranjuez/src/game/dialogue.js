@@ -179,6 +179,20 @@ const CATS = {
   portero: { pri: 2, radius: 14, ref: 4, vol: 1 },
   // Damas de compañía (game/companions.js): hablan de cerca, junto al carro o adentro.
   dama: { pri: 2, radius: 14, ref: 4, vol: 0.9 },
+  // Adentro de las discotecas (game/salonSound.js y game/danceGame.js): el DJ y
+  // el animador por el micrófono (se oyen en todo el salón), el cantante de la
+  // orquesta, el bartender al servir y la gente que baila y la del corro.
+  dj: { pri: 2, radius: 40, ref: 12, vol: 1 },
+  animador: { pri: 2, radius: 36, ref: 10, vol: 1 },
+  cantante: { pri: 2, radius: 36, ref: 10, vol: 1 },
+  bartender: { pri: 2, radius: 10, ref: 3, vol: 0.95 },
+  baile: { pri: 2, radius: 14, ref: 4, vol: 0.95 },
+  // Adentro de los comercios (game/comercios.js): el que atiende y la clienta;
+  // las gracias después de comprar cortan lo que estuviera diciendo.
+  tendero: { pri: 2, radius: 12, ref: 3, vol: 1 },
+  tendero_gracias: { pri: 3, radius: 12, ref: 3, vol: 1 },
+  vendedora: { pri: 2, radius: 12, ref: 3, vol: 1 },
+  clienta: { pri: 2, radius: 10, ref: 3, vol: 0.9 },
 };
 const catInfo = (cat) => CATS[cat] ?? CATS[cat.split('_')[0]] ?? CATS.charla;
 
@@ -506,7 +520,8 @@ export class Dialogue {
     const hour = this.game.env?.timeOfDay;
     // Pregones de los venteros cercanos.
     for (const q of peds) {
-      if (q.faction !== 'civil' || !q.alive || !q.sim?.fixed || q.sim.sitting) continue;
+      // (la gente de adentro de las discotecas no pregona: game/clubLife.js)
+      if (q.faction !== 'civil' || !q.alive || !q.sim?.fixed || q.sim.sitting || q.club) continue;
       const d = d2(q, p);
       if (d > 26) {
         this.vendorTimers.delete(q);
@@ -537,7 +552,7 @@ export class Dialogue {
     // Alguien quieto hablando solo.
     if (this.cool.ready('comentario', this.now)) {
       for (const q of peds) {
-        if (q.faction !== 'civil' || q.calle || q.dama || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
+        if (q.faction !== 'civil' || q.calle || q.dama || q.club || !q.alive || q.sim?.mode !== 'idle' || this._inConversation(q) || this._speaking(q)) continue;
         if (d2(q, p) > 7) continue;
         if (this.rand() < 0.3 && this.speak(q, 'comentario', { hour })) this.cool.set('comentario', this.now, 30 + this.rand() * 25);
         else this.cool.set('comentario', this.now, 4);
@@ -563,7 +578,7 @@ export class Dialogue {
   }
 
   _seated(q) {
-    return q.faction === 'civil' && q.alive && q.sim?.fixed && q.sim.sitting;
+    return q.faction === 'civil' && q.alive && q.sim?.fixed && q.sim.sitting && !q.club; // (las mesas de las discotecas no charlan de vecinos)
   }
 
   _startConversation(peds, p) {
@@ -705,6 +720,14 @@ export class Dialogue {
     if (speaker.faction === 'banda') return speaker.look?.female ? 'Muchacha' : 'Muchacho';
     const f = speaker.look?.female;
     if (line.cat === 'pregon') return f ? 'Vendedora' : 'Vendedor';
+    // Adentro de las discotecas, por oficio (game/clubLife.js).
+    if (line.cat === 'dj') return 'DJ';
+    if (line.cat === 'animador') return 'Animador';
+    if (line.cat === 'cantante') return 'Cantante';
+    if (line.cat === 'bartender') return 'Bartender';
+    if (speaker.club || line.cat.startsWith('baile')) return f ? 'Rumbera' : 'Rumbero';
+    // El que atiende un comercio (game/comercios.js), aunque comente de vecino.
+    if (speaker.comercio && speaker._label) return speaker._label;
     return f ? 'Vecina' : 'Vecino';
   }
 

@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { clamp, damp, dampAngle, wrapAngle } from '../sim/math.js';
 import { groundHeight } from '../sim/terrain.js';
+import { BOARD_FP } from './boarding.js';
 
 // ------------------------------------------- primera persona (ajustables)
 // La cámara va en los ojos del propio personaje (la cabeza se oculta: ver
@@ -190,7 +191,28 @@ export class CameraRig {
   update(dt, ctx) {
     const hasLook = Math.abs(ctx.lookX) + Math.abs(ctx.lookY) > 1e-4;
     const B = ctx.board ?? null;
-    if (B?.enter) {
+    // Primera persona subiendo / bajando: la cámara en los ojos (sin pasar a
+    // tercera), siguiendo la cabeza con el cuello estable (game/boarding.js BOARD_FP).
+    const E = B && B.head && this.footViewName === 'primera' ? B : null;
+    if (E) {
+      if (!this._fpb) this._fpb = { off: wrapAngle(this.yaw - E.bodyYaw), pitch: this.pitch, yaw: E.bodyYaw, x: E.hx, y: E.hy, z: E.hz };
+      const fb = this._fpb;
+      fb.off = wrapAngle(fb.off - ctx.lookX);
+      if (!hasLook) fb.off = damp(fb.off, 0, 1.5, dt); // (sin ratón, vuelve a mirar al frente del cuerpo)
+      fb.pitch = clamp(fb.pitch - ctx.lookY, -1.25, 0.9);
+      fb.yaw = dampAngle(fb.yaw, E.bodyYaw, BOARD_FP.turn, dt);
+      const k = 1 - Math.exp(-BOARD_FP.follow * dt);
+      fb.x += (E.hx - fb.x) * k;
+      fb.y += (E.hy - fb.y) * k;
+      fb.z += (E.hz - fb.z) * k;
+      const ey = wrapAngle(fb.yaw + fb.off);
+      this.yaw = wrapAngle(ey + wrapAngle(E.heading - ey) * E.fpW);
+      this.pitch = fb.pitch + (BOARD_CAM_PITCH - fb.pitch) * E.fpW;
+      this._board = null;
+    } else this._fpb = null;
+    if (E) {
+      // (rumbo y cabeceo ya puestos arriba)
+    } else if (B?.enter) {
       // Subiéndose: la órbita va sola hasta detrás del vehículo, a la par de
       // la animación (el ratón corre la órbita de partida).
       if (!this._board) this._board = { yaw: this.yaw, pitch: this.pitch };
@@ -217,7 +239,15 @@ export class CameraRig {
     let eyes = false;
     let eyeAhead = 0;
     this.inVehicle = !!ctx.inVehicle;
-    if (B) {
+    if (E) {
+      // De los ojos (w = 0) a la cámara del vehículo (w = 1): solo al final de
+      // la subida o al principio de la bajada (E.fpW).
+      const vc = vehicleCamera(VEHICLE_VIEWS[this.vehicleView], E.size, 0, !!E.moto);
+      const w = E.fpW;
+      dist = vc.dist * w;
+      height = vc.height * w;
+      ahead = (vc.ahead ?? 0) * w;
+    } else if (B) {
       // Subiendo / bajando: mezcla de la cámara a pie (la primera persona, en
       // tercera mientras tanto) y la de persecución, con el vehículo quieto.
       const vc = vehicleCamera(VEHICLE_VIEWS[this.vehicleView], B.size, 0, !!B.moto);
@@ -278,7 +308,11 @@ export class CameraRig {
 
     // Capó: el pivote va adelante, sobre el vehículo, en la dirección en que apunta.
     const h = B ? B.heading : (ctx.vehicleHeading ?? 0);
-    if (B) {
+    if (E) {
+      const w = E.fpW;
+      const fb = this._fpb;
+      this.target.set(fb.x + (E.vx - Math.sin(h) * ahead - fb.x) * w, fb.y + (E.vy + height - fb.y) * w, fb.z + (E.vz - Math.cos(h) * ahead - fb.z) * w);
+    } else if (B) {
       const w = B.w;
       this.target.set(B.x + (B.vx - B.x) * w - Math.sin(h) * ahead, B.y + (B.vy - B.y) * w + height, B.z + (B.vz - B.z) * w - Math.cos(h) * ahead);
     } else this.target.set(ctx.x - Math.sin(h) * ahead, ctx.y + height, ctx.z - Math.cos(h) * ahead);
@@ -290,6 +324,7 @@ export class CameraRig {
     this.smoothedTarget.x = damp(this.smoothedTarget.x, this.target.x, lerpK, dt);
     this.smoothedTarget.y = damp(this.smoothedTarget.y, this.target.y, lerpK * 0.6, dt);
     this.smoothedTarget.z = damp(this.smoothedTarget.z, this.target.z, lerpK, dt);
+    if (E) this.smoothedTarget.copy(this.target); // (los ojos ya van suavizados)
 
     const yaw = ctx.lookBehind && ctx.inVehicle ? this.yaw + Math.PI : this.yaw;
     const cp = Math.cos(this.pitch);
@@ -332,7 +367,7 @@ export class CameraRig {
       if (!hood) {
         // ...y acercar la cámara si una pared se interpone.
         const hit = this.collision.raycast(pivot.x, pivot.y, pivot.z, -fx, -fy, -fz, d + 0.3);
-        if (hit) d = Math.max(0.6, hit.t - 0.3);
+        if (hit) d = Math.max(Math.min(d, 0.6), hit.t - 0.3); // (en los ojos, d ≈ 0: no la echa para atrás)
       }
       this.pos.set(pivot.x - fx * d, pivot.y - fy * d, pivot.z - fz * d);
     }
@@ -357,7 +392,7 @@ export class CameraRig {
     this.roll = damp(this.roll ?? 0, rollT, CAM_ROLL_RATE, dt);
     if (Math.abs(this.roll) > 1e-4) this.camera.rotateZ(this.roll);
     // Primera persona: plano cercano más corto (las manos y el arma van muy cerca).
-    const near = eyes ? FP_NEAR : this.baseNear;
+    const near = eyes || (E && E.fpW < 0.5) ? FP_NEAR : this.baseNear;
     if (Math.abs(this.camera.fov - this.fov) > 0.01 || this.camera.near !== near) {
       this.camera.fov = this.fov;
       this.camera.near = near;

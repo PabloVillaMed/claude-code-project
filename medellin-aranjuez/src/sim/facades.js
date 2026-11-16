@@ -215,7 +215,9 @@ export function facadeLayout(b, idx) {
   const rng = makeRng(0x51ed + (b.fi ?? idx) * 7919);
   // Local al que se entra (sim/interiors.js): puerta doble centrada y sin
   // ventanas en el segundo piso (el salón es de doble altura y ahí va el aviso grande).
-  const access = !!b.local?.access;
+  // (Los comercios a los que se entra, access 'local', conservan la fachada de
+  // su tienda: el vano de la vitrina es la puerta; ver más abajo.)
+  const access = !!b.local?.access && b.local.access !== 'local';
   const side = b.front ?? 'S';
   const f = faceFrame(b, side);
   const len = f.len;
@@ -301,6 +303,10 @@ export function facadeLayout(b, idx) {
     const pickShop = SHOPS[rng.int(0, SHOPS.length - 1)];
     const [name, kind] = b.local ? [b.local.name, b.local.kind] : pickShop;
     ground.push({ kind: 'shop', w: sw, h: FACADE.shopH, name, interior: kind, awning: rng.chance(0.55) ? rng.int(0, 3) : -1, shutter: rng.range(0.08, 0.3), shutterColor: rng.int(0, 4), counter: rng.chance(0.7) });
+    // Comercio al que se entra (sim/interiors.js armarLocal): el vano queda
+    // libre (el interior, la cortina por horario y el cuarto de lejos los pone
+    // render/localInteriors.js). Mismo azar gastado: la fachada no cambia.
+    if (b.local?.access === 'local') Object.assign(ground[ground.length - 1], { access: 'local', id: b.local.id });
     // Las discotecas no llevan toldo (tapaba el aviso de neón); el azar se gasta igual.
     if (kind === 'discoteca') ground[ground.length - 1].awning = -1;
     if (upstairsDoor) ground.push({ kind: 'door', w: FACADE.door[0], h: FACADE.door[1] });

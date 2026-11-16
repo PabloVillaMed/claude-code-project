@@ -51,6 +51,19 @@ export const TORCIDA_MAX = 0.9;
 export const TORCIDA_FRENO = 2.5;
 /** Ángulo mínimo (rad) de la caída cuando una pared lo detiene (queda recostado). */
 export const RECOSTADO_MIN = 0.3;
+// Lo tumbado en el piso: los vehículos le pasan por encima con un brinco (cada
+// rueda sube lo que el tronco la levanta: render/vehicleMesh.js) y una frenada
+// leve; no es una pared (una caja de choque los dejaría parados en seco).
+/** Radio (m) de lo que queda en el piso, por tipo (el árbol lo multiplica por su escala); sin radio: no se siente (la placa). */
+export const RADIO_TUMBADO = { pole: 0.14, lamp: 0.1, parkLamp: 0.07, tree: 0.2 };
+/** Alto máximo (m) del eje sobre el piso que todavía se pisa (el árbol, sostenido por la copa, solo cerca de la base). */
+export const TUMBADO_ALTO_MAX = 0.3;
+/** Radio (m) de rueda de referencia para el brinco. */
+export const RUEDA_REF = 0.32;
+/** Fracción de la velocidad que pierde el vehículo por cada m de brinco, cada vez que un eje sube al tronco (poste ≈ 9 %, árbol ≈ 12 %). */
+export const PISAR_PERDIDA = 0.32;
+/** Brinco mínimo (m) que cuenta como pisar (roces de lado). */
+export const PISAR_MIN = 0.04;
 
 /**
  * Tipos que se tumban (prop.type → ajustes). h: altura (m, para la caída;
@@ -125,6 +138,13 @@ class Entrada {
     this.rebotes = 0;
     this.porJugador = false;
     this.inst = null; // enlace con su instancia del dibujo (render/destructibles.js)
+    // Ya en el piso (ver _pisable): eje desde (px, pz) hacia (dirX, dirZ), radio,
+    // largo que se pisa y lo que sube el eje por m.
+    this.pr = 0;
+    this.px = 0;
+    this.pz = 0;
+    this.plen = 0;
+    this.prise = 0;
   }
 }
 
@@ -364,8 +384,89 @@ export class Destructibles {
     e.vAng = e.vDesliz = e.vGiro = 0;
     e.estado = TUMBADO;
     e.t = 0;
+    this._pisable(e);
     this.tumbados.push(e);
     this._marcar(e);
+  }
+
+  /** Lo que se pisa de una entrada ya quieta en el piso (e.pr = 0: nada). */
+  _pisable(e) {
+    const r0 = RADIO_TUMBADO[e.tipo] ?? 0;
+    e.pr = 0;
+    if (!r0) return;
+    const r = e.tipo === 'tree' ? r0 * (e.prop.scale ?? 1) : r0;
+    const L = e.h * Math.sin(e.ang);
+    if (L < 0.5) return;
+    e.px = e.prop.x + e.dirX * e.desliz;
+    e.pz = e.prop.z + e.dirZ * e.desliz;
+    // Lo que sube el eje por m sobre el piso que tiene debajo (en una loma
+    // queda acostado a lo largo de la pendiente).
+    const gTip = this.ground(e.px + e.dirX * L, e.pz + e.dirZ * L) - this.ground(e.px, e.pz);
+    e.prise = Math.max(0, (e.h * Math.cos(e.ang) - gTip) / L);
+    e.plen = e.prise > 1e-3 ? Math.min(L, TUMBADO_ALTO_MAX / e.prise) : L;
+    if (e.plen < 0.3) return;
+    e.pr = r;
+  }
+
+  /**
+   * Lo que sube (m) una rueda de radio R con el punto de apoyo en (x, z) al
+   * pasar por encima de lo tumbado (0 si no hay nada): el centro de la rueda
+   * queda a R + r del eje del tronco. Sin asignaciones (va por rueda y cuadro).
+   */
+  alturaTumbado(x, z, R = RUEDA_REF) {
+    const L = this.tumbados;
+    let best = 0;
+    for (let k = 0; k < L.length; k++) {
+      const e = L[k];
+      if (!e.pr) continue;
+      const dx = x - e.px;
+      const dz = z - e.pz;
+      const reach = R + e.pr;
+      let s = dx * e.dirX + dz * e.dirZ;
+      if (s < -reach || s > e.plen + reach) continue;
+      s = s < 0 ? 0 : s > e.plen ? e.plen : s;
+      const ox = dx - s * e.dirX;
+      const oz = dz - s * e.dirZ;
+      const d2 = ox * ox + oz * oz;
+      if (d2 >= reach * reach) continue;
+      const up = e.pr + s * e.prise + Math.sqrt(reach * reach - d2) - R;
+      if (up > best) best = up;
+    }
+    return best;
+  }
+
+  /**
+   * Un vehículo que pasa por encima de lo tumbado: cada eje que sube al tronco
+   * le quita algo de velocidad (PISAR_PERDIDA por m de brinco). (fx, fz) y
+   * (rx, rz): adelante y derecha del vehículo. v.tronco: ejes encima (bit 1
+   * adelante, bit 2 atrás). Devuelve el brinco del eje que acaba de subir (m).
+   */
+  pisar(v, sp, fx, fz, rx, rz) {
+    if (!this.tumbados.length) {
+      v.tronco = 0;
+      return 0;
+    }
+    const hb = (sp.wheelBase ?? sp.length * 0.6) / 2;
+    const hw = sp.twoWheels ? 0 : sp.width * 0.42;
+    let ejes = 0;
+    let nuevo = 0;
+    for (let eje = 0; eje < 2; eje++) {
+      const s = eje === 0 ? hb : -hb;
+      const cx = v.x + fx * s;
+      const cz = v.z + fz * s;
+      let h = this.alturaTumbado(cx + rx * hw, cz + rz * hw);
+      if (hw) h = Math.max(h, this.alturaTumbado(cx - rx * hw, cz - rz * hw));
+      if (h < PISAR_MIN) continue;
+      ejes |= 1 << eje;
+      if (!((v.tronco ?? 0) & (1 << eje))) nuevo = Math.max(nuevo, h);
+    }
+    v.tronco = ejes;
+    if (nuevo) {
+      const k = 1 - Math.min(0.5, PISAR_PERDIDA * nuevo);
+      v.vx *= k;
+      v.vz *= k;
+    }
+    return nuevo;
   }
 
   _quitarCayendo(k) {

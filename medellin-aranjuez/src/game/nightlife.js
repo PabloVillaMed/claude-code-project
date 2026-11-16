@@ -430,7 +430,7 @@ export class Nightlife {
       return;
     }
     this.silencioT = 0;
-    if (!this.audio) this._armarMurmullo(ctx, a.master);
+    if (!this.audio) this._armarMurmullo(ctx, a.calle ?? a.master); // (por el filtro de la calle: adentro de un local se oye apagado)
     if (!this.audio) return;
     const t = ctx.currentTime;
     this.audio.gain.gain.setTargetAtTime(lvl * MURMULLO_VOL, t, 0.3);

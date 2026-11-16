@@ -39,6 +39,8 @@ const GUARO_PRECIO = 20;
 const GUARO_RANGO = 1.8;
 const GUARO_VIDA = 4;
 const GUARO_MAREO = 0.12;
+/** El portero no deja entrar al que llega con un arma en la mano (los puños sí). */
+const PORTERO_SIN_ARMAS = true;
 
 export class Interiors {
   constructor(game) {
@@ -132,7 +134,8 @@ export class Interiors {
       const dc = Math.hypot(cam.x - r.ox, cam.z - r.oz);
       const inCam = this.camInside === r;
       v.group.visible = v.ready && (inCam || (loc.z > -0.3 && dc < VER_DESDE_AFUERA));
-      if (v.group.visible && dc < ANIMAR) v.update(dt, { inside: inCam, camYaw: g.camRig?.yaw ?? 0 });
+      // (emocion: el baile del jugador con combo alto emociona las luces; game/danceGame.js)
+      if (v.group.visible && dc < ANIMAR) v.update(dt, { inside: inCam, camYaw: g.camRig?.yaw ?? 0, emocion: inCam ? (g.danceGame?.emocion ?? 0) : 0 });
     }
     this.night = g.env.night ?? 0;
     this.fronts?.update(dt, this._open, this._shut, this._built, this.night);
@@ -157,7 +160,9 @@ export class Interiors {
     const night = this._nightKey();
     const paid = st.paidNight === night || r.cover <= 0;
     const money = p.money ?? 0;
-    const want = pin || (abierto && !p.inVehicle && (paid || money >= r.cover));
+    // Con el arma en la mano el portero no deja entrar (PORTERO_SIN_ARMAS).
+    const armado = PORTERO_SIN_ARMAS && !pin && !p.dead && (p.inventory?.currentId ?? 'fists') !== 'fists';
+    const want = pin || (abierto && !p.inVehicle && !armado && (paid || money >= r.cover));
     // (No se cierra encima del jugador parado en el vano.)
     if (want !== st.open && !(inDoor && !want && st.open)) this._setDoor(i, r, want);
     // Cobro al cruzar hacia adentro.
@@ -172,6 +177,7 @@ export class Interiors {
       st.msgAt = this.t;
       if (p.inVehicle) g.hud?.toast?.('Portero: en moto no entra, parce. Parquee afuera.', 2.6);
       else if (!abierto) g.hud?.toast?.(`${r.name}: cerrado. Abre de noche.`, 2.6);
+      else if (armado) g.hud?.toast?.('Portero: con el fierro en la mano no entra, parce. Guárdelo y siga.', 2.8);
       else g.hud?.toast?.(`Portero: sin los $${r.cover} del cover no entra, parce.`, 2.6);
     } else if (st.open && near && !pin && !paid && r.cover > 0 && this.t - st.msgAt > AVISO_CADA * 2) {
       st.msgAt = this.t;
@@ -194,6 +200,7 @@ export class Interiors {
     const nl = g.nightLights;
     if (!nl?.lend) return;
     const r = this.inside;
+    if (!r && g.comercios?.inside) return; // (en un comercio, la luz prestada la maneja game/comercios.js)
     const v = r ? this.views.get(r.id) : null;
     const want = v?.ready ? Math.min(LUCES_POR_CALIDAD[g.qualityKey ?? ''] ?? (g.quality?.lampLights >= 8 ? 2 : g.quality?.lampLights > 0 ? 1 : 0), v.lightSpots.length) : 0;
     this.lights = nl.lend(want);
@@ -360,6 +367,7 @@ export class Interiors {
     p.health = Math.min(100, p.health + GUARO_VIDA);
     g.camRig?.shake?.(GUARO_MAREO);
     g.hud?.toast?.(`<span style="color:#e8b64c">-$${GUARO_PRECIO}</span> · ¡Salud! Un guarito bien frío`, 2.5);
+    g.salonSound?.bartender?.(); // (el bartender dice algo al servir: game/salonSound.js)
     return true;
   }
 

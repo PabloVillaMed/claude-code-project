@@ -418,14 +418,53 @@ export class RadioSystem {
       if (c.key !== key) c.cargar(key, rutaPista(em, pr.pista), pr.offset);
       else c.reanudar();
       const dentro = adentro === o.p.id;
+      // Con la estampida la música baja (y sigue bajita mientras el local queda casi vacío): game/clubLife.js musica.
+      const susto = g.clubLife?.musica?.(o.p.id) ?? 1;
       c.filtrar(dentro ? FILTRO_ADENTRO : filtroRumba(o.d));
-      if (dentro) c.mezclar(VOL_ADENTRO * this.volumenMusica * this.duck * o.nivel, dt, 0);
-      else c.mezclar(VOL_RUMBA * this.volumenMusica * this.duck * tapado * o.nivel * gananciaRumba(o.d) * (adentro ? OTROS_ADENTRO : 1), dt, this._pan(o.p.x, o.p.z));
+      if (dentro) c.mezclar(VOL_ADENTRO * this.volumenMusica * this.duck * o.nivel * susto, dt, 0);
+      else c.mezclar(VOL_RUMBA * this.volumenMusica * this.duck * tapado * o.nivel * susto * gananciaRumba(o.d) * (adentro ? OTROS_ADENTRO : 1), dt, this._pan(o.p.x, o.p.z));
       if (c.nivel > 0.01) {
         this.rumbaSonando++;
         this.rumbaLocales.push(o.p.id);
       }
     }
+  }
+
+  /**
+   * Segundos que lleva la pista que suena en el local `id` (el reloj del
+   * <audio>) o null si no está sonando: la gente de adentro baila con ese
+   * reloj (game/clubLife.js).
+   */
+  tiempoRumba(id) {
+    // (Un for simple, sin cierre: se llama cada cuadro.)
+    const L = this.canalesRumba;
+    if (!L) return null;
+    for (let i = 0; i < L.length; i++) {
+      const c = L[i];
+      if (c.lugar?.id === id) return c.key && !c.el.paused && c.nivel > 0.01 ? c.el.currentTime : null;
+    }
+    return null;
+  }
+
+  /**
+   * La pista que suena en el local `id`: {key ('emisora/pista', la de
+   * sim/pulsos.js), t (s que lleva), dur (s que dura)} o null si no está
+   * sonando. Devuelve siempre el mismo objeto (se llama cada cuadro).
+   */
+  pistaRumba(id) {
+    const L = this.canalesRumba;
+    if (!L) return null;
+    for (let i = 0; i < L.length; i++) {
+      const c = L[i];
+      if (c.lugar?.id !== id) continue;
+      if (!c.key || c.el.paused || c.nivel <= 0.01) return null;
+      const o = (this._pistaRumba ??= { key: null, t: 0, dur: 0 });
+      o.key = c.key;
+      o.t = c.el.currentTime;
+      o.dur = c.el.duration || 0;
+      return o;
+    }
+    return null;
   }
 
   /** Estado para pruebas y depuración. */

@@ -950,6 +950,23 @@ h3 {
   gap: 10px;
 }
 
+/* Probándose la ropa frente al espejo (game/comercios.js): el almacén a un
+   lado y sin velo, para verse de frente mientras se escoge. */
+#shop.espejo {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.55));
+  backdrop-filter: none;
+  justify-content: flex-end;
+}
+#shop.espejo .menu-panel {
+  max-width: min(440px, 46vw);
+  min-width: 0;
+  margin-right: 2.5vw;
+  padding: 26px 28px;
+}
+#shop.espejo #shop-items {
+  grid-template-columns: 1fr;
+}
+
 .shop-item {
   display: flex;
   align-items: center;

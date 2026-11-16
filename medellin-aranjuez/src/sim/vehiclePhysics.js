@@ -290,6 +290,7 @@ export function createVehicleState(type, x, z, heading, groundFn, variant = null
     bodyPitch: 0, // cabeceo de la carrocería por acelerar/frenar (visual)
     bodyRoll: 0, // balanceo en las curvas (visual)
     slip: 0, // velocidad lateral absoluta (derrape)
+    tronco: 0, // ejes encima de un poste o árbol tumbado (sim/destructibles.js pisar)
     wheelie: 0, // moto: rad, + rueda de adelante arriba (caballito), - la de atrás (stoppie)
     wheelieRate: 0, // rad/s
     wheelieFall: false, // el caballito se pasó del punto de no volver (Game tumba al piloto)
@@ -479,6 +480,8 @@ function substep(v, input, dt, env) {
   obb.z = bz;
   v.x = obb.x;
   v.z = obb.z;
+  // Por encima de un poste o un árbol tumbado: brinco y frenada leve (sim/destructibles.js).
+  if (env.breakables?.pisar) env.breakables.pisar(v, sp, fx, fz, rx, rz);
   v.forwardSpeed = v.vx * fx + v.vz * fz;
 
   // --- Altura, cabeceo y alabeo según el terreno ---

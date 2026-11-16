@@ -133,6 +133,11 @@ export function accessRoomRect(b, f = faceFrame(b, b.front ?? 'S')) {
   return [at(f, 0.12 - p, -0.12), at(f, len - 0.12 + p, -0.12), at(f, len - 0.12 + p, -deep + 0.12 - p), at(f, 0.12 - p, -deep + 0.12 - p)];
 }
 
+/** ¿El hueco de un local al que se entra (toda la huella) cabe entero en un lote de su manzana? (se puede abrir: ver seat) */
+export function accesoCabe(b, lots) {
+  return roomLot(lots, accessRoomRect(b)) >= 0;
+}
+
 /** Índice del lote de la manzana que contiene entero el hueco `rect` (-1 si ninguno). */
 function roomLot(lots, rect) {
   if (!lots) return -1;
@@ -218,6 +223,12 @@ function seat(b, i, lotsOf) {
     // (Al que se entra, el hueco es toda la huella y el piso no sube: la puerta queda al nivel del andén.)
     const rect = L?.shop?.access ? accessRoomRect(b, f) : L?.shop ? shopRoomRect(f, L.shop) : null;
     const lot = rect ? roomLot(lotsOf(b.block), rect) : -1;
+    // Comercio al que se entra (sim/interiors.js armarLocal) que no cabe entero
+    // en su lote: no se puede abrir el hueco, se queda con su vitrina.
+    if (lot < 0 && L?.shop?.access === 'local') {
+      delete b.local.access;
+      continue;
+    }
     if (lot >= 0) b.cutRoom = lot;
     else if (L?.shop && !L.shop.access) {
       const s = L.shop;

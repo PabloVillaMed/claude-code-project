@@ -56,7 +56,19 @@ export const INTERIOR_FX = {
   PASO_HORNEO: 1.0,
   /** Milisegundos por cuadro que se gastan armando un interior (se arma en varios cuadros). */
   ARMADO_MS: 5,
+  /** Emoción del baile del jugador (game/danceGame.js, 0..1): cuánto más rápido se mueven haces, láseres y pantallas, y cuánto sube la luz del salón. */
+  EMOCION_VEL: 0.6,
+  EMOCION_LUZ: 0.22,
 };
+/**
+ * Al soltar un interior queda vivo un material de cada shader propio (pista
+ * LED, pantalla, TV): three numera cada shader por su código y, si se
+ * liberan todos los materiales que lo usan, el siguiente recibe otro número,
+ * otra clave de programa y se vuelve a compilar en pleno juego (90-340 ms
+ * por cuadro con D3D11, al volver a un local o entrar a otro). false = se
+ * liberan todos (como en la 3.7).
+ */
+export const GUARDAR_SHADERS = true;
 
 // ------------------------------------------------------------------ temas (aspecto)
 const C = (r, g, b) => [r, g, b];
@@ -78,7 +90,7 @@ const tmpN = new THREE.Vector3();
 const tmpM3 = new THREE.Matrix3();
 
 /** Acumula triángulos (posición, normal, uv, color) de un material y los vuelve un BufferGeometry. */
-class Acc {
+export class Acc {
   constructor() {
     this.p = [];
     this.n = [];
@@ -315,7 +327,9 @@ function interiorMaterials(A) {
     glow: new THREE.MeshBasicMaterial({ vertexColors: true }),
     glowMap: new THREE.MeshBasicMaterial({ vertexColors: true, map: TX.banosTex() }),
     vidrio: new THREE.MeshStandardMaterial({ color: 0x8fb4c8, transparent: true, opacity: 0.18, roughness: 0.05, metalness: 0.3, depthWrite: false }),
-    aditivo: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+    // (forceSinglePass en lo aditivo de doble cara: sin escribir profundidad el orden de las caras no cambia nada, y
+    // sin él three lo dibuja en dos pasadas con needsUpdate dos veces por cuadro.)
+    aditivo: new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, fog: false }),
     _tex: tex,
   };
 }
@@ -323,6 +337,8 @@ function interiorMaterials(A) {
 // ------------------------------------------------------------------ shaders
 const SHADER_TAIL = '\n  #include <tonemapping_fragment>\n  #include <colorspace_fragment>\n}';
 const VERT_UV = 'varying vec2 vUv;\nvoid main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+/** Código del shader de fragmentos -> el material que lo mantiene numerado (ver GUARDAR_SHADERS). */
+const GUARDIANES = new Map();
 
 /** Pista de baldosas LED: patrones que cambian cada 8 s (ondas, tablero, barrido, chispazos). */
 function ledFloorMaterial(A, tiles) {
@@ -1771,7 +1787,7 @@ export class InteriorView {
       tex.needsUpdate = true;
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.repeat.set(2, 3);
-      const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(...A.acentos[0]).multiplyScalar(0.18), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(...A.acentos[0]).multiplyScalar(0.18), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, fog: false });
       this._hazeMat = mat;
       const p = r.pista ?? { x0: r.X0, x1: r.X1, z0: r.Z0, z1: r.Z1 };
       for (let k = 0; k < INTERIOR_FX.NEBLINA; k++) {
@@ -1795,7 +1811,7 @@ export class InteriorView {
       const n = this._humos.length * per;
       const g = new THREE.PlaneGeometry(0.7, 0.7);
       const tex = TX.humoTex();
-      const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.45, 0.6, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+      const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.45, 0.6, 0.8), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true, fog: false });
       const mesh = new THREE.InstancedMesh(g, mat, n);
       mesh.name = 'interior-chorros';
       add(mesh);
@@ -1842,7 +1858,9 @@ export class InteriorView {
   /** Anima (solo con el jugador cerca). ctx: {inside, camYaw, strobe}. */
   update(dt, ctx = {}) {
     if (!this.ready) return;
-    this.t += dt;
+    // Con el jugador bailando con combo alto (ctx.emocion 0..1) las luces se mueven más rápido y el salón brilla un poco más.
+    const emo = Math.max(0, Math.min(1, ctx.emocion ?? 0));
+    this.t += dt * (1 + emo * INTERIOR_FX.EMOCION_VEL);
     const t = this.t;
     for (const f of this.anim) f(dt, t, ctx);
     // Lavado de color (lento) y estrobo suave en ráfagas.
@@ -1860,6 +1878,7 @@ export class InteriorView {
         k += ph < 0.12 ? INTERIOR_FX.ESTROBO_FUERZA * (1 - ph / 0.12) : 0;
       }
     }
+    k *= 1 + emo * INTERIOR_FX.EMOCION_LUZ;
     this.strobe = k - 1;
     this.mats.amb.value.setRGB((a[0] + (b[0] - a[0]) * f) * k, (a[1] + (b[1] - a[1]) * f) * k, (a[2] + (b[2] - a[2]) * f) * k);
     this.group.updateMatrixWorld(true);
@@ -1871,7 +1890,11 @@ export class InteriorView {
       if (o.geometry) o.geometry.dispose();
       if (o.isInstancedMesh) o.dispose();
     });
-    for (const s of this.shaders) s.dispose();
+    for (const s of this.shaders) {
+      // (El primero de cada código queda vivo: ver GUARDAR_SHADERS. Sus texturas son las compartidas de TX.)
+      if (GUARDAR_SHADERS && !GUARDIANES.has(s.fragmentShader)) GUARDIANES.set(s.fragmentShader, s);
+      else s.dispose();
+    }
     this._hazeMat?.map?.dispose();
     this._hazeMat?.dispose();
     // (Los materiales base no se liberan: sus programas quedan para el próximo interior.)

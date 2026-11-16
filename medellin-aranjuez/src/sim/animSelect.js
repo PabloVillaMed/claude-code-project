@@ -111,6 +111,10 @@ export function speechGesture(cat) {
       return { upper: 'talk_excited' };
     case 'comentario':
     case 'charla':
+    // Adentro de los comercios (game/comercios.js): el que atiende y la clienta hablan con las manos.
+    case 'tendero':
+    case 'clienta':
+    case 'vendedora':
       return { upper: 'talk' };
     default:
       return { upper: null };

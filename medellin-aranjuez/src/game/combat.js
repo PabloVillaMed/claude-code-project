@@ -8,6 +8,7 @@ import { ANIMAL_HITBOX } from '../sim/animals.js';
 import { groundHeight } from '../sim/terrain.js';
 import { dist2D, forwardX, forwardZ, yawFromDir } from '../sim/math.js';
 import { newTarget } from './riders.js';
+import { OCUPANTES } from './occupants.js';
 
 const v3 = new THREE.Vector3();
 
@@ -79,7 +80,7 @@ export class Combat {
     const vehicles = sc.vehicles;
     vehicles.length = 0;
     for (const v of g.world.vehicles) {
-      const o = (sc.vPool[vehicles.length] ??= { ref: null, obb: null, y: 0, height: 0 });
+      const o = (sc.vPool[vehicles.length] ??= { ref: null, obb: null, y: 0, height: 0, cab: null, occ: null, nOcc: 0 });
       o.ref = v;
       o.obb = v.obbNow();
       o.y = v.state.y;
@@ -88,7 +89,10 @@ export class Combat {
       vehicles.push(o);
       // Los que van en moto (piloto y parrillero) también son blancos (game/riders.js);
       // no los de la moto desde la que se dispara.
-      if (v.type === 'moto' && !ignore?.has(v)) g.world.riders.targets(v, characters, sc.cPool);
+      if (v.type === 'moto') {
+        o.cab = null;
+        if (!ignore?.has(v)) g.world.riders.targets(v, characters, sc.cPool);
+      } else g.world.occupants.fill(v, o); // carro: lata, vidrios y los de adentro (game/occupants.js)
     }
     // Los animales van tal cual (la lista de sim/animals.js, sin copiar nada).
     sc.animals = g.animals?.list;
@@ -183,20 +187,29 @@ export class Combat {
     } else if (hit.kind === 'character') {
       if (hit.ref === g.player) this.damagePlayer(dmg, from);
       else if (hit.ref.rider) g.world.riders.hit(hit.ref, dmg, attacker, from, hit.headshot);
+      else if (hit.ref.occupant) g.world.occupants.hit(hit.ref, dmg, attacker, from, hit.headshot); // adentro de un carro
       else this.damagePed(hit.ref, dmg, attacker, from, hit.headshot);
       g.effects.impact(pos, hit.normal, 'blood');
     } else if (hit.kind === 'vehicle') {
       const v = hit.ref;
-      v.state.health -= dmg * 0.6;
+      // Por un vidrio (sin pegarle a nadie): menos daño al carro que en la lata.
+      v.state.health -= dmg * (hit.glass ? OCUPANTES.glassDamage : 0.6);
       v.lastHitBy = attacker;
-      g.effects.impact(pos, hit.normal, 'spark');
-      g.audio.hit(pos);
+      if (!hit.glass) {
+        g.effects.impact(pos, hit.normal, 'spark');
+        g.audio.hit(pos);
+      }
       if (attacker === 'player' && v.driver && v.driver !== 'player') {
         v.panic = 15;
         if (v.kind === 'police') g.wanted.report('copAssault', g.player);
       }
     } else {
       g.effects.impact(pos, hit.normal, hit.kind === 'ground' ? 'dust' : 'spark');
+    }
+    // La bala entró por un vidrio de un carro: se rompe ahí (partículas y sonido).
+    if (hit.glass) {
+      g.effects.impact(hit.glass, hit.normal, 'glass');
+      g.audio.vidrio?.(hit.glass);
     }
   }
 
@@ -338,6 +351,7 @@ export class Combat {
       const i = scene.vehicles.findIndex((x) => x.ref === v);
       if (i >= 0) scene.vehicles.splice(i, 1); // (la lista es reciclada: se quita en el sitio)
       scene.characters.push({ ref: player, x: player.x, y: player.y - 0.3, z: player.z });
+      g.world.occupants.pushSeated(v, scene.characters); // (y la dama de copiloto: game/occupants.js)
     }
     const hit = traceShot(muzzle, d, w.range, scene);
     g.effects.muzzleFlash(muzzle, d);
@@ -403,6 +417,7 @@ export class Combat {
     }
     g.animals?.blast(pos.x, pos.z, R, 180, (source?.lastHitBy ?? 'vehicle') === 'player');
     g.world.riders?.blast(pos, R, 180, source?.lastHitBy ?? 'vehicle');
+    g.world.occupants?.blast(pos, R, 180, source?.lastHitBy ?? 'vehicle', source); // los de adentro de los carros, con algo de la lata (y los del que explota)
     const pd = Math.hypot(g.player.x - pos.x, g.player.z - pos.z);
     if (pd < R) this.damagePlayer(140 * (1 - pd / R), pos);
     for (const v of g.world.vehicles) {

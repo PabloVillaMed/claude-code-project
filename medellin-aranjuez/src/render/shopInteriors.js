@@ -62,8 +62,15 @@ export const ATLAS = (() => {
   return r;
 })();
 
-/** Pinta el atlas de interiores (una vez al arrancar). */
+let _atlas = null;
+/** Pinta el atlas de interiores (una vez al arrancar; lo comparten las vitrinas y los comercios a los que se entra). */
 export function interiorAtlas() {
+  if (_atlas) return _atlas;
+  _atlas = paintInteriorAtlas();
+  return _atlas;
+}
+
+function paintInteriorAtlas() {
   const c = canvas(AW, AH);
   const ctx = c.getContext('2d');
   const rng = makeRng(7717);

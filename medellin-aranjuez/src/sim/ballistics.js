@@ -3,17 +3,22 @@
 
 import { rayVsObb3D, rayVsSphere, rayVsVerticalCapsule } from './collision.js';
 import { ANIMAL_RAY, rayVsAnimal } from './animals.js';
+import { rayVsCar } from './carOccupants.js';
 
 // Cápsula del cuerpo: los extremos esféricos llegan de 0,05 m a 1,5 m (hombros).
 export const BODY = { radius: 0.3, bottom: 0.35, top: 1.2, headY: 1.63, headR: 0.15 };
 const NONE = [];
+const _car = { t: 0, kind: null, ref: null, headshot: false, glass: false, gt: 0 };
 
 /**
  * @param o origen {x,y,z}; d dirección normalizada {x,y,z}
  * @param scene {collision, groundHeight, characters:[{ref,x,y,z,dead?} o, montados
  *   en moto, {ref,rider:true,x,z,y0,y1,r,hx,hy,hz,hr} (sim/riders.js)}],
- *   vehicles:[{ref,obb,y,height}], animals?:[animal de sim/animals.js], ignore:Set}
- * @returns {t, x,y,z, kind:'building'|'ground'|'character'|'vehicle'|'animal'|null, ref, headshot, normal}
+ *   vehicles:[{ref,obb,y,height} o, los carros con cabina, {...,cab,occ,nOcc}
+ *   (sim/carOccupants.js rayVsCar: lata, vidrios y los de adentro)],
+ *   animals?:[animal de sim/animals.js], ignore:Set}
+ * @returns {t, x,y,z, kind:'building'|'ground'|'character'|'vehicle'|'animal'|null, ref, headshot, normal,
+ *   glass?: {x,y,z} (entró por un vidrio de un carro: ahí se rompe), car? (ese carro)}
  */
 export function traceShot(o, d, maxDist, scene) {
   let best = { t: maxDist, kind: null, ref: null, headshot: false, normal: null };
@@ -68,6 +73,18 @@ export function traceShot(o, d, maxDist, scene) {
 
   for (const v of scene.vehicles ?? []) {
     if (ignore.has(v.ref)) continue;
+    if (v.cab) {
+      // Carro: la lata, los vidrios y los de adentro.
+      const r = rayVsCar(o, d, v, best.t, _car);
+      if (r && r.t < best.t) {
+        best = { t: r.t, kind: r.kind, ref: r.ref, headshot: r.headshot, normal: { x: -d.x, y: -d.y, z: -d.z } };
+        if (r.glass) {
+          best.glass = { x: o.x + d.x * r.gt, y: o.y + d.y * r.gt, z: o.z + d.z * r.gt };
+          best.car = v.ref;
+        }
+      }
+      continue;
+    }
     const t = rayVsObb3D(o.x, o.y, o.z, d.x, d.y, d.z, v.obb, v.y + 0.25, v.y + v.height, best.t);
     if (t !== null && t < best.t) best = { t, kind: 'vehicle', ref: v.ref, headshot: false, normal: { x: -d.x, y: -d.y, z: -d.z } };
   }

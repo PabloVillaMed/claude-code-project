@@ -14,6 +14,9 @@ export const MAX_TRAZADORAS = 24;
 /** Golpe a un animal: cuántas motas oscuras y de qué tamaño (m); poquito a propósito. */
 export const ANIMAL_HIT = { drops: 2, size: 0.07 };
 
+/** Vidrio de carro roto por un tiro: astillas claras que brillan y caen (cuántas, tamaño en m, vida en s) y un polvillo blanco. */
+export const VIDRIO_HIT = { shards: 16, size: 0.085, life: 0.6, speed: 2.4, dust: 0.25 };
+
 export class Effects {
   constructor(scene) {
     this.scene = scene;
@@ -165,6 +168,31 @@ export class Effects {
       }
       return;
     }
+    if (kind === 'glass') {
+      // Vidrio roto: astillas que saltan hacia afuera del golpe (y hacia adentro del carro) y caen brillando.
+      const V = VIDRIO_HIT;
+      for (let i = 0; i < V.shards; i++) {
+        const k = i % 3 === 0 ? -0.6 : 1; // (un tercio cae hacia adentro)
+        this._spawn({
+          x: pos.x,
+          y: pos.y,
+          z: pos.z,
+          vx: (normal?.x ?? 0) * V.speed * k + (Math.random() - 0.5) * V.speed,
+          vy: (normal?.y ?? 0) * V.speed * k + Math.random() * V.speed * 0.5,
+          vz: (normal?.z ?? 0) * V.speed * k + (Math.random() - 0.5) * V.speed,
+          life: V.life * (0.6 + Math.random() * 0.4),
+          max: V.life,
+          r: 0.72,
+          g: 0.86,
+          b: 0.95,
+          size: V.size * (0.6 + Math.random() * 0.8),
+          grav: 9.8,
+          additive: true,
+        });
+      }
+      this.puff(pos, V.dust, [0.86, 0.9, 0.94], 0.4, 0.2, 0.45);
+      return;
+    }
     const n = 10;
     for (let i = 0; i < n; i++) {
       const s = kind === 'blood' ? 2.5 : 5;
@@ -297,7 +325,9 @@ export class Effects {
       if (!sh) {
         sh = {
           beamGeo: new THREE.CylinderGeometry(0.9, 0.9, height, 24, 1, true),
-          beamMat: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
+          // (forceSinglePass: aditivo y sin escribir profundidad, el orden de las caras no cambia nada; sin él three lo
+          // dibuja en dos pasadas y le pone needsUpdate dos veces por cuadro: getParameters y la clave del programa cada vez.)
+          beamMat: new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }),
           ringGeo: new THREE.TorusGeometry(0.95, 0.06, 8, 32).rotateX(Math.PI / 2),
           solid: new THREE.MeshBasicMaterial({ color }),
           arrowGeo: new THREE.ConeGeometry(0.35, 0.7, 4).rotateX(Math.PI),

@@ -7,7 +7,7 @@ import { groundHeight } from '../sim/terrain.js';
 import { dist2D } from '../sim/math.js';
 import { circleVsObb } from '../sim/collision.js';
 import { createPlayerState, stepPlayer } from '../sim/playerController.js';
-import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES, CRASH, crashOtherDamage, crashOnDriver, standUpMoto } from '../sim/vehiclePhysics.js';
+import { stepVehicle, exitPoint, speedKmh, VEHICLE_TYPES, CRASH, crashOtherDamage, crashOnDriver, standUpMoto, startMotoFall } from '../sim/vehiclePhysics.js';
 import { VEHICLE_VARIANTS, defaultVariant, isPoliceVehicle } from '../sim/vehicleVariants.js';
 import { Inventory, WEAPONS, WEAPON_BY_ID, giveStartingKit } from '../sim/weapons.js';
 import { WantedSystem } from '../sim/wanted.js';
@@ -28,6 +28,7 @@ import { AnimalRenderer } from '../render/animals.js';
 import { AnimalSim, animalBudget } from '../sim/animals.js';
 import { PostFX, QUALITY_PRESETS } from '../render/postfx.js';
 import { Effects } from '../render/effects.js';
+import { VehicleView } from '../render/vehicleMesh.js';
 import { CharacterRig, PLAYER_LOOK } from '../render/characterRig.js';
 import { applyOutfit } from '../render/outfit.js';
 import { ROPA_BY_ID, buyOrWear, deserializeWardrobe, newWardrobe, serializeWardrobe, storeCatalog, takeOff } from '../sim/ropa.js';
@@ -42,6 +43,12 @@ import { Dialogue } from './dialogue.js';
 import { StreetLife } from './streetLife.js';
 import { Nightlife } from './nightlife.js';
 import { Interiors } from './interiors.js';
+import { Comercios } from './comercios.js';
+import { comercioWarmupSample } from '../render/localInteriors.js';
+import { interiorWarmupSample } from '../render/interiorBuilder.js';
+import { ClubLife } from './clubLife.js';
+import { DanceGame } from './danceGame.js';
+import { SalonSound } from './salonSound.js';
 import { Companions } from './companions.js';
 import { Tumbables } from './destructibles.js';
 import { StoryDirector } from './storyDirector.js';
@@ -254,6 +261,8 @@ export class Game {
     this.effects = new Effects(this.scene);
     this.audio = new AudioSystem();
     this.audio.volume = this.settings.volume;
+    // Puertas de carro que abren y cierran (render/carDoors.js): el sonido, donde está el carro.
+    VehicleView.doorSound = (view, kind) => this.audio.puerta(view.group.position, kind);
     this.audio.camera = this.camera;
     this.input = new Input(this.canvas);
     this.input.sensitivity = this.settings.sensitivity;
@@ -274,11 +283,18 @@ export class Game {
     this.street = new StreetLife(this); // plazas con sus bandas, habitantes de calle y balaceras
     this.nightlife = new Nightlife(this); // la rumba de la 92: porteros, filas, grupos, parejas y murmullo
     this.interiors = new Interiors(this); // las discotecas de la 92 por dentro (se arman solo cerca)
+    this.comercios = new Comercios(this); // tiendas, panaderías, comidas y almacenes a los que se entra (de día)
+    this.clubLife = new ClubLife(this); // la gente de adentro: pista, barra, mesas, DJ, orquesta y meseros (solo en el local donde está el jugador)
+    this.danceGame = new DanceGame(this); // bailar en la pista con E: el minijuego de ritmo
+    this.salonSound = new SalonSound(this); // adentro: reverberación del recinto, murmullo, gritos, aplausos y la calle apagada
     this.companions = new Companions(this); // damas de compañía de noche (esquinas de avenida y la 92)
     // Postes, faroles, placas y árboles que se tumban con un vehículo (la
     // física de los vehículos consulta `breakables` al chocar).
     this.tumbables = new Tumbables(this);
     this.breakables = this.tumbables.sim;
+    // Lo tumbado en el piso levanta la rueda que le pasa por encima (el brinco, solo dibujo).
+    const brk = this.breakables;
+    VehicleView.bumpAt = (x, z) => (brk.tumbados.length ? brk.alturaTumbado(x, z) : 0);
     this._initBirds();
     this._initAnimals();
     this.storyDir = new StoryDirector(this); // historia: cinemáticas, abuela y objetivos
@@ -356,6 +372,15 @@ export class Game {
     view(0);
     const samples = buildWarmupSamples(cam, groundHeight);
     this.scene.add(samples.group);
+    // Comercios de muestra armados de una (sus mallas instanciadas y el vidrio; render/localInteriors.js).
+    const comSamples = comercioWarmupSample(this.city.locales ?? []);
+    // Y una discoteca de cada clase de material (pista LED, pantalla, haces, láseres, neblina, bola, TV; render/interiorBuilder.js):
+    // sin esto sus programas se compilaban al llegar a la 92 de noche (un cuadro de ~340 ms) y al entrar a cada local.
+    if (this.interiors.list.length) comSamples.push(...interiorWarmupSample(this.interiors.list));
+    for (const v of comSamples) {
+      v.group.visible = true;
+      this.scene.add(v.group);
+    }
     const compile = async () => {
       // compileAsync arma los programas de una vez (con el destino actual) y
       // después solo espera a que el controlador los termine.
@@ -411,6 +436,7 @@ export class Game {
     performance.mark?.('calentamiento-vistas');
     pinPrograms(r); // (antes de liberar el muestrario: sus materiales propios, como la barra de la patrulla, se liberan)
     samples.release();
+    for (const v of comSamples) v.dispose();
     performance.mark?.('calentamiento-fin');
   }
 
@@ -557,7 +583,14 @@ export class Game {
       this._menuShot = -1;
       this.intro = null;
       document.body.classList.remove('intro');
+      // Al menú desde adentro de un local: la ciudad de afuera vuelve a verse y la calle a sonar.
+      for (const L of [this.interiors, this.comercios]) if (L) L.hidOutside = false;
+      if (this.cityRenderer?.root) this.cityRenderer.root.visible = true;
+      if (this.horizon?.group) this.horizon.group.visible = true;
+      this.salonSound?.salir();
     } else if (s !== 'playing') this.setFade(0);
+    // Pausa (también la de soltar el puntero), mapa o menú: se deja de bailar (game/danceGame.js).
+    if (s !== 'playing') this.danceGame?.salir('pausa');
     this.audio.suspend(s === 'paused' || s === 'shop');
     if (s !== 'playing') this.audio.setEngine(false);
     if (s !== 'playing' && s !== 'paused' && s !== 'shop') this.audio.callarSirenas();
@@ -604,6 +637,9 @@ export class Game {
     } else if (this.state === 'map') {
       if (a.map || a.pause) this.closeMap();
       else this.hud.drawFullMap(this._hudState());
+    } else if (this.state === 'shop') {
+      // Probándose la ropa frente al espejo de un almacén: la cámara gira hasta verlo de frente.
+      this.comercios?.updateShopCam(realDt);
     }
     // La música corre en tiempo real (el <audio> no se frena con el juego).
     this.radio.update(Math.min(Math.max(realDt, 0), 2));
@@ -723,6 +759,8 @@ export class Game {
       return;
     }
     this.stats.playTime += realDt;
+    // Bailando en la pista: los carriles no mueven y E / Esc / caminar lo sacan (game/danceGame.js).
+    if (this.danceGame?.active) a = this.danceGame.mask(a);
     if (a.pause) return this.pause();
     if (a.map) return this.openMap();
     if (a.help) {
@@ -794,12 +832,14 @@ export class Game {
       // Subiendo / bajando con animación: transición suave de la cámara.
       board: p.boarding && !p.dead ? p.boarding.cameraBlend((this._camBoard ??= {})) : null,
       // Adentro de una discoteca: la cámara más cerca y sin salirse del salón.
-      hint: this.interiors?.cameraHint() ?? null,
+      hint: this.interiors?.cameraHint() ?? this.comercios?.cameraHint() ?? null,
     });
     // Primera persona: cabeza oculta y el arma (o los puños) en las manos
     // frente a la cámara ya movida (sin un cuadro de atraso al girar).
     const fpNow = this.camRig.firstPerson && !p.dead && !v && !p.boarding && !this._aerial;
-    p.rig.setFirstPerson?.(fpNow);
+    // (Subiendo / bajando en primera persona, la cabeza también se oculta mientras la cámara está en los ojos.)
+    const fpBoard = !!p.boarding && !p.dead && !this._aerial && this.camRig.footViewName === 'primera' && (this._camBoard?.fpW ?? 1) < 0.5;
+    p.rig.setFirstPerson?.(fpNow || fpBoard);
     if (fpNow) p.rig.fpArms?.(this.camera, this.camRig.fp);
     if (this.intro) this._updateIntro(realDt);
     // Cámara libre de depuración (__game.aerial).
@@ -816,6 +856,10 @@ export class Game {
     this.street.update(dt);
     this.nightlife.update(dt);
     this.interiors.update(dt);
+    this.comercios.update(dt);
+    this.clubLife.update(dt);
+    this.danceGame.update(dt, realDt);
+    this.salonSound.update(realDt);
     this.companions.update(dt);
     this.dialogue.update(dt, realDt);
     const police = this.world.updatePolice(dt, p, this.wanted);
@@ -961,8 +1005,15 @@ export class Game {
       this._church = this.city.pois.find((q) => q.id === 'iglesia');
       this._park = this.city.pois.find((q) => q.id === 'parque');
     }
-    let shopDist = Infinity;
-    for (const s of this._shopSpots) shopDist = Math.min(shopDist, Math.hypot(s.x - p.x, s.z - p.z));
+    // (Distancia al cuadrado y una sola raíz: Math.hypot arma un arreglo por llamada y aquí son cientos por cuadro.)
+    let shop2 = Infinity;
+    for (const s of this._shopSpots) {
+      const dx = s.x - p.x;
+      const dz = s.z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < shop2) shop2 = d2;
+    }
+    const shopDist = Math.sqrt(shop2);
     const d = (q) => (q ? Math.hypot(q.x - p.x, q.z - p.z) : Infinity);
     // En carro, con las ventanas arriba, casi no se oye la música de afuera.
     this.audio.updateAmbient(dt, { night: this.env.night, shopDist: p.inVehicle || this.radio.parlantesSonando ? Infinity : shopDist, churchDist: d(this._church), parkDist: d(this._park), hour: this.env.timeOfDay });
@@ -1218,6 +1269,8 @@ export class Game {
     }
     if (crash.knockOff) {
       this.exitVehicle(true);
+      // (La moto sin piloto cae y se arrastra como las demás: sim/vehiclePhysics.js MOTO_FALL.)
+      startMotoFall(s);
       this.combat.damagePlayer(crash.damage, null);
       return;
     }
@@ -1228,6 +1281,7 @@ export class Game {
       this.audio.crash({ x: s.x, y: s.y, z: s.z }, 8);
       this.camRig.shake(0.25);
       this.exitVehicle(true);
+      startMotoFall(s);
       this.combat.damagePlayer(CRASH.wheelieFallDamage, null);
       return;
     }
@@ -1260,8 +1314,9 @@ export class Game {
     if (a.enterVehicle) {
       if (Math.abs(s.forwardSpeed) < 7) this.exitVehicle();
       else {
-        // Tirarse del vehículo en marcha (con daño).
+        // Tirarse del vehículo en marcha (con daño); la moto se va al piso.
         this.exitVehicle(true);
+        startMotoFall(s);
         this.combat.damagePlayer(Math.abs(s.forwardSpeed) * 1.2, null);
       }
     }
@@ -1270,6 +1325,9 @@ export class Game {
   enterVehicle(v, opts = {}) {
     const p = this.player;
     this._endBoarding();
+    // Los que quedaron caídos adentro (game/occupants.js) se sacan: al piso,
+    // al lado de su puerta; el compañero vivo de la patrulla se baja a pelear.
+    this.world.occupants.evacuate(v, true);
     if (v.driver && v.driver !== 'player') {
       // Robo del vehículo: el conductor sale corriendo.
       this.world.ejectDriver(v, { x: p.x, z: p.z });
@@ -1355,7 +1413,11 @@ export class Game {
   killPlayer() {
     const p = this.player;
     if (p.dead) return;
-    if (p.vehicle) this.exitVehicle(true);
+    if (p.vehicle) {
+      const s = p.vehicle.state;
+      this.exitVehicle(true);
+      startMotoFall(s); // (la moto sin piloto se va al piso)
+    }
     this._endBoarding();
     p.dead = true;
     p.health = 0;
@@ -1498,6 +1560,10 @@ export class Game {
     if (a.interact && !p.dead && this.companions.interact()) return;
     // E junto a la barra de una discoteca: un guaro (game/interiors.js).
     if (a.interact && !p.dead && this.interiors?.pedirGuaro()) return;
+    // E en la pista: a bailar (game/danceGame.js; la barra va primero).
+    if (a.interact && !p.dead && this.danceGame?.interact()) return;
+    // E adentro de un comercio, frente al mostrador (o al espejo del almacén): el mismo menú de afuera.
+    if (a.interact && !p.dead && this.comercios?.interact()) return;
     if (near && a.interact && !p.dead) this.interact(near);
     // Sin local cerca: E le da los cien pesitos al habitante de calle que acaba de pedir.
     else if (a.interact && !p.dead) this.street?.give();
@@ -1721,6 +1787,8 @@ export class Game {
     } else if (item.kind === 'mission') {
       this._handleMissionEvents(this.missions.start(item.id));
       return 'close';
+    } else if (item.kind === 'cosa') {
+      this.hud.toast(`${item.name}: listo, vecino`);
     }
     // Al volver al juego: recibe lo comprado (y se lo come / toma).
     if (!p.inVehicle) {
@@ -1777,7 +1845,8 @@ export class Game {
       return items;
     }
     if (poi?.menu) {
-      const items = poi.menu.map((f) => ({ kind: 'food', id: f.id, name: f.name, icon: 'food', price: f.price, heal: f.heal, desc: `${f.desc} · +${f.heal} de salud` }));
+      // (`cosa`: lo de las cacharrerías y papelerías, que no se come: sim/interiors.js MENUS_COMERCIO.)
+      const items = poi.menu.map((f) => (f.cosa ? { kind: 'cosa', id: f.id, name: f.name, icon: 'mission', price: f.price, desc: f.desc } : { kind: 'food', id: f.id, name: f.name, icon: 'food', price: f.price, heal: f.heal, desc: `${f.desc} · +${f.heal} de salud` }));
       const m = this.missions.available(poi.id);
       if (m && !this.missions.completed.has(m.id)) items.push({ kind: 'mission', id: m.id, name: `Encargo: ${m.title}`, icon: 'mission', price: 0, desc: `Recompensa $${m.reward.toLocaleString('es-CO')}`, label: 'Aceptar' });
       return items;
@@ -2023,6 +2092,26 @@ export class Game {
       street() {
         return g.street.state();
       },
+      /**
+       * Comercios a los que se entra (game/comercios.js): locales, horario,
+       * puerta, mostrador, espejo, cuál está armado, la gente y dónde está el
+       * jugador. {llenar: true} pone de una a la gente del comercio activo.
+       */
+      comercios(opts = {}) {
+        if (opts.llenar) g.comercios.llenar();
+        return g.comercios.info();
+      },
+      /** Pruebas: arma el comercio `id` y pone al jugador unos pasos adentro (mirando hacia el fondo). */
+      enterLocal(id) {
+        const e = g.comercios.enter(id);
+        if (!e) return false;
+        if (g.player.vehicle) g.exitVehicle(true);
+        g.player.state = createPlayerState(e.x, e.z, groundHeight, e.yaw);
+        g.player.state.pos.y = e.y;
+        g.camRig.yaw = e.yaw;
+        g.camRig.first = true;
+        return e;
+      },
       /** Interiores de las discotecas de la 92: locales, cuál está armado y dónde está el jugador. */
       interiors() {
         return g.interiors.info();
@@ -2037,6 +2126,42 @@ export class Game {
         g.camRig.yaw = e.yaw;
         g.camRig.first = true;
         return e;
+      },
+      /**
+       * La gente adentro de las discotecas (game/clubLife.js): local activo,
+       * compás, cupo, gente por oficio, reserva, susto y corro. Opciones:
+       * {llenar: true} pone a todos de una vez; {detalle: true} lista a cada persona.
+       */
+      clubLife(opts = {}) {
+        if (opts.llenar) g.clubLife.llenar();
+        return g.clubLife.info(opts);
+      },
+      /** El jugador baila `estilo` ('regueton', 'salsa', 'popular', 'electronica', 'aplauso') al compás del local; null = para. */
+      bailar(estilo = null, opts) {
+        return g.clubLife.bailarJugador(estilo, opts);
+      },
+      /** Los que bailan cerca le hacen corro al jugador y aplauden (false = vuelven a su sitio). */
+      corro(on = true, opts) {
+        return g.clubLife.corro(on, opts);
+      },
+      /**
+       * El minijuego de baile (game/danceGame.js): sin argumento, su estado
+       * (activo, tanda, combo, propina de la noche, pareja, corro). 'pista' lo
+       * pone en el centro de la pista del local donde está; con
+       * 'empezar' arranca en la pista (como E), 'acertar' le pega perfecto a
+       * las `n` notas siguientes, 'salir' lo deja.
+       */
+      baile(op = null, n = 1) {
+        const D = g.danceGame;
+        if (op === 'pista') return D.irPista();
+        if (op === 'empezar') D.empezar();
+        else if (op === 'acertar') D.acertar(n);
+        else if (op === 'salir') D.salir('pruebas');
+        return D.info();
+      },
+      /** El sonido del salón (game/salonSound.js): reverberación, calle filtrada, murmullo, aplausos y gritos. */
+      salon() {
+        return g.salonSound.info();
       },
       /** La rumba de la 92: locales, nivel por hora, cupo, gente en escena y murmullo. */
       nightlife() {

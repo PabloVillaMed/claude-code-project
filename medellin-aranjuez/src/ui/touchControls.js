@@ -81,6 +81,13 @@ export const BUTTONS = [
   { id: 'fullscreen', kind: 'fullscreen', label: 'Pantalla completa', short: 'Pantalla', icon: 'fullscreen', modes: ['pie', 'veh'] },
 ];
 const BY_ID = new Map(BUTTONS.map((b) => [b.id, b]));
+/** Los carriles del baile en la pantalla (game/danceGame.js): el orden y los colores de la pista de ritmo (ui/danceHud.js). */
+export const DANCE_LANES = [
+  { label: 'Izquierda', color: '#e8b64c', giro: -90 },
+  { label: 'Abajo', color: '#7fcf95', giro: 180 },
+  { label: 'Arriba', color: '#7db8e8', giro: 0 },
+  { label: 'Derecha', color: '#e88aa0', giro: 90 },
+];
 
 /** Modo de los controles: 'pie' | 'vehiculo' | 'cine' (capa vacía: tocar salta) | null (escondidos). */
 export function touchMode(game, active) {
@@ -168,6 +175,15 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
   const els = new Map([...layer.querySelectorAll('.tc-btn')].map((el) => [el.dataset.id, el]));
   const fsBtn = els.get('fullscreen');
 
+  // Bailando en la pista (game/danceGame.js): cuatro carriles grandes abajo en
+  // el centro (← ↓ ↑ →); el toque va directo al minijuego con su hora. Usar
+  // (E) lo saca, y el joystick también (caminar).
+  const lanes = doc.createElement('div');
+  lanes.className = 'tc-carriles';
+  lanes.hidden = true;
+  lanes.innerHTML = DANCE_LANES.map((l, i) => `<button type="button" class="tc-lane" data-lane="${i}" aria-label="${l.label}" style="--c:${l.color};--g:${l.giro}deg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 20 12h-5v8.5H9V12H4z"/></svg></button>`).join('') + '<button type="button" class="tc-lane tc-salir" data-salir="1" aria-label="Dejar de bailar"><span>Salir</span></button>';
+  layer.appendChild(lanes);
+
   const rotate = doc.createElement('div');
   rotate.id = 'tc-rotate';
   rotate.innerHTML = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="15" y="6" width="18" height="32" rx="3"/><path d="M8 30a16 16 0 0 0 14 12M40 18A16 16 0 0 0 26 6"/><path d="M19 42l3 0 0-3M29 6l-3 0 0 3"/></svg><div>Gira el celular para jugar</div>`;
@@ -205,6 +221,7 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
   let rotateShown = false;
   let wasDead = false;
   let onMoto = false;
+  let bailando = false;
   // pointerId → { type: 'stick' | 'look' | 'btn', def?, el?, x, y, cx?, cy? }
   const bindings = new Map();
 
@@ -214,6 +231,25 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
     target.addEventListener(type, fn, opts);
     off.push(() => target.removeEventListener(type, fn, opts));
   };
+  // (los carriles del baile: sus toques, ya con on() definido)
+  const laneUp = (e) => e.target?.closest?.('.tc-lane')?.classList.remove('tc-on');
+  on(lanes, 'pointerdown', (e) => {
+    const b = e.target?.closest?.('.tc-lane');
+    if (b?.dataset.salir) {
+      e.preventDefault();
+      e.stopPropagation();
+      touch.tap('interact'); // (E: deja de bailar)
+      return;
+    }
+    if (!b) return;
+    e.preventDefault();
+    e.stopPropagation(); // (que no lo tome el joystick ni la mirada)
+    game.danceGame?.tocar(+b.dataset.lane, e.timeStamp);
+    b.classList.add('tc-on');
+  });
+  on(lanes, 'pointerup', laneUp);
+  on(lanes, 'pointercancel', laneUp);
+  on(lanes, 'pointerleave', laneUp);
 
   const canFullscreen = () => !!(doc.fullscreenEnabled && html.requestFullscreen) && !plat.desktopApp && !win.desktop;
   const lockLandscape = () => {
@@ -476,6 +512,13 @@ export function installTouchControls(game, { win = globalThis.window, plat = pla
         touch.setToggle('aim', false);
         touch.setToggle('crouch', false);
       } else if (doc.fullscreenElement) lockLandscape();
+    }
+    // Bailando: los carriles a la vista y el racimo de a pie escondido (menos Usar, que lo saca).
+    const baile = m === 'pie' && !!game.danceGame?.active;
+    if (baile !== bailando) {
+      bailando = baile;
+      lanes.hidden = !baile;
+      html.classList.toggle('tc-baile', baile);
     }
     if (!m || m === 'cine') return;
     // En moto aparece el botón del caballito (touch.css: #touch[data-moto]).

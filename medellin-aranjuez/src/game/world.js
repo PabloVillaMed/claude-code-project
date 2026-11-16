@@ -19,6 +19,8 @@ import { skipWhenHidden } from '../render/staticScene.js';
 import { walkStyle, walkSpeedScale, standingActivity, walkingActivity, speechGesture, idleVariant } from '../sim/animSelect.js';
 import { Activities } from './activities.js';
 import { Riders } from './riders.js';
+import { Occupants } from './occupants.js';
+import { looseInput } from '../sim/carOccupants.js';
 
 let nextId = 1;
 
@@ -93,8 +95,27 @@ export class VehicleEntity {
     }
   }
 
+  /** Copiloto (el compañero en la patrulla): el puesto del conductor reflejado (game/occupants.js). */
+  setPassengerRig(look) {
+    this.clearPassengerRig();
+    const rig = new CharacterRig(look);
+    const seat = this.view.seat;
+    rig.root.position.set(-seat.x, seat.y - 0.5, seat.z);
+    this.view.group.add(rig.root);
+    this.passengerRig = rig;
+    this.passengerLook = look;
+  }
+
+  clearPassengerRig() {
+    if (this.passengerRig) {
+      this.passengerRig.dispose();
+      this.passengerRig = null;
+    }
+  }
+
   dispose() {
     this.clearDriverRig();
+    this.clearPassengerRig();
     this.view.dispose();
   }
 }
@@ -205,6 +226,8 @@ export class World {
     this.activities = new Activities(this);
     // Los que van en moto se pueden herir y tumbar (game/riders.js).
     this.riders = new Riders(this);
+    // Y los que van adentro de los carros (game/occupants.js).
+    this.occupants = new Occupants(this);
   }
 
   _indexBlocks() {
@@ -356,6 +379,7 @@ export class World {
     v.clearDriverRig();
     v.driver = null;
     v.kind = 'parked';
+    v.view.doorPulse?.(-1); // (abre la puerta al salir corriendo: render/carDoors.js)
     v.agent = null;
     const p = exitPoint(v.state);
     const ped = this.spawnPedAt(p.x, p.z, { outfit: 'civil' });
@@ -418,6 +442,7 @@ export class World {
     this.activities.update(dt, player);
     this._updateVehicles(dt, player);
     this.riders.update(dt);
+    this.occupants.update(dt);
     this._updatePeds(dt, player);
   }
 
@@ -488,6 +513,10 @@ export class World {
       const far = dist2D(s.x, s.z, player.x, player.z) > 160;
       if (v.driver === 'player') {
         // El jugador maneja; la física se integra en Game.
+      } else if (v.loose && !v.loose.stopped && !s.destroyed) {
+        // Sin control: el conductor cayó sobre el timón (game/occupants.js).
+        const lin = (v._looseIn ??= { throttle: 0, brake: 0, steer: 0, handbrake: false });
+        stepVehicle(s, looseInput(v.loose, s, dt, lin), dt, far ? envFar : near(v));
       } else if ((v.kind === 'traffic' || v.kind === 'police') && v.agent && !s.destroyed) {
         aheadList.length = 0;
         for (const o of this.vehicles) {
@@ -558,7 +587,19 @@ export class World {
         skipWhenHidden(v.driverRig.root);
         if (show) {
           v.driverRig.setShadow(dc < q.shadowChars);
-          v.driverRig.animate(dt, { speed: 0, onGround: true, driving: v.type === 'moto' ? 'moto' : 'car', steer: s.steer, sway: s.bodyRoll });
+          // (Desplomado sobre el timón, game/occupants.js: sin las manos al timón.)
+          v.driverRig.animate(dt, { speed: 0, onGround: true, driving: v.type === 'moto' ? 'moto' : 'car', steer: s.steer, sway: s.bodyRoll, handsFree: !!v.driverRig.post });
+        }
+      }
+      if (v.passengerRig) {
+        // Copiloto (el compañero de la patrulla): como el conductor, sin timón.
+        const dc = dist2D(s.x, s.z, camPos.x, camPos.z);
+        const show = dc < q.driverDraw;
+        v.passengerRig.root.visible = show;
+        skipWhenHidden(v.passengerRig.root);
+        if (show) {
+          v.passengerRig.setShadow(dc < q.shadowChars);
+          v.passengerRig.animate(dt, { speed: 0, onGround: true, driving: 'car', handsFree: true, sway: s.bodyRoll });
         }
       }
     }
@@ -809,6 +850,9 @@ export class World {
       }
       const d = dist2D(s.x, s.z, player.x, player.z);
       nearest = Math.min(nearest, d);
+      // Le dieron al conductor (game/occupants.js): la patrulla rueda sin
+      // control y, cuando para, se baja el compañero.
+      if (this.occupants.policeStep(u)) continue;
       if (wanted.level === 0 && !u.leaving) {
         u.leaving = true;
         v.siren = false;
@@ -937,11 +981,14 @@ export class World {
     const looks = u.crew ?? [v.driverLook, u.pillion?.look];
     u.crew = [];
     this._clearPillion(u);
-    v.clearDriverRig();
+    // (El que cayó adentro se queda desplomado en su puesto: game/occupants.js.)
+    const driverDown = this.occupants.holds(v, 0);
+    if (!driverDown) v.clearDriverRig();
+    if (!this.occupants.holds(v, 1)) v.clearPassengerRig();
     v.driver = null;
     const sideOff = u.kind === 'moto' ? POLICE_MOTO.deployOffset : 1.6;
     for (let k = 0; k < looks.length; k++) {
-      const side = k === 0 ? -1 : 1;
+      const side = k === 0 && !driverDown ? -1 : 1;
       const ox = s.x + Math.cos(s.heading) * side * sideOff;
       const oz = s.z - Math.sin(s.heading) * side * sideOff;
       const off = this.city.collision.resolveCircle(ox, oz, PED.radius);
@@ -1014,11 +1061,14 @@ export class World {
     }
     u.state = 'pursuit';
     u.ai = {};
+    // Los que cayeron adentro quedan en la calle (game/occupants.js).
+    this.occupants.evacuate(v);
     v.kind = 'police';
     v.driver = 'npc';
     standUpMoto(v.state); // (si estaba tirada en el piso, la levantan)
     v.setDriverRig(u.crew[0]);
     if (u.kind === 'moto' && v.state.health > 0 && u.crew.length > 1) this._seatPillion(u, u.crew[1]);
+    else if (u.kind === 'car' && u.crew.length > 1) v.setPassengerRig(u.crew[1]);
     const n = this.graph.nearestNode(v.state.x, v.state.z);
     v.agent = { from: n.id, to: n.links[0].node, next: null };
   }
@@ -1040,6 +1090,7 @@ export class World {
       v.clearDriverRig();
       v.driver = null;
     }
+    if (!this.occupants.holds(v, 1)) v.clearPassengerRig(); // (el compañero caído se queda en su puesto)
     v.siren = false;
     v.chasing = false;
     v.nav = null;
@@ -1078,6 +1129,7 @@ export class World {
     const unit = { id: this._unitId = (this._unitId ?? 0) + 1, kind: moto ? 'moto' : 'car', role: null, vehicle: v, officers: [], crew, state: 'pursuit', leaving: false, ai: {}, sees: false };
     v.policeUnit = unit;
     if (moto) this._seatPillion(unit, crew[1]);
+    else v.setPassengerRig(crew[1]); // el compañero va de copiloto (se le puede disparar: game/occupants.js)
     this.policeUnits.push(unit);
     return unit;
   }

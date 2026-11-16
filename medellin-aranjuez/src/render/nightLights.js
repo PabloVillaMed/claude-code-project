@@ -92,7 +92,11 @@ export class NightLights {
   update(dt, camPos, night, vehicles, playerVehicle) {
     this.setEnabled(night > 0.04);
     groundLights.update(camPos, this.heads, vehicles, night, { lampScale: this._lampScale });
-    this.pools.count = groundLights.uniforms.uGLBeamPos.value.filter((p) => p.w > 0).length;
+    // (Contados sin filter: nada nuevo por cuadro.)
+    const beams = groundLights.uniforms.uGLBeamPos.value;
+    let nBeams = 0;
+    for (let i = 0; i < beams.length; i++) if (beams[i].w > 0) nBeams++;
+    this.pools.count = nBeams;
     if (!this.on) return;
     // Reasignar los faroles más cercanos cada 0.3 s (conservando los que siguen cerca).
     this.timer -= dt;
