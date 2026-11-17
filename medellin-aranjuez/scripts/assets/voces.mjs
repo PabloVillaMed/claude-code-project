@@ -99,7 +99,7 @@ const RESEED = {
   // Tanda de la 3.8 (rumba, discotecas, damas, comercios): las que el propio
   // guion marcó «revisar» o «posible final cortado» en la primera pasada.
   'baile_corro-01-h3': 2,
-  'baile_corro-03-h1': 2,
+  'baile_corro-03-h1': 3, // (con la 2 repetía la última palabra)
   'baile_propina-03-m3': 2,
   'dj-01-m1': 2,
   'dj-04-m3': 2,
@@ -107,6 +107,61 @@ const RESEED = {
   'limosna_nada-01-m1': 2,
   'tendero_charla-05-h1': 3, // (con la 2 salió de 6,5 s: el doble de lo que dura la frase)
   'tendero_gracias-03-h2': 2, // 6,3 s para una frase de 2,5 s
+  // Revisión de esa tanda con ASR (faster-whisper «small», las 825): palabras
+  // enredadas, repetidas o comidas, o una frase que no era.
+  'portero_arma-02-h2': 2,
+  'portero_arma-03-h1': 2,
+  'balacera-01-m3': 2,
+  'balacera-04-h3': 3,
+  'balacera-04-m3': 3,
+  'rumba_fila-01-h1': 2,
+  'rumba_fila-03-h1': 3,
+  'rumba_fila-03-h3': 3,
+  'dama_susto-01-m3': 2,
+  'cantante-01-h2': 2,
+  'cantante-01-h3': 2,
+  'cantante-01-m1': 2,
+  'cantante-03-m1': 2,
+  'tendero_charla-04-m2': 2,
+  'tendero_charla-05-h2': 2,
+  'tendero_gracias-02-h2': 2,
+  'campanero-03-h1': 2,
+  'campanero-03-h3': 2,
+  'baile_gente-05-h1': 2,
+  'baile_gente-05-h3': 2,
+  'baile_corro-02-m3': 2,
+  'baile_propina-01-m2': 2,
+  'limosna_nada-01-h1': 2,
+  'limosna_nada-01-h3': 2,
+  'dj-01-h2': 2,
+  'dj-01-h3': 2,
+  'dj-02-h2': 2,
+  'rumba-07-h1': 2,
+  'rumba-08-h2': 2,
+  'rumba-11-h2': 2,
+  'rumba-11-m1': 2,
+  'banda-01-h2': 2,
+  // …y las que duraban de 1,5 a 2,4 veces lo que las otras voces de la misma
+  // frase, con sonido después de la última palabra.
+  'rumba_fila-03-h2': 2,
+  'rumba_fila-04-m3': 3,
+  'banda-01-m2': 2,
+  'tendero-01-m3': 2,
+  'tendero_charla-04-m1': 2,
+  'tendero_charla-05-h3': 2,
+  'tendero_charla-05-m3': 3,
+  'tendero_gracias-04-m3': 2,
+  'bartender-03-h1': 2,
+  'bartender-03-m3': 2,
+  'vendedora-02-m1': 2,
+  'vendedora-02-m3': 2,
+  'vendedora-03-m3': 2,
+  'balacera-04-h1': 2,
+  'dama_viaje-02-m3': 2,
+  'limosna_gracias-02-m3': 2,
+  'baile_gente-05-m2': 2,
+  'baile_gente-06-h2': 2,
+  'campanero-02-m1': 2,
 };
 
 const args = process.argv.slice(2);

@@ -1,7 +1,7 @@
 {
   "name": "medellin-aranjuez",
   "productName": "Medellin Aranjuez",
-  "version": "3.8.2",
+  "version": "3.8.3",
   "description": "Juego de mundo abierto en tercera persona inspirado en Aranjuez, Medellín (MVP).",
   "main": "electron/main.cjs",
   "type": "module",
