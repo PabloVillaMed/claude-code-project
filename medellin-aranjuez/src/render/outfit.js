@@ -644,6 +644,8 @@ export function applyOutfit(rig, outfit) {
   // La lista de mallas con sombra cambió (ver setRigShadow); las nuevas ya nacen con el _shadowOn de siempre.
   rig._shadowMeshes = null;
   rig._poseDirty = true; // (personaje congelado: lo nuevo necesita sus matrices)
+  // En primera persona, lo nuevo de la cabeza y del cuello tampoco se ve (characterRig.setFirstPerson).
+  if (rig.fpOn) rig.setFirstPerson?.(true, true);
   return true;
 }
 

@@ -321,6 +321,9 @@ export function stepVehicle(v, input, dt, env) {
   return impact;
 }
 
+/** Tope de la dirección (rad) a esa rapidez (m/s): se cierra a alta velocidad. */
+export const steerLimitAt = (sp, speedAbs) => sp.steerMax / (1 + speedAbs / 22);
+
 /** 0..1 de la rapidez entre MOTO_STEER.vLow y vHigh (suavizado). */
 function motoSpeedBlend(speedAbs) {
   const t = clamp((speedAbs - MOTO_STEER.vLow) / (MOTO_STEER.vHigh - MOTO_STEER.vLow), 0, 1);
@@ -372,7 +375,7 @@ function substep(v, input, dt, env) {
 
   // --- Dirección con reducción a alta velocidad ---
   const speedAbs = Math.abs(v.forwardSpeed);
-  const steerLimit = sp.steerMax / (1 + speedAbs / 22);
+  const steerLimit = steerLimitAt(sp, speedAbs);
   if (sp.twoWheels && env.isPlayer) {
     // Moto del jugador (MOTO_STEER): el manubrio ya viene filtrado.
     v.steer = riderSteer(v, clamp(input.steer, -1, 1), speedAbs, dt) * Math.min(steerLimit, motoSteerLimit(sp, speedAbs));

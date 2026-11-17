@@ -8,14 +8,51 @@ import { groundHeight } from '../sim/terrain.js';
 import { BOARD_FP } from './boarding.js';
 
 // ------------------------------------------- primera persona (ajustables)
-// La cámara va en los ojos del propio personaje (la cabeza se oculta: ver
-// characterRig.setFirstPerson) y los brazos sostienen el arma frente a ella
-// (characterRig.fpArms, con el estado `rig.fp` que se calcula aquí).
-/** Altura de los ojos (m) de pie y agachado. */
+// La cámara va en los ojos del propio personaje: sigue al hueso de la cabeza
+// del esqueleto (Game.js lo pasa en ctx.head), no a la cápsula, porque al
+// trotar y correr la animación baja la cabeza hasta 18 cm y la adelanta hasta
+// 40 cm (con la cámara fija a la cápsula quedaba detrás y encima de la
+// cabeza: se veían el cuello por dentro, los hombros y la espalda). Un resorte
+// se come el cabeceo de cada paso y, al mirar abajo, los ojos giran con el
+// cuello y se adelantan: se ven el pecho, las piernas y los pies desde donde
+// se verían. La cabeza, lo que lleva puesto en ella y lo que cuelga del cuello
+// no se dibujan para la cámara pero sí dan sombra (characterRig.setFirstPerson)
+// y los brazos sostienen el arma frente a ella (characterRig.fpArms, con el
+// estado `rig.fp` que se calcula aquí).
+/** Sin esqueleto (muerto o el muñeco de respaldo): altura de los ojos (m) de pie y agachado. */
 export const FP_EYE_HEIGHT = 1.62;
 export const FP_EYE_HEIGHT_CROUCH = 1.12;
-/** Cuánto va la cámara delante del eje del cuerpo (m): justo delante de la cara. */
+/** Sin esqueleto: cuánto va la cámara delante del eje del cuerpo (m). */
 export const FP_EYE_AHEAD = 0.14;
+/** Ojos respecto al hueso de la cabeza (m): arriba y adelante (un poco por delante de la cara oculta). */
+export const FP_HEAD_EYE_UP = 0.085;
+export const FP_HEAD_EYE_FWD = 0.11;
+/** Fracción del cabeceo de la mirada que dobla el cuello: los ojos giran alrededor del hueso de la cabeza (abajo: adelante y abajo). */
+export const FP_NECK_BEND = 0.6;
+/** Mirando del todo abajo, la cámara se adelanta esto más (m): el cuello por dentro y el pecho quedan fuera del plano cercano. */
+export const FP_DOWN_PUSH = 0.08;
+/**
+ * Resorte que sigue a la cabeza (rad/s, sin rebote): alto y adelante, y de
+ * lado. Corriendo la cabeza sube y baja ~8 cm y va y viene ~14 cm en cada
+ * paso; con 8 pasa ~1 cm. Más alto sigue más el paso (marea); más bajo se
+ * atrasa al arrancar a correr.
+ */
+export const FP_HEAD_FOLLOW = 8;
+export const FP_HEAD_FOLLOW_SIDE = 5;
+/**
+ * Atraso máximo (m) del resorte respecto a la cabeza: detrás de ella o por
+ * encima / por debajo. Al arrancar a correr la cabeza se adelanta 35 cm en
+ * 0,3 s y el resorte solo se quedaba atrás hasta 20 cm (mirando abajo se veía
+ * el cuello por dentro); al pararse de agachado, igual hacia arriba.
+ */
+export const FP_HEAD_LAG = 0.06;
+/** Cuánto del corrimiento lateral de la cabeza pasa a la cámara (0…1): el vaivén de lado al correr marea. */
+export const FP_HEAD_SIDE = 0.5;
+/** Tope de la mirada en primera persona (rad): abajo (casi vertical, con el cuello doblado no se mete al cuerpo) y arriba. */
+export const FP_PITCH_MIN = -1.3;
+export const FP_PITCH_MAX = 0.9;
+/** Distancia mínima (m) de la cámara a la pared de enfrente (los ojos van adelante del eje del cuerpo). */
+export const FP_WALL_GAP = 0.12;
 /** Plano cercano (m) en primera persona (las manos quedan a 20-50 cm); en tercera persona, el de la cámara. */
 export const FP_NEAR = 0.04;
 /** Rapidez (1/s) con que el arma sube a la mira (ADS) o baja a la cadera (~0,25 s). */
@@ -98,6 +135,73 @@ export function footCamera(view, { aiming = false, sprinting = false, crouching 
 }
 
 /**
+ * Primera persona: el hueso de la cabeza (dx, dy, dz: mundo, desde el pie de
+ * la cápsula) en el marco del cuerpo con rumbo `yaw` (adelante = -Z girado).
+ * Escribe [lado (derecha +), alto, adelante] en `out`.
+ */
+export function fpHeadLocal(dx, dy, dz, yaw, out) {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  out[0] = dx * c - dz * s;
+  out[1] = dy;
+  out[2] = -dx * s - dz * c;
+  return out;
+}
+
+/**
+ * Resorte críticamente amortiguado (sin rebote) del eje `i` de `pos` (con su
+ * velocidad en `vel`) hacia `target`, con rapidez `w` (rad/s). Exacto para
+ * cualquier dt (un cuadro largo no lo dispara).
+ */
+export function springAxis(pos, vel, i, target, w, dt) {
+  const x = pos[i] - target;
+  const e = Math.exp(-w * dt);
+  const t = (vel[i] + w * x) * dt;
+  vel[i] = (vel[i] - w * t) * e;
+  pos[i] = target + (x + t) * e;
+}
+
+/**
+ * La cabeza filtrada (`pos`, con su velocidad `vel`: [lado, alto, adelante])
+ * no se queda más de FP_HEAD_LAG detrás de la de verdad (`raw`) ni por
+ * encima o por debajo de ella: si el resorte se atrasa, se arrastra (los ojos
+ * nunca quedan dentro del cuello). Adelante sí puede quedar: ahí no hay cuerpo.
+ */
+export function fpHeadLeash(pos, vel, raw) {
+  if (pos[2] < raw[2] - FP_HEAD_LAG) {
+    pos[2] = raw[2] - FP_HEAD_LAG;
+    if (vel[2] < 0) vel[2] = 0;
+  }
+  if (pos[1] > raw[1] + FP_HEAD_LAG) {
+    pos[1] = raw[1] + FP_HEAD_LAG;
+    if (vel[1] > 0) vel[1] = 0;
+  } else if (pos[1] < raw[1] - FP_HEAD_LAG) {
+    pos[1] = raw[1] - FP_HEAD_LAG;
+    if (vel[1] < 0) vel[1] = 0;
+  }
+}
+
+/**
+ * Primera persona: los ojos en el marco del cuerpo (m desde el pie de la
+ * cápsula: [lado, alto, adelante] en `out`) a partir del hueso de la cabeza
+ * (ya filtrado) y del cabeceo `pitch` de la mirada. Los ojos van
+ * FP_HEAD_EYE_UP / FP_HEAD_EYE_FWD sobre y delante del hueso, giran con el
+ * cuello (FP_NECK_BEND del cabeceo) y, mirando abajo, se adelantan hasta
+ * FP_DOWN_PUSH más.
+ */
+export function fpEye(side, up, fwd, pitch, out) {
+  const p = clamp(pitch, FP_PITCH_MIN, FP_PITCH_MAX);
+  const a = p * FP_NECK_BEND;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const d = clamp(p / FP_PITCH_MIN, 0, 1); // 0 al frente o arriba … 1 del todo abajo
+  out[0] = side;
+  out[1] = up + FP_HEAD_EYE_FWD * s + FP_HEAD_EYE_UP * c;
+  out[2] = fwd + FP_HEAD_EYE_FWD * c - FP_HEAD_EYE_UP * s + FP_DOWN_PUSH * d * d * (3 - 2 * d);
+  return out;
+}
+
+/**
  * Suavizado de la cámara (0 rígida … 1 muy suave; 0,5 es el de siempre):
  * factor que multiplica la rapidez con que la cámara alcanza al jugador.
  */
@@ -134,6 +238,13 @@ export class CameraRig {
     // Primera persona: lo que characterRig.fpArms necesita para el arma en
     // las manos (ads 0 cadera … 1 mira; bob/sway en m; kick; retract 0…1).
     this.fp = { ads: 0, bobPhase: 0, bobAmp: 0, bobX: 0, bobY: 0, swayX: 0, swayY: 0, kick: 0, kickBack: 0, kickPitch: 0, retract: 0 };
+    // Primera persona con esqueleto: la cabeza filtrada ([lado, alto,
+    // adelante] y su velocidad) y los ojos que salen de ella (fpEye).
+    this.fpHead = { pos: [0, 0, 0], vel: [0, 0, 0], on: false };
+    this.fpEye = [0, 0, 0];
+    this._hl = [0, 0, 0];
+    this._be = [0, 0, 0]; // (subiendo / bajando: los ojos respecto al hueso de la cabeza)
+    this._pivot = new THREE.Vector3();
   }
 
   kick(a) {
@@ -183,7 +294,10 @@ export class CameraRig {
 
   /**
    * ctx = {x,y,z, inVehicle, vehicleHeading, vehicleSpeed, vehicleSize, vehicleLean (moto, rad), moto,
-   * aiming, sprinting, crouching, lookBehind, lookX, lookY, board}
+   * aiming, sprinting, crouching, lookBehind, lookX, lookY, board, head, bodyYaw, simDt}
+   * head (primera persona a pie): {x, y, z} del hueso de la cabeza en el
+   * mundo, con bodyYaw el rumbo del cuerpo dibujado y simDt el paso del
+   * juego (el de la animación); null = sin esqueleto.
    * board (subiendo / bajando, game/boarding.js cameraBlend): {w (0 a pie …
    * 1 en el vehículo), x, y, z del personaje animado, vx, vy, vz, heading,
    * size, moto del vehículo, enter} o null.
@@ -224,7 +338,9 @@ export class CameraRig {
     } else {
       this._board = null;
       this.yaw = wrapAngle(this.yaw - ctx.lookX);
-      this.pitch = clamp(this.pitch - ctx.lookY - this.recoil, -1.25, 0.9);
+      // (En primera persona a pie, el tope propio: el cuello se dobla y los ojos no se meten al cuerpo.)
+      const fpLook = !ctx.inVehicle && this.footViewName === 'primera';
+      this.pitch = clamp(this.pitch - ctx.lookY - this.recoil, fpLook ? FP_PITCH_MIN : -1.25, fpLook ? FP_PITCH_MAX : 0.9);
     }
     this.recoil = damp(this.recoil, 0, 18, dt);
     if (hasLook) this.idleLook = 0;
@@ -285,7 +401,10 @@ export class CameraRig {
       fov += fc.fovAdd;
       eyes = fc.first;
       eyeAhead = fc.ahead;
+      // Primera persona con esqueleto: los ojos salen de la cabeza filtrada (alto aquí; lado y adelante abajo).
+      if (eyes && ctx.head) height = this._followHead(dt, ctx)[1];
     }
+    if (!(eyes && ctx.head)) this.fpHead.on = false;
     // Al cambiar a la vista de capó o a la primera persona (o salir de ellas) el salto es inmediato.
     const snap = hood || eyes;
     if (snap !== this.snapView) {
@@ -311,7 +430,13 @@ export class CameraRig {
     if (E) {
       const w = E.fpW;
       const fb = this._fpb;
-      this.target.set(fb.x + (E.vx - Math.sin(h) * ahead - fb.x) * w, fb.y + (E.vy + height - fb.y) * w, fb.z + (E.vz - Math.cos(h) * ahead - fb.z) * w);
+      // Los ojos sobre y delante del hueso de la cabeza, como a pie (fpEye; el
+      // rumbo, el del cuerpo suavizado): al soltar la animación no hay salto.
+      const eo = fpEye(0, 0, 0, this.pitch, this._be);
+      const ex = fb.x - Math.sin(fb.yaw) * eo[2];
+      const ey = fb.y + eo[1];
+      const ez = fb.z - Math.cos(fb.yaw) * eo[2];
+      this.target.set(ex + (E.vx - Math.sin(h) * ahead - ex) * w, ey + (E.vy + height - ey) * w, ez + (E.vz - Math.cos(h) * ahead - ez) * w);
     } else if (B) {
       const w = B.w;
       this.target.set(B.x + (B.vx - B.x) * w - Math.sin(h) * ahead, B.y + (B.vy - B.y) * w + height, B.z + (B.vz - B.z) * w - Math.cos(h) * ahead);
@@ -325,6 +450,12 @@ export class CameraRig {
     this.smoothedTarget.y = damp(this.smoothedTarget.y, this.target.y, lerpK * 0.6, dt);
     this.smoothedTarget.z = damp(this.smoothedTarget.z, this.target.z, lerpK, dt);
     if (E) this.smoothedTarget.copy(this.target); // (los ojos ya van suavizados)
+    else if (eyes) {
+      // En los ojos, a la par de la cápsula: suavizada se atrasaba v/k (12 cm
+      // corriendo) y quedaba detrás de la cabeza. (La altura sí se suaviza: los escalones.)
+      this.smoothedTarget.x = this.target.x;
+      this.smoothedTarget.z = this.target.z;
+    }
 
     const yaw = ctx.lookBehind && ctx.inVehicle ? this.yaw + Math.PI : this.yaw;
     const cp = Math.cos(this.pitch);
@@ -335,7 +466,7 @@ export class CameraRig {
     const rz = -Math.sin(yaw);
     const t = this.smoothedTarget;
     const sh = this.shoulderCur;
-    const pivot = new THREE.Vector3(t.x, t.y, t.z);
+    const pivot = this._pivot.set(t.x, t.y, t.z);
     // Colisión: el hombro no puede meterse en una pared (junto a un muro, la
     // cámara vuelve al centro)...
     if (Math.abs(sh) > 0.01) {
@@ -349,13 +480,26 @@ export class CameraRig {
     const hint = ctx.hint ?? null; // adentro de un local (game/interiors.js): más cerca y dentro del salón
     if (hint && !eyes && !hood) d = Math.min(d, hint.maxDist);
     if (eyes) {
-      // Primera persona: un poco adelante de los ojos (en horizontal: al mirar
-      // abajo se ve el cuerpo desde afuera), sin atravesar la pared de enfrente.
-      const hx = -Math.sin(yaw);
-      const hz = -Math.cos(yaw);
-      const he = this.collision.raycast(pivot.x, pivot.y, pivot.z, hx, 0, hz, eyeAhead + 0.2);
-      const a = he ? Math.max(0, he.t - 0.2) : eyeAhead;
-      this.pos.set(pivot.x + hx * a, pivot.y, pivot.z + hz * a);
+      // Primera persona: en los ojos (con esqueleto, donde va la cabeza en el
+      // marco del cuerpo; si no, un poco adelante del eje), sin atravesar la
+      // pared de enfrente (rayo en horizontal desde el eje del cuerpo).
+      const head = !!ctx.head;
+      const by = head ? (ctx.bodyYaw ?? yaw) : yaw;
+      const side = head ? this.fpEye[0] : 0;
+      const fwdA = head ? this.fpEye[2] : eyeAhead;
+      let ox = -Math.sin(by) * fwdA + Math.cos(by) * side;
+      let oz = -Math.cos(by) * fwdA - Math.sin(by) * side;
+      const len = Math.hypot(ox, oz);
+      if (len > 1e-4) {
+        const gap = head ? FP_WALL_GAP : 0.2;
+        const he = this.collision.raycast(pivot.x, pivot.y, pivot.z, ox / len, 0, oz / len, len + gap);
+        const a = he ? Math.max(0, he.t - gap) / len : 1;
+        if (a < 1) {
+          ox *= a;
+          oz *= a;
+        }
+      }
+      this.pos.set(pivot.x + ox, pivot.y, pivot.z + oz);
       this._updateFp(dt, ctx, fx, fy, fz);
       // Cabeceo leve de la cámara al caminar (menos al apuntar).
       const F = this.fp;
@@ -398,6 +542,33 @@ export class CameraRig {
       this.camera.near = near;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Primera persona con esqueleto: lleva la cabeza (ctx.head, en el marco del
+   * cuerpo de rumbo ctx.bodyYaw) por el resorte y devuelve los ojos ([lado,
+   * alto, adelante] desde el pie de la cápsula: fpEye). Sin asignar memoria.
+   */
+  _followHead(dt, ctx) {
+    const H = ctx.head;
+    const hl = fpHeadLocal(H.x - ctx.x, H.y - ctx.y, H.z - ctx.z, ctx.bodyYaw ?? this.yaw, this._hl);
+    hl[0] *= FP_HEAD_SIDE;
+    const F = this.fpHead;
+    if (!F.on) {
+      // Recién en los ojos: arranca donde está la cabeza, sin arrastrar nada viejo.
+      for (let i = 0; i < 3; i++) {
+        F.pos[i] = hl[i];
+        F.vel[i] = 0;
+      }
+      F.on = true;
+    } else {
+      const st = ctx.simDt ?? dt; // (la cabeza va con el reloj del juego)
+      springAxis(F.pos, F.vel, 0, hl[0], FP_HEAD_FOLLOW_SIDE, st);
+      springAxis(F.pos, F.vel, 1, hl[1], FP_HEAD_FOLLOW, st);
+      springAxis(F.pos, F.vel, 2, hl[2], FP_HEAD_FOLLOW, st);
+      fpHeadLeash(F.pos, F.vel, hl);
+    }
+    return fpEye(F.pos[0], F.pos[1], F.pos[2], this.pitch, this.fpEye);
   }
 
   /**

@@ -22,13 +22,15 @@ export const BOARD_SETTLE = 0.3;
 export const BOARD_SETTLE_MAX = 1.2;
 /**
  * Subir / bajar en primera persona (la cámara en los ojos, sin pasar a
- * tercera): eyeUp m de los ojos sobre el hueso de la cabeza; blend s de la
- * mezcla con la cámara del vehículo (al final de la subida, al principio de
- * la bajada); follow 1/s con que la cámara alcanza la cabeza (suaviza el
- * temblor del hueso: el cuello estable); turn 1/s con que el rumbo de la
- * mirada sigue al del cuerpo (el ratón mira alrededor encima de eso).
+ * tercera): blend s de la mezcla con la cámara del vehículo (al final de la
+ * subida, al principio de la bajada); follow 1/s con que la cámara alcanza la
+ * cabeza (suaviza el temblor del hueso: el cuello estable); turn 1/s con que
+ * el rumbo de la mirada sigue al del cuerpo (el ratón mira alrededor encima
+ * de eso). Los ojos van sobre y delante del hueso de la cabeza igual que a pie
+ * (cameraRig.fpEye: FP_HEAD_EYE_UP / FP_HEAD_EYE_FWD, el cuello se dobla al
+ * mirar abajo): al terminar de bajarse la cámara ya no salta 20 cm.
  */
-export const BOARD_FP = { eyeUp: 0.09, blend: 0.45, follow: 22, turn: 5 };
+export const BOARD_FP = { blend: 0.45, follow: 22, turn: 5 };
 
 // Nombre del plan -> clip del rig.
 const CLIP = { door: 'door', sit: 'sit_down', sitL: 'sit_down_l', stand: 'stand_up' };
@@ -155,16 +157,17 @@ export class Boarding {
     out.size = s.spec.length;
     out.moto = this.vehicle.type === 'moto';
     // Primera persona (cameraRig: ctx.board.eyes): los ojos siguen la cabeza
-    // (su posición, no su giro: el cuello queda estable) y el cuerpo da el
-    // rumbo; fpW mezcla con la cámara del vehículo solo al final de la subida
-    // (ya sentado) o al principio de la bajada (todavía sentado).
+    // (su posición, no su giro: el cuello queda estable; hx/hy/hz es el hueso,
+    // cameraRig pone los ojos encima y delante) y el cuerpo da el rumbo; fpW
+    // mezcla con la cámara del vehículo solo al final de la subida (ya
+    // sentado) o al principio de la bajada (todavía sentado).
     const hb = this.rig.bones?.Bip01_Head;
     out.head = !!hb;
     if (hb) {
       hb.updateWorldMatrix(true, false);
       const h = hb.matrixWorld.elements;
       out.hx = h[12];
-      out.hy = h[13] + BOARD_FP.eyeUp;
+      out.hy = h[13];
       out.hz = h[14];
     }
     out.bodyYaw = s.heading + this.rig.root.rotation.y;

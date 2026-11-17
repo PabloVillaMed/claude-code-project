@@ -18,9 +18,9 @@ import * as THREE from 'three';
 export const MAX_LAMPS = 32;
 export const MAX_BEAMS = 24; // vehículos (cada uno con dos haces)
 
-// Colores (lineales) de las luminarias de Medellín: sodio de alta presión
-// (naranja) en la mayoría de calles de barrio y LED blanco neutro en las
-// vías principales, parques y remodelaciones recientes.
+// Colores (lineales) de las luminarias de Medellín: LED blanco neutro en casi
+// toda la ciudad (la modernización de 2022-2025) y sodio de alta presión
+// (naranja) en las calles de barrio que faltan (sim/alumbrado.js FRACCION_LED).
 const SODIUM = new THREE.Color(1.0, 0.6, 0.26);
 const LED = new THREE.Color(0.86, 0.9, 1.0);
 const HEAD = new THREE.Color(1.0, 0.93, 0.8);
@@ -137,7 +137,11 @@ const _order = [];
 let _lastCam = null;
 let _frame = 0;
 
-/** Color de cada farol: LED blanco en parques y en ~1 de cada 3 calles (fijo por posición). */
+/**
+ * Color de cada farol: el que trae su cabeza (h.led, de sim/alumbrado.js
+ * luzLed por tipo de vía: render/props.js); si no lo trae, LED blanco en
+ * parques y en ~1 de cada 3 calles (fijo por posición).
+ */
 export function lampColor(h, out) {
   if (h.led === undefined) {
     const k = Math.sin(Math.round(h.x) * 12.9898 + Math.round(h.z) * 78.233) * 43758.5453;
@@ -197,7 +201,8 @@ export const groundLights = {
       const d = Math.sqrt(e[0]);
       const fade = _order.length < MAX_LAMPS ? 1 : 1 - THREE.MathUtils.smoothstep(d, far * 0.72, far);
       const scale = opts.lampScale ? opts.lampScale(e[1]) : 1;
-      L[k].set(h.x, h.y, h.z, night * fade * scale * this.lampPower * (h.park ? 0.55 : 1));
+      // pot: luz relativa de la luminaria (sim/alumbrado.js LUMINARIAS: las más altas, más).
+      L[k].set(h.x, h.y, h.z, night * fade * scale * this.lampPower * (h.park ? 0.55 : (h.pot ?? 1)));
       lampColor(h, C[k]);
     }
     // Faros de los vehículos en marcha más cercanos.

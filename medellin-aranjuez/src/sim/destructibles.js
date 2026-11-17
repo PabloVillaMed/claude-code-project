@@ -55,7 +55,8 @@ export const RECOSTADO_MIN = 0.3;
 // rueda sube lo que el tronco la levanta: render/vehicleMesh.js) y una frenada
 // leve; no es una pared (una caja de choque los dejaría parados en seco).
 /** Radio (m) de lo que queda en el piso, por tipo (el árbol lo multiplica por su escala); sin radio: no se siente (la placa). */
-export const RADIO_TUMBADO = { pole: 0.14, lamp: 0.1, parkLamp: 0.07, tree: 0.2 };
+// (lamp: el poste de concreto del farol de barrio mide ~0,12 m de radio; el metálico de avenida, 0,07 a 0,13.)
+export const RADIO_TUMBADO = { pole: 0.14, lamp: 0.12, parkLamp: 0.07, tree: 0.2 };
 /** Alto máximo (m) del eje sobre el piso que todavía se pisa (el árbol, sostenido por la copa, solo cerca de la base). */
 export const TUMBADO_ALTO_MAX = 0.3;
 /** Radio (m) de rueda de referencia para el brinco. */

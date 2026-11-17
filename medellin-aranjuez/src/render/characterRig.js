@@ -65,6 +65,13 @@ export const FP_RETRACT_BACK = 0.16;
 export const FP_RETRACT_TILT = 0.95;
 /** Puños: cuánto se cierran los dedos (rad por falange) en primera persona. */
 export const FP_FIST_CURL = 1.25;
+/**
+ * Primera persona: ranuras de la ropa (sim/ropa.js) que, además de la cabeza
+ * y lo que va en ella, no se dibujan para la cámara (sí dan sombra). Vacía:
+ * con la cámara delante de la cabeza la cadena y la capota del buso ya no
+ * estorban y mirando abajo se ven en el pecho; 'cuello' / 'torso' las ocultan.
+ */
+export const FP_HIDE_SLOTS = [];
 // Temporales de fpArms (sin asignar memoria por cuadro).
 const FPT = Object.fromEntries(['r', 'u', 'f', 'g', 'd', 'w', 'p', 'h', 't', 'l'].map((k) => [k, new THREE.Vector3()]));
 for (const k of ['q1', 'q2', 'wq', 'hq', 'qi']) FPT[k] = new THREE.Quaternion();
@@ -1450,27 +1457,40 @@ export class SkinnedRig {
   /** Sombra solo de cerca: cada personaje con sombra repite su malla con esqueleto en el mapa de sombras. */
   // ------------------------------------------------------ primera persona
   /**
-   * Primera persona: oculta la cabeza (con el pelo) y lo que lleva puesto en
-   * ella (gorra, gafas) para que no tape la cámara. Solo actúa al alternar.
+   * Primera persona: la cabeza (con el pelo) y lo que lleva en ella
+   * (sombrero, gorra, gafas; y la ropa de FP_HIDE_SLOTS) no se dibujan para la
+   * cámara, que va en los ojos, pero siguen dando sombra (con visible = false
+   * la sombra quedaba sin cabeza): ver fpHide. Solo actúa al alternar o con
+   * `force` (render/outfit.js, al cambiar la ropa puesta: el sombrero comprado
+   * en primera persona se veía).
    */
-  setFirstPerson(on) {
+  setFirstPerson(on, force = false) {
     on = !!on;
-    if (!!this.fpOn === on) return;
+    if (!!this.fpOn === on && !force) return;
     this.fpOn = on;
+    for (const o of this._fpHidden ?? []) fpShow(o);
+    this._fpHidden = null;
     if (on) {
       const hide = [];
-      this.model.traverse((o) => o.isSkinnedMesh && o.visible && /head|hair/i.test(o.material?.name ?? '') && hide.push(o));
-      this.bones.Bip01_Head?.traverse((o) => o.isMesh && o.visible && hide.push(o));
-      for (const o of hide) o.visible = false;
+      this.model.traverse((o) => o.isSkinnedMesh && /head|hair/i.test(o.material?.name ?? '') && hide.push(o));
+      this.bones.Bip01_Head?.traverse((o) => o.isMesh && hide.push(o));
+      // (Ropa de render/outfit.js colgada de otros huesos: ver FP_HIDE_SLOTS.)
+      for (const m of this._outfit?.meshes ?? []) if (FP_HIDE_SLOTS.includes(m.userData.slot)) hide.push(m);
+      for (const o of hide) fpHide(o);
       this._fpHidden = hide;
-    } else {
-      for (const o of this._fpHidden ?? []) o.visible = true;
-      this._fpHidden = null;
     }
     // La esfera de la piel (de la pose de reposo) no alcanza a los brazos
     // estirados frente a la cámara: sin esto, mirando al frente se descartaba
     // el cuerpo entero y no se veían las manos.
     this.model.traverse((o) => o.isSkinnedMesh && (o.frustumCulled = !on));
+  }
+
+  /** Posición del hueso de la cabeza en el mundo (los ojos de la primera persona: game/cameraRig.js), o null sin esqueleto. */
+  headWorld(out) {
+    const h = this.bones?.Bip01_Head;
+    if (!h) return null;
+    h.updateWorldMatrix(true, false);
+    return out.setFromMatrixPosition(h.matrixWorld);
   }
 
   /**
@@ -1588,6 +1608,47 @@ export class SkinnedRig {
     this.model.traverse((o) => o.isSkinnedMesh && o.skeleton && skeletons.add(o.skeleton));
     for (const s of skeletons) s.dispose();
   }
+}
+
+// ------------------------------------------------- primera persona: solo sombra
+// Lo que la cámara de primera persona no debe ver sigue en el mapa de sombras:
+// el pase de sombras no llama a onBeforeRender (dibuja con su propio material
+// de profundidad), así que basta con que la malla, al dibujarse para la
+// cámara, no escriba color ni profundidad. El material puede ser compartido
+// con otra gente: se repone apenas termina (onAfterRender). Sin programas
+// nuevos (colorWrite y depthWrite son estado, no cambian el shader) ni
+// memoria por cuadro; las capas (layers) no sirven: la sombra mira las de la cámara.
+function fpBefore(renderer, scene, camera, geometry, material, group) {
+  const u = this.userData;
+  u.fpPrev[0].call(this, renderer, scene, camera, geometry, material, group);
+  u.fpCW = material.colorWrite;
+  u.fpDW = material.depthWrite;
+  material.colorWrite = false;
+  material.depthWrite = false;
+}
+function fpAfter(renderer, scene, camera, geometry, material, group) {
+  const u = this.userData;
+  material.colorWrite = u.fpCW;
+  material.depthWrite = u.fpDW;
+  u.fpPrev[1].call(this, renderer, scene, camera, geometry, material, group);
+}
+/** La malla `o` deja de verse para la cámara (sigue dando sombra). */
+export function fpHide(o) {
+  if (o.onBeforeRender === fpBefore) return;
+  o.userData.fpPrev = [o.onBeforeRender, o.onAfterRender];
+  o.onBeforeRender = fpBefore;
+  o.onAfterRender = fpAfter;
+}
+/** La malla `o` vuelve a verse. */
+export function fpShow(o) {
+  if (o.onBeforeRender !== fpBefore) return;
+  o.onBeforeRender = o.userData.fpPrev[0];
+  o.onAfterRender = o.userData.fpPrev[1];
+  o.userData.fpPrev = null;
+}
+/** ¿La malla `o` está oculta para la cámara de primera persona? */
+export function fpHidden(o) {
+  return o.onBeforeRender === fpBefore;
 }
 
 // ------------------------------------------------------------------ costo por personaje

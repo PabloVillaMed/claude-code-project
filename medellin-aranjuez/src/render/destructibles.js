@@ -8,14 +8,16 @@
 //  - placas (render/streetFurniture.js, fusionadas): sus ~70 vértices;
 //  - cables: los tramos que llegan a un poste tumbado bajan con él;
 //  - farol: el vidrio se apaga (color por instancia) y su luz también
-//    (cabeza `off`: groundLights y nightLights la saltan).
+//    (cabeza `off`: groundLights y nightLights la saltan);
+//  - poste de redes con luminaria: su brazo (otro conjunto de instancias)
+//    cae con él, sobre la misma base, y su lente se apaga.
 // Sin asignaciones por cuadro: matrices y vectores de trabajo fijos; la copia
 // de la pose original se guarda la primera vez que algo se tumba.
 
 import * as THREE from 'three';
 import { DE_PIE } from '../sim/destructibles.js';
 import { GRID, terrainHeight } from '../sim/terrain.js';
-import { instanceMatrix, setInstanceMatrix, setInstanceColor, instanceMeshes } from './props.js';
+import { instanceColorOf, instanceMatrix, setInstanceMatrix, setInstanceColor, instanceMeshes } from './props.js';
 
 // ------------------------------------------------------------------ ajustes
 /** Gris del vidrio de un farol tumbado: 0,5 = sin brillo (props.js apagable), 1 = encendido. */
@@ -71,7 +73,9 @@ export class DestructiblesView {
       const sign = h ? null : r.signParts?.get(e.prop) ?? null;
       if (!h && !sign) continue;
       const cables = this.cables ? r.poleCables?.get(e.prop) ?? null : null;
-      sim.enlazar(e, { h, sign, head: r.propLights?.get(e.prop) ?? null, cables, m0: null, bl: null, bw: null, p0: null, n0: null, off: false }, h?.h ?? 0);
+      // Poste de redes con luminaria: su brazo (otro conjunto de instancias) cae con él.
+      const arm = h ? r.propArms?.get(e.prop) ?? null : null;
+      sim.enlazar(e, { h, sign, arm, head: r.propLights?.get(e.prop) ?? null, cables, m0: null, bl: null, bw: null, ma0: null, abl: null, c0: null, p0: null, n0: null, off: false }, h?.h ?? 0);
       // Cada tramo sabe qué entrada tiene en cada punta (si se tumba, baja).
       for (const t of cables ?? []) {
         if (t.a === e.prop) t.ea = e;
@@ -102,13 +106,23 @@ export class DestructiblesView {
         fallMatrix(e, inst.bl[0], inst.bl[1], inst.bl[2], _P);
         setInstanceMatrix(inst.h, _M.multiplyMatrices(_P, _M0.fromArray(inst.m0)).elements);
       }
+      // El brazo gira sobre la misma base (su matriz es relativa a SU trozo).
+      if (inst.arm) {
+        if (dePie) setInstanceMatrix(inst.arm, inst.ma0);
+        else {
+          fallMatrix(e, inst.abl[0], inst.abl[1], inst.abl[2], _P);
+          setInstanceMatrix(inst.arm, _M.multiplyMatrices(_P, _M0.fromArray(inst.ma0)).elements);
+        }
+      }
     } else if (inst.sign) this._placa(e, inst, dePie);
-    // Farol: se apaga al tumbarse y se prende al reponerse.
+    // Farol: se apaga al tumbarse y se prende al reponerse (con su color: sodio o LED).
     if (inst.head && inst.off === dePie) {
       inst.off = !dePie;
       inst.head.off = !dePie;
-      const c = dePie ? 1 : VIDRIO_APAGADO;
-      if (inst.h) setInstanceColor(inst.h, c, c, c);
+      const k = dePie ? 1 : VIDRIO_APAGADO;
+      const luz = inst.arm ?? inst.h;
+      if (luz && inst.c0) setInstanceColor(luz, inst.c0[0] * k, inst.c0[1] * k, inst.c0[2] * k);
+      else if (luz) setInstanceColor(luz, k, k, k);
     }
     if (inst.cables) for (const t of inst.cables) this._tramo(t);
   }
@@ -126,6 +140,17 @@ export class DestructiblesView {
         if (!im.boundingSphere) im.computeBoundingSphere();
         im.boundingSphere.union(_sph);
       }
+      if (inst.arm) {
+        inst.ma0 = instanceMatrix(inst.arm, new Float32Array(16));
+        inst.abl = [inst.ma0[12], inst.ma0[13], inst.ma0[14]];
+        _sph.center.set(inst.abl[0], inst.abl[1], inst.abl[2]);
+        for (const im of instanceMeshes(inst.arm)) {
+          if (!im.boundingSphere) im.computeBoundingSphere();
+          im.boundingSphere.union(_sph);
+        }
+      }
+      // Color del lente encendido (sodio o LED): al apagarse se oscurece, al reponerse vuelve.
+      if (inst.head) inst.c0 = instanceColorOf(inst.arm ?? inst.h, [1, 1, 1]);
       return;
     }
     // Placa fusionada: copia de sus vértices; la base es el pie del tubo.

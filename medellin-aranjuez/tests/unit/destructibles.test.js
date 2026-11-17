@@ -340,4 +340,61 @@ describe('enlace con el dibujo', () => {
     for (let k = 0; k < antes.length; k++) expect(ahora[k]).toBe(antes[k]);
     expect(head.off).toBe(false);
   });
+
+  it('el brazo con luminaria de un poste de redes cae con su poste, su lente se apaga y vuelve con su color', () => {
+    const props = [poste(0, 0), poste(30, 0)];
+    const { reg } = mundo(props);
+    const geo = new THREE.BoxGeometry(0.3, 9, 0.3).translate(0, 4.5, 0);
+    geo.computeBoundingBox();
+    const tpl = { key: 'poste', cerca: [{ geometry: geo, material: new THREE.MeshStandardMaterial() }], lejos: null, extras: {}, box: geo.boundingBox, height: 9 };
+    // Brazo: hacia −Z a 7,5 m, con un lente de color por instancia (como render/streetLights.js).
+    const lente = new THREE.MeshStandardMaterial();
+    lente.userData.luz = true;
+    const bgeo = new THREE.BoxGeometry(0.1, 0.1, 1.2).translate(0, 7.5, -0.6);
+    bgeo.computeBoundingBox();
+    const btpl = { key: 'brazo', cerca: [{ geometry: bgeo, material: lente }], lejos: null, extras: {}, box: bgeo.boundingBox, height: 0.1 };
+    const refs = new Map();
+    const arms = new Map();
+    const set = new ChunkedInstances(tpl, { perInstance: true, refs, name: 'postes' });
+    const bset = new ChunkedInstances(btpl, { perInstance: true, refs: arms, name: 'luminarias-postes', tint: (m) => !!m.userData.luz });
+    const tinte = new THREE.Color(0.95, 0.8, 0.64);
+    for (const p of props) {
+      set.add(p.x, 0, p.z, 0, 1, 1, 1, null, null, p);
+      bset.add(p.x, 0, p.z, Math.PI / 2, 1, 1, 1, tinte, null, p);
+    }
+    const root = new THREE.Group();
+    set.build(root, []);
+    bset.build(root, []);
+    const head = { off: false };
+    const vista = new DestructiblesView({ root, propInstances: refs, propArms: arms, propLights: new Map([[props[0], head]]) }, reg);
+    const h = refs.get(props[0]);
+    const b = arms.get(props[0]);
+    const m0 = b.lc.srcMatrix.slice(b.i * 16, b.i * 16 + 16);
+    reg.tumbar(reg.entries[0], 1, 0, 10);
+    for (let i = 0; i < 180; i++) {
+      reg.update(1 / 60, 0, 0);
+      vista.update();
+    }
+    // Mismo eje Y (el del poste) en el poste y en el brazo: caen juntos sobre la misma base.
+    const yPoste = new THREE.Vector3().fromArray(h.lc.srcMatrix, h.i * 16 + 4).normalize();
+    const yBrazo = new THREE.Vector3().fromArray(b.lc.srcMatrix, b.i * 16 + 4).normalize();
+    expect(yPoste.y).toBeLessThan(0.5);
+    expect(yBrazo.distanceTo(yPoste)).toBeLessThan(1e-5);
+    // La base del brazo (su traslación, en el mundo) no se despega de la del poste.
+    const base = (hh) => new THREE.Vector3().fromArray(hh.lc.srcMatrix, hh.i * 16 + 12).add(hh.group.position);
+    expect(base(b).distanceTo(base(h))).toBeLessThan(1e-4);
+    // El lente: apagado a la mitad de su color y la cabeza apagada.
+    expect(head.off).toBe(true);
+    const c = b.lc.srcColor;
+    expect(c[b.i * 3]).toBeCloseTo(tinte.r * 0.5, 5);
+    expect(c[b.i * 3 + 2]).toBeCloseTo(tinte.b * 0.5, 5);
+    // El otro poste y su brazo, intactos.
+    expect(arms.get(props[1]).lc.srcColor[arms.get(props[1]).i * 3]).toBeCloseTo(tinte.r, 6);
+    reg.reponer(reg.entries[0]);
+    vista.update();
+    expect(Array.from(b.lc.srcMatrix.slice(b.i * 16, b.i * 16 + 16))).toEqual(Array.from(m0));
+    expect(c[b.i * 3]).toBeCloseTo(tinte.r, 6);
+    expect(c[b.i * 3 + 1]).toBeCloseTo(tinte.g, 6);
+    expect(head.off).toBe(false);
+  });
 });

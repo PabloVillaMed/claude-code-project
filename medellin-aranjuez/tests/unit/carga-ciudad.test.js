@@ -90,27 +90,34 @@ const PARTS = ['buildings', 'props', 'parkedVehicles', 'blocks', 'pois', 'collis
 // menos en la semilla 4, 8 en la 7) y colisión (el cascarón hueco con su
 // mostrador y lo de adentro); manzanas, carros parqueados, lugares, metro y
 // el número de edificios siguen iguales.
+// 3.9: el alumbrado típico de Medellín (sim/alumbrado.js): cada poste de redes
+// lleva su luminaria (luzRot, via) y, al final, sobran los faroles sueltos de
+// las cuadras que ya alumbran los postes, los pegados a un poste, los que no
+// tienen vía al frente y los de la punta de una calle ciega (3333 menos en la
+// semilla 4, 3341 en la 7; los que quedan dicen su tipo de vía y apuntan
+// perpendiculares al eje). Cambian utilería y colisión (sus cajas); edificios,
+// carros parqueados, manzanas, lugares y metro siguen iguales.
 const EXPECTED = {
   4: {
-    all: '6d649fb734f255a9',
-    counts: [15681, 24121, 261],
+    all: '5af4759311f2e90f',
+    counts: [15681, 20788, 261],
     buildings: '861ea3b884fda1b6',
-    props: '513a910ae9aa8d8c',
+    props: '456d419da2bc96b6',
     parkedVehicles: '8f0b3d83691b3738',
     blocks: '7235efc8f8b15c92',
     pois: '9128ba9dab3b48ab',
-    collision: 'cb88f9d33e5e77f5',
+    collision: '0a07f346d61d8be9',
     metro: '8ef5eeef08119bb0',
   },
   7: {
-    all: '7993ac83fd92390a',
-    counts: [15717, 24532, 256],
+    all: '1e1101bf29fa0ae2',
+    counts: [15717, 21191, 256],
     buildings: 'a164e7e0a5b5be68',
-    props: '298e044ab451748a',
+    props: '32289081764d4531',
     parkedVehicles: '0f48bb75fb91742c',
     blocks: '7235efc8f8b15c92',
     pois: '8fe2228e1e02b2da',
-    collision: '50dd12f5b32890a2',
+    collision: '39c40c8b49f52c84',
     metro: '8ef5eeef08119bb0',
   },
 };

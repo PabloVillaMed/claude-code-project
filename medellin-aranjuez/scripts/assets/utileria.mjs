@@ -561,9 +561,14 @@ async function buildStreetLamp(spec) {
   let lamp = await readParts(lampSrc.gltfPath);
   const lb = boundsOf(lamp);
   // El soporte de pared queda en el poste y la lámpara hacia -Z (la calle).
+  // street_lamp_02 tiene la placa de pared en su -Z (el farol hacia +Z): se
+  // gira media vuelta (x y z cambian de signo). Antes se tomaba lb.max[2]
+  // como la pared y quedaba al revés: la placa flotando sobre la calle y el
+  // farol pegado al poste. (El juego ya solo usa el poste de este modelo: la
+  // luminaria la arma render/streetLights.js.)
   const lampScale = 1.35;
-  const back = lb.max[2];
-  transformParts(lamp, (x, y, z) => [(x - (lb.min[0] + lb.max[0]) / 2) * lampScale, (y - lb.max[1]) * lampScale + H - 0.1, (z - back) * lampScale - 0.12]);
+  const back = lb.min[2];
+  transformParts(lamp, (x, y, z) => [((lb.min[0] + lb.max[0]) / 2 - x) * lampScale, (y - lb.max[1]) * lampScale + H - 0.1, (back - z) * lampScale - 0.12]);
   let parts = mergeByMaterial([...body, ...lamp]);
   const lampParts = parts.filter((p) => /street_lamp/.test(p.material.name));
   const poleParts = parts.filter((p) => !/street_lamp/.test(p.material.name));

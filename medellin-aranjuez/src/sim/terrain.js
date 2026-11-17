@@ -259,12 +259,15 @@ for (const [ei, e] of MAPA.edges.entries()) {
 /**
  * Tramo de calzada bajo (x, z): {edge, t (0..1 del tramo), off (distancia al
  * eje), seg} o null. `margin` amplía el ancho (p. ej. para el sardinel).
+ * `keep(seg)`: solo los tramos que cumplan (seg.edge: índice en MAPA.edges;
+ * los discos de los cruces tienen seg.l2 ≈ 0).
  */
-export function roadAt(x, z, margin = 0) {
+export function roadAt(x, z, margin = 0, keep = null) {
   const c = roadCells.get(key(Math.floor(x / CS), Math.floor(z / CS)));
   if (!c) return null;
   let best = null;
   for (const s of c) {
+    if (keep && !keep(s)) continue;
     const t = Math.max(0, Math.min(1, ((x - s.ax) * s.dx + (z - s.az) * s.dz) / s.l2));
     const ex = x - s.ax - s.dx * t;
     const ez = z - s.az - s.dz * t;

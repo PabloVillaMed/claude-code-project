@@ -4,6 +4,22 @@
 
 import { pointAlong, projectOnPolyline } from './geom2d.js';
 import { clamp, dist2D, forwardX, forwardZ, wrapAngle, yawFromDir } from './math.js';
+import { steerLimitAt } from './vehiclePhysics.js';
+
+// ------------------------------------------- piloto automático (ajustables)
+// Las ruedas de adelante de los carros del tráfico copian la dirección que pide
+// el piloto (render/vehicleMesh.js): un punto objetivo que salta, o un timón
+// que se pasa de largo, se ven como llantas que van y vienen.
+export const AUTOPILOT = {
+  /** Cuánto del ángulo de rueda de la persecución pura se pide (1 = el arco justo al punto objetivo; más, gira antes y con más fuerza; menos, se queda corto en las esquinas y se atasca). */
+  pursuitGain: 1.4,
+  /** Lo mínimo que el punto objetivo queda adelante sobre el carril, en fracción de la distancia de mira (muy afuera del carril no apunta de lado). */
+  minAhead: 0.4,
+  /** Seno del ángulo de giro por debajo del cual dos carriles seguidos se toman como uno recto (sin esquina). */
+  cornerMinSin: 0.17,
+  /** Lo más lejos (m) que se busca la esquina donde se cruzan las líneas de los dos carriles de un giro. */
+  cornerMax: 8,
+};
 
 // Las vías del mapa real son polilíneas (no rectas): cada arista guarda sus
 // puntos `pts` de a→b, las longitudes acumuladas `cum` y si es de una sola
@@ -265,6 +281,137 @@ export function edgeProgress(graph, fromId, toId, x, z) {
 }
 
 /**
+ * Esquina del giro from→to→next: dónde se cruzan la línea del final del carril
+ * actual y la del comienzo del siguiente (cx, cz). u1: m desde el final del
+ * carril actual hasta la esquina (- antes, como en los giros a la derecha);
+ * u2: m desde el comienzo del siguiente (+ después). Se guarda en el agente y
+ * solo se recalcula al cambiar de giro (nada nuevo por cuadro); al cambiar de
+ * tramo, la del giro que se acaba de tomar pasa a agent.cornerPrev (se sigue
+ * usando hasta dejar atrás la esquina) y los dos objetos se reciclan.
+ */
+function laneCorner(graph, agent) {
+  let k = agent.corner;
+  if (k && k.from === agent.from && k.to === agent.to && k.next === agent.next) return k;
+  if (k && k.to === agent.from && k.next === agent.to) {
+    const spare = agent.cornerPrev;
+    agent.cornerPrev = k;
+    k = spare;
+  }
+  k ??= { from: null, to: null, next: null, u1: 0, u2: 0, cx: 0, cz: 0, ex: 0, ez: 0, d1x: 0, d1z: 0, sx: 0, sz: 0, d2x: 0, d2z: 0, cos: 1, len2: 1, pt: { x: 0, z: 0 } };
+  agent.corner = k;
+  k.from = agent.from;
+  k.to = agent.to;
+  k.next = agent.next;
+  const e1 = lanePoint(graph, agent.from, agent.to, 1);
+  const s2 = lanePoint(graph, agent.to, agent.next, 0);
+  k.ex = e1.x;
+  k.ez = e1.z;
+  k.d1x = forwardX(e1.yaw);
+  k.d1z = forwardZ(e1.yaw);
+  k.sx = s2.x;
+  k.sz = s2.z;
+  k.d2x = forwardX(s2.yaw);
+  k.d2z = forwardZ(s2.yaw);
+  k.len2 = s2.len || 1;
+  // e1 + u1·d1 = s2 + u2·d2 (casi recto: sin esquina, el carril sigue).
+  const cross = k.d1x * k.d2z - k.d1z * k.d2x;
+  const wx = s2.x - e1.x;
+  const wz = s2.z - e1.z;
+  const C = AUTOPILOT.cornerMax;
+  k.u1 = Math.abs(cross) < AUTOPILOT.cornerMinSin ? 0 : clamp((wx * k.d2z - k.d2x * wz) / cross, -C, C);
+  k.u2 = Math.abs(cross) < AUTOPILOT.cornerMinSin ? 0 : clamp((wx * k.d1z - k.d1x * wz) / cross, -C, C);
+  k.cx = k.ex + k.d1x * k.u1;
+  k.cz = k.ez + k.d1z * k.u1;
+  k.cos = k.d1x * k.d2x + k.d1z * k.d2z;
+  return k;
+}
+
+/** La esquina del giro que se acaba de tomar (el que llevó a from→to), si todavía no se ha dejado atrás. */
+function takenCorner(agent) {
+  for (let i = 0; i < 2; i++) {
+    const k = i ? agent.corner : agent.cornerPrev;
+    if (k && k.to === agent.from && k.next === agent.to) return k;
+  }
+  return null;
+}
+
+/**
+ * Avance (m) del vehículo por el camino de la esquina k: negativo antes de la
+ * esquina (sobre la línea del carril de llegada), positivo después (sobre la
+ * del de salida). (b - a) / (1 + cos θ) vale -a sobre la primera línea y b
+ * sobre la segunda, y sigue siendo continuo si el carro corta por dentro.
+ */
+function cornerProgress(k, v) {
+  const a = (k.cx - v.x) * k.d1x + (k.cz - v.z) * k.d1z;
+  const b = (v.x - k.cx) * k.d2x + (v.z - k.cz) * k.d2z;
+  return (b - a) / Math.max(0.3, 1 + k.cos);
+}
+
+/** Punto a `q` m de la esquina k por su camino (- antes, sobre la línea de llegada; + por el carril de salida from2→to2). */
+function cornerPath(graph, k, q, from2, to2) {
+  if (q <= 0) {
+    k.pt.x = k.cx + k.d1x * q;
+    k.pt.z = k.cz + k.d1z * q;
+    return k.pt;
+  }
+  const s2 = k.u2 + q;
+  if (s2 >= 0) return lanePoint(graph, from2, to2, Math.min(1, s2 / k.len2));
+  k.pt.x = k.sx + k.d2x * s2;
+  k.pt.z = k.sz + k.d2z * s2;
+  return k.pt;
+}
+
+/** Cuánto adelante sobre una línea a `lat` m de lado la corta el círculo de radio `look` (con el mínimo AUTOPILOT.minAhead). */
+function reachAhead(look, lat) {
+  return Math.max(look * AUTOPILOT.minAhead, Math.sqrt(Math.max(0, look * look - lat * lat)));
+}
+
+/**
+ * Punto objetivo: `look` m adelante sobre el carril (donde lo corta el círculo
+ * de ese radio alrededor del vehículo). Cerca del giro, por el camino de la
+ * esquina donde se cruzan los dos carriles, con la misma cuenta antes y
+ * después de cambiar de tramo: el objetivo no salta ni al asomarse al otro
+ * tramo ni al cambiar de tramo. Antes se asomaba al comienzo del carril
+ * siguiente, que en un giro a la derecha queda a la izquierda del carro: las
+ * ruedas daban un latigazo al otro lado antes de girar y, al cambiar de
+ * tramo, saltaban de golpe al lado del giro.
+ */
+function pursuitTarget(graph, agent, v, here, prog, elen, look) {
+  // El giro que viene cuenta cuando el objetivo ya pasa de su esquina, y solo
+  // cerca del final: lejos, en una calle curva, las líneas rectas de la
+  // esquina no dicen nada del carril.
+  const hasNext = agent.next != null && agent.next !== agent.from && graph.link(agent.to, agent.next);
+  const k = hasNext ? laneCorner(graph, agent) : null;
+  // Recién cambiado de tramo: por el camino del giro que se acaba de tomar
+  // hasta dejarlo `look` m atrás (en un tramo corto, de ahí por el que viene).
+  const tk = takenCorner(agent);
+  if (tk) {
+    const p = cornerProgress(tk, v);
+    if (p < look && prog < look + Math.abs(tk.u2) + 2) {
+      const q = p + look;
+      const d = k ? elen + k.u1 - tk.u2 : Infinity; // de una esquina a la otra por este carril
+      return q > d ? cornerPath(graph, k, q - d, agent.to, agent.next) : cornerPath(graph, tk, q, agent.from, agent.to);
+    }
+    tk.next = null;
+  }
+  if (k && elen - prog < look + Math.abs(k.u1) + 2) {
+    const q = cornerProgress(k, v) + look;
+    if (q > 0) return cornerPath(graph, k, q, agent.to, agent.next);
+  }
+  // Sobre la línea del carril actual (con el punto más cercano `here`).
+  const hx = forwardX(here.yaw);
+  const hz = forwardZ(here.yaw);
+  const ox = v.x - here.x;
+  const oz = v.z - here.z;
+  const s = prog + ox * hx + oz * hz + reachAhead(look, ox * hz - oz * hx);
+  if (s <= elen || !k) return lanePoint(graph, agent.from, agent.to, clamp(s / elen, 0, 1));
+  // Pasado el final, derecho hasta la esquina (la de un giro a la izquierda queda más allá).
+  k.pt.x = k.ex + k.d1x * (s - elen);
+  k.pt.z = k.ez + k.d1z * (s - elen);
+  return k.pt;
+}
+
+/**
  * Piloto automático. `agent` = {from, to, next}. Calcula la entrada de
  * conducción para seguir el carril derecho y girar en las intersecciones.
  * `opts` = {cruise, blockedAhead (distancia a obstáculo o Infinity), rand, target?}
@@ -301,8 +448,9 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   // para vehículos largos, que necesitan abrirse en los giros).
   const wb = v.spec?.wheelBase ?? 2.5;
   const look = wb > 3.5 ? clamp(1.5 + wb * 0.8 + Math.abs(v.forwardSpeed) * 0.45, 5, 13) : clamp(2 + wb + Math.abs(v.forwardSpeed) * 0.6, 5, 16);
+  const here = lanePoint(graph, agent.from, agent.to, clamp(t, 0, 1));
   let target;
-  if (distToEnd > look || uTurn) {
+  if (uTurn || (longTurn && distToEnd > look)) {
     target = lanePoint(graph, agent.from, agent.to, clamp(t + look / elen, 0, 1));
   } else if (longTurn) {
     // Hasta el fondo del carril actual y un poco más allá, luego gira.
@@ -312,13 +460,11 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
     const over = wb0 > 3.5 ? 2 : 0.5;
     target = { x: end.x + fx * over, z: end.z + fz * over };
   } else {
-    const rest = look - distToEnd;
-    const nlen = graph.link(agent.to, agent.next) ? graph.edges[graph.link(agent.to, agent.next).edge].length : 20;
-    target = lanePoint(graph, agent.to, agent.next, clamp(rest / nlen, 0, 1));
+    // Sobre este carril y, cerca del final, sobre el siguiente (sin saltos).
+    target = pursuitTarget(graph, agent, v, here, prog, elen, look);
   }
   // Curva por delante: cuánto cambia el rumbo del carril en los próximos metros.
   const ahead = lanePoint(graph, agent.from, agent.to, clamp(t + Math.min(25, distToEnd) / elen, 0, 1));
-  const here = lanePoint(graph, agent.from, agent.to, clamp(t, 0, 1));
   // Muy afuera del carril al comienzo del tramo (tras una vuelta en U que se
   // abrió por la calle lateral): primero volver al cruce, sin cortar la esquina
   // por el andén.
@@ -333,8 +479,15 @@ export function autopilot(graph, agent, v, opts, depth = 0) {
   const bend = Math.abs(wrapAngle(ahead.yaw - here.yaw));
   const desiredYaw = yawFromDir(target.x - v.x, target.z - v.z);
   const err = wrapAngle(desiredYaw - v.heading);
-  // err > 0 => hay que girar a la izquierda => steer negativo.
-  const steer = clamp(-err * 2.2, -1, 1);
+  // err > 0 => hay que girar a la izquierda => steer negativo. Persecución
+  // pura: el ángulo de rueda del arco que pasa por el punto objetivo
+  // (tan δ = 2·L·sen α / d), en fracción del tope de la dirección a esta
+  // rapidez. (Antes era 2,2 por el error de rumbo: el doble de timón a 10 m/s,
+  // y el carro cabeceaba de un lado al otro en las curvas de las calles.) Con
+  // el objetivo atrás (vuelta en U), como si estuviera de lado: timón a fondo.
+  const tdist = Math.max(1, Math.hypot(target.x - v.x, target.z - v.z));
+  const wheel = Math.atan((2 * wb * Math.sin(clamp(-err, -Math.PI / 2, Math.PI / 2))) / tdist) * AUTOPILOT.pursuitGain;
+  const steer = clamp(wheel / (v.spec ? steerLimitAt(v.spec, Math.abs(v.forwardSpeed)) : 0.6), -1, 1);
 
   // Maniobra de recuperación: si quedó trabado contra algo, reversa girando.
   const dt = opts.dt ?? 1 / 30;

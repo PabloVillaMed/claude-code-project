@@ -638,7 +638,14 @@ export class Game {
       if (a.map || a.pause) this.closeMap();
       else this.hud.drawFullMap(this._hudState());
     } else if (this.state === 'shop') {
-      // Probándose la ropa frente al espejo de un almacén: la cámara gira hasta verlo de frente.
+      // Probándose la ropa frente al espejo de un almacén: la cámara gira hasta
+      // verlo de frente (con la cabeza y el sombrero a la vista aunque viniera
+      // en primera persona, y los brazos de vuelta de sostener el arma frente a la cámara).
+      const r = this.player.rig;
+      if (r?.fpOn) {
+        r.setFirstPerson(false);
+        r.animate(1e-3, { speed: 0, onGround: true });
+      }
       this.comercios?.updateShopCam(realDt);
     }
     // La música corre en tiempo real (el <audio> no se frena con el juego).
@@ -812,6 +819,8 @@ export class Game {
 
     // Cámara.
     const v = p.vehicle;
+    // Primera persona a pie: los ojos siguen al hueso de la cabeza ya animado (cameraRig.fpEye).
+    const fpHead = this.camRig.firstPerson && !p.dead && !v && !p.boarding && !this._aerial ? (p.rig.headWorld?.((this._fpHead ??= new THREE.Vector3())) ?? null) : null;
     this.camRig.update(realDt, {
       x: p.x,
       y: p.y,
@@ -833,6 +842,9 @@ export class Game {
       board: p.boarding && !p.dead ? p.boarding.cameraBlend((this._camBoard ??= {})) : null,
       // Adentro de una discoteca: la cámara más cerca y sin salirse del salón.
       hint: this.interiors?.cameraHint() ?? this.comercios?.cameraHint() ?? null,
+      head: fpHead,
+      bodyYaw: p.rig.root.rotation.y,
+      simDt: dt, // (la cabeza se mueve con el reloj del juego: el resorte que la sigue, también)
     });
     // Primera persona: cabeza oculta y el arma (o los puños) en las manos
     // frente a la cámara ya movida (sin un cuadro de atraso al girar).

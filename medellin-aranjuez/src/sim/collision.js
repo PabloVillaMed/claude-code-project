@@ -64,6 +64,23 @@ export class CollisionWorld {
     return found;
   }
 
+  /**
+   * Saca para siempre las cajas del conjunto `sobran` mientras se arma la
+   * ciudad (sim/alumbrado.js): de la rejilla y de `boxes`, y renumera los ids
+   * (todavía nadie los guarda).
+   */
+  purge(sobran) {
+    if (!sobran.size) return;
+    for (const b of sobran) this.remove(b);
+    let w = 0;
+    for (const b of this.boxes) {
+      if (sobran.has(b)) continue;
+      b.id = w;
+      this.boxes[w++] = b;
+    }
+    this.boxes.length = w;
+  }
+
   /** Devuelve a la rejilla una caja quitada con `remove` (no la duplica si ya estaba). */
   restore(box) {
     if (this.boxes[box.id] !== box) return false;

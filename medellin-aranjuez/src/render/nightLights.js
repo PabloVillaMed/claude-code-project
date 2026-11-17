@@ -128,8 +128,9 @@ export class NightLights {
       // Farol tumbado: se apaga de una (sin desvanecerse).
       if (target && this.heads[this.assign[k]].off) l.userData.level = 0;
       else l.userData.level += (target - l.userData.level) * Math.min(1, dt * 3);
-      const park = this.assign[k] >= 0 && this.heads[this.assign[k]].park;
-      l.intensity = night * l.userData.level * (park ? 12 : 24);
+      const h = this.assign[k] >= 0 ? this.heads[this.assign[k]] : null;
+      // (pot: luz relativa de la luminaria, como en groundLights.)
+      l.intensity = night * l.userData.level * (h?.park ? 12 : 24 * (h?.pot ?? 1));
     }
     // Foco de los faros del jugador.
     if (this.spot) {

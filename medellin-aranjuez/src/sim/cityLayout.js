@@ -27,6 +27,7 @@ import {
 } from './geom2d.js';
 import { LOCALES, facadeLayout } from './facades.js';
 import { accesoCabe, seatBuildings, walkLevel } from './buildingBases.js';
+import { ordenarAlumbrado, tipoDeVia } from './alumbrado.js';
 import { COMERCIO, INTERIORES_ACTIVOS, MENUS_COMERCIO, PLANES, PLANES_LOCAL, TEMA_POR_TIPO, ampliarLocal, aplicarHuella, armarInterior, armarLocal, caminableInteriores, colisionesInterior, planComercio } from './interiors.js';
 
 const FLOOR_H = 3;
@@ -146,6 +147,10 @@ export function generateCity(seed = 4) {
   // Nada de motos parqueadas sobre la estación del metro ni metidas en un edificio.
   city.parkedVehicles = city.parkedVehicles.filter((v) => !city.inStation(v.x, v.z) && !city.collision.pointBlocked(v.x, v.z));
   quitarTumbados(city);
+  // Alumbrado al final (sim/alumbrado.js): lo de arriba se colocó con los
+  // faroles en su sitio (mismo azar, mismas motos); aquí se quitan los que
+  // sobran porque esa cuadra ya la alumbran los postes de redes.
+  city.alumbrado = ordenarAlumbrado(city, { roadAt, claseDe: (i) => MAPA.edges[i]?.cls ?? '', esCalzada: (i) => !!MAPA.edges[i]?.car });
   return city;
 }
 
@@ -1894,7 +1899,8 @@ function addPowerLines(ctx) {
         prev = null;
         continue;
       }
-      const pole = addProp(ctx, { type: 'pole', x, z, h: 9, collider: { hx: 0.15, hz: 0.15 } });
+      // Con su luminaria (sim/alumbrado.js): el brazo hacia el eje de la vía.
+      const pole = addProp(ctx, { type: 'pole', x, z, h: 9, collider: { hx: 0.15, hz: 0.15 }, luzRot: Math.atan2(p.dz, -p.dx) + Math.PI, via: tipoDeVia(e.cls) });
       if (prev && pole) city.props.push({ type: 'cable', a: prev, b: pole });
       prev = pole;
     }

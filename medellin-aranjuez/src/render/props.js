@@ -14,6 +14,8 @@ import { GRID, terrainHeight } from '../sim/terrain.js';
 import { makeRng } from '../sim/rng.js';
 import { buildVegetation } from './vegetation.js';
 import { wireLines } from './wires.js';
+import { MATERIAL_LENTE, plantillasAlumbrado, tinteLente } from './streetLights.js';
+import { fuenteDeLuz, giroLuminaria, luminariaDe, luzLed } from '../sim/alumbrado.js';
 
 export const PROP_MODELS = [
   'silla_plastica',
@@ -286,6 +288,14 @@ export function setInstanceColor(h, r, g, b) {
   }
 }
 
+/** Color por instancia actual (3 números en `out`), o null si su conjunto no tiene color por instancia. */
+export function instanceColorOf(h, out) {
+  const a = h.lc ? h.lc.srcColor : h.levels[0].color?.array;
+  if (!a) return null;
+  for (let k = 0; k < 3; k++) out[k] = a[h.i * 3 + k];
+  return out;
+}
+
 /** Mallas de una instancia (todos sus niveles). */
 export function instanceMeshes(h) {
   const levels = h.lc ? h.lc.levels : h.levels;
@@ -480,9 +490,11 @@ function lampMaterials(tpl, night, max) {
 }
 
 /**
- * El bombillo de un farol tumbado se apaga: con color por instancia, el
- * brillo se multiplica por (2·verde − 1): blanco = encendido, gris 0,5 =
- * apagado (y el vidrio un poco más oscuro). Sin color por instancia, igual que antes.
+ * El bombillo de un farol tumbado se apaga: con color por instancia c, el
+ * brillo se multiplica por (2·c − 1) en cada canal: blanco = encendido,
+ * 0,5 + 0,5·tinte = encendido de ese color (render/streetLights.js
+ * tinteLente: sodio o LED), y la mitad de eso = apagado (y el vidrio un poco
+ * más oscuro). Sin color por instancia, igual que antes.
  */
 function apagable(m) {
   if (m.userData.apagable || m.vertexColors) return;
@@ -490,7 +502,7 @@ function apagable(m) {
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = function (sh, renderer) {
     prev.call(this, sh, renderer);
-    sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n\ttotalEmissiveRadiance *= clamp( vColor.g * 2.0 - 1.0, 0.0, 1.0 );\n#endif');
+    sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive;\n#ifdef USE_COLOR\n\ttotalEmissiveRadiance *= clamp( vColor.rgb * 2.0 - 1.0, 0.0, 1.0 );\n#endif');
   };
   const key = m.customProgramCacheKey;
   m.customProgramCacheKey = function () {
@@ -500,37 +512,43 @@ function apagable(m) {
 
 // ------------------------------------------------------------------ constructores por tipo
 
-function buildLamps(r, lamps, parkLamps, glowSprite) {
-  const tpl = propTemplate('farol_calle');
+function buildLamps(r, lamps, parkLamps, poles) {
   const ptpl = propTemplate('farol_parque');
-  const glows = [];
-  let handledStreet = false;
-  if (tpl && lamps.length) {
-    lampMaterials(tpl, r.nightMaterials, 4);
-    // Lejos: el poste simple más un bloque luminoso donde va la lámpara.
-    const luz = tpl.extras.luz ?? [0, 7, -1];
-    const glass = tpl.cerca.find((p) => p.material.userData?.luz)?.material;
-    if (glass && tpl.lejos && !tpl.lejos.some((p) => p.material === glass)) {
-      const box = new THREE.BoxGeometry(0.35, 0.5, 0.35).translate(0, luz[1] + 0.25, luz[2]);
-      box.computeBoundingBox();
-      box.computeBoundingSphere();
-      tpl.lejos.push({ geometry: box, material: glass });
-    }
-    // Color por instancia solo en el vidrio: así un farol tumbado se apaga (apagable).
-    const set = new ChunkedInstances(tpl, { near: propNear(r), far: Math.min(r.quality?.drawDistance ?? 1500, 450), name: 'faroles', tint: (m) => !!m.userData?.luz, refs: r.propInstances });
-    r.lampHeads ??= [];
-    for (const l of lamps) {
-      set.add(l.x, groundY(l.x, l.z) - 0.05, l.z, l.rot, 1, 1, 1, null, null, l);
-      const dx = Math.sin(l.rot) * luz[2];
-      const dz = Math.cos(l.rot) * luz[2];
-      glows.push({ x: l.x + dx, z: l.z + dz, s: 1 });
-      const head = { x: l.x + dx, y: groundY(l.x, l.z) + luz[1] - 0.3, z: l.z + dz, off: false };
-      r.lampHeads.push(head);
-      r.propLights?.set(l, head);
-    }
-    set.build(r.root, r.lodChunks);
-    handledStreet = true;
+  // Alumbrado de calle típico de Medellín (render/streetLights.js con las
+  // medidas de sim/alumbrado.js). Del modelo farol_calle solo se toma el
+  // poste de concreto del kit de los postes de redes: su farol de hierro
+  // forjado (street_lamp_02) era europeo y quedaba al revés, con la placa de
+  // pared flotando sobre la calle y el farol pegado al poste.
+  const T = plantillasAlumbrado(propTemplate('farol_calle'));
+  if (!MATERIAL_LENTE.userData.noche) {
+    MATERIAL_LENTE.userData.noche = true;
+    r.nightMaterials.push({ m: MATERIAL_LENTE, max: 4 });
+    apagable(MATERIAL_LENTE);
   }
+  const near = propNear(r);
+  const far = Math.min(r.quality?.drawDistance ?? 1500, 450);
+  // Color por instancia solo en el lente: sodio o LED, y apagado si se tumba (apagable).
+  const tint = (m) => !!m.userData?.luz;
+  const sets = {
+    barrio: new ChunkedInstances(T.barrio, { near, far, name: 'faroles', tint, refs: r.propInstances }),
+    avenida: new ChunkedInstances(T.avenida, { near, far, name: 'faroles-avenida', tint, refs: r.propInstances }),
+    // El brazo de un poste de redes cae con su poste (render/destructibles.js): refs aparte.
+    poste: new ChunkedInstances(T.poste, { near, far, name: 'luminarias-postes', tint, refs: r.propArms }),
+  };
+  r.lampHeads ??= [];
+  const col = new THREE.Color();
+  const add = (p, set, baseY) => {
+    const led = luzLed(p);
+    set.add(p.x, baseY, p.z, giroLuminaria(p), 1, 1, 1, tinteLente(led, col), null, p);
+    // La luz (puntual y del piso) debajo del lente, hacia la calzada.
+    const head = fuenteDeLuz(p, baseY, { x: 0, y: 0, z: 0, off: false, led, pot: luminariaDe(p).potencia });
+    r.lampHeads.push(head);
+    r.propLights?.set(p, head);
+  };
+  for (const l of lamps) add(l, l.via === 'avenida' ? sets.avenida : sets.barrio, groundY(l.x, l.z) - 0.05);
+  // (Misma base que el poste en buildPoles: así el brazo gira con él al tumbarlo.)
+  for (const p of poles) if (luminariaDe(p)) add(p, sets.poste, groundY(p.x, p.z) - 0.1);
+  for (const s of Object.values(sets)) s.build(r.root, r.lodChunks);
   if (parkLamps.length) {
     const t = ptpl ?? boxTemplate('farol_parque', 0.18, 4, 0.18, 0x1c1f22, { cylinder: true });
     if (ptpl) lampMaterials(ptpl, r.nightMaterials, 3);
@@ -539,7 +557,6 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
     r.lampHeads ??= [];
     for (const l of parkLamps) {
       set.add(l.x, groundY(l.x, l.z), l.z, l.rot ?? 0, k, k, k, null, null, l);
-      glows.push({ x: l.x, z: l.z, s: 0.6 });
       const head = { x: l.x, y: groundY(l.x, l.z) + 4.1, z: l.z, park: true, off: false };
       r.lampHeads.push(head);
       r.propLights?.set(l, head);
@@ -547,7 +564,8 @@ function buildLamps(r, lamps, parkLamps, glowSprite) {
     set.build(r.root);
   }
   // El charco de luz de cada farol lo pinta el shader del piso (render/groundLights.js).
-  return handledStreet;
+  // (Las de calle son procedurales: siempre quedan dibujadas aquí.)
+  return true;
 }
 
 function buildPoles(r, poles, cables) {
@@ -682,14 +700,16 @@ function buildSmallProps(r, byType) {
  */
 export function buildModelProps(r, byType, { glowSprite }) {
   // Instancias de la utilería que se puede tumbar (render/destructibles.js):
-  // objeto de la ciudad → instancia, cabeza de farol y tramos de cable.
+  // objeto de la ciudad → instancia, cabeza de farol, brazo con luminaria de
+  // un poste de redes y tramos de cable.
   r.propInstances ??= new Map();
   r.propLights ??= new Map();
+  r.propArms ??= new Map();
   r.poleCables ??= new Map();
   // Vegetación (vegetation.js): árboles, matas en los jardines y los props
   // sueltos shrub / grass / climber. Devuelve los árboles sin modelo.
   const trees = buildVegetation(r, byType.tree ?? [], (byType.garden ?? []).filter((g) => g.poly), [...(byType.shrub ?? []), ...(byType.grass ?? []), ...(byType.climber ?? [])]);
-  const lamps = buildLamps(r, byType.lamp ?? [], byType.parkLamp ?? [], glowSprite);
+  const lamps = buildLamps(r, byType.lamp ?? [], byType.parkLamp ?? [], byType.pole ?? []);
   const poles = buildPoles(r, byType.pole ?? [], byType.cable ?? []);
   const benches = buildBenches(r, byType.bench ?? []);
   buildSmallProps(r, byType);
